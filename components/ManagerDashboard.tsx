@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { BackendService } from '../services/backend';
 import { User, UserRole, Subject, Questionnaire, QuestionType } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select } from './ui';
-import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal } from 'lucide-react';
+import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key } from 'lucide-react';
 
 interface Props {
   institutionId: string;
@@ -81,17 +81,17 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
   const handleAddTeacher = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!newTeacherName || !newTeacherEmail) {
-          alert("Nome e Email são obrigatórios.");
+      if (!newTeacherName || !newTeacherEmail || !newTeacherPwd) {
+          alert("Nome, Email e Senha são obrigatórios.");
           return;
       }
       try {
-          await BackendService.addTeacher(institutionId, newTeacherName, newTeacherEmail, newTeacherPwd || '123456');
+          await BackendService.addTeacher(institutionId, newTeacherName, newTeacherEmail, newTeacherPwd);
           setNewTeacherName('');
           setNewTeacherEmail('');
           setNewTeacherPwd('');
           loadData();
-          alert("Docente cadastrado com sucesso!");
+          alert(`Docente cadastrado com sucesso!\n\nEntregue estas credenciais ao docente:\nEmail: ${newTeacherEmail}\nSenha: ${newTeacherPwd}`);
       } catch (error: any) {
           alert("Erro ao adicionar docente: " + error.message);
       }
@@ -349,7 +349,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             </div>
         </div>
       ) : (
-        // OVERVIEW TAB (Previous Logic kept intact)
+        // OVERVIEW TAB
         <>
         {/* Pending Approvals */}
         {unapproved.length > 0 && (
@@ -382,17 +382,34 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handleAddTeacher} className="bg-gray-50 p-4 rounded-lg border space-y-4">
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="space-y-2">
                                     <Label>Nome</Label>
-                                    <Input value={newTeacherName} onChange={e => setNewTeacherName(e.target.value)} required />
+                                    <Input value={newTeacherName} onChange={e => setNewTeacherName(e.target.value)} placeholder="Nome completo" required />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Email</Label>
-                                    <Input type="email" value={newTeacherEmail} onChange={e => setNewTeacherEmail(e.target.value)} required />
+                                    <Input type="email" value={newTeacherEmail} onChange={e => setNewTeacherEmail(e.target.value)} placeholder="email@instituicao.ac.mz" required />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Senha de Acesso</Label>
+                                    <div className="relative">
+                                        <Key className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                                        <Input 
+                                            type="text" 
+                                            value={newTeacherPwd} 
+                                            onChange={e => setNewTeacherPwd(e.target.value)} 
+                                            placeholder="Atribua uma senha" 
+                                            className="pl-9"
+                                            required 
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                            <Button type="submit"><Plus className="mr-2 h-4 w-4" /> Adicionar Docente</Button>
+                            <div className="flex justify-between items-center pt-2">
+                                <p className="text-xs text-gray-500">* Você deve informar esta senha ao docente.</p>
+                                <Button type="submit"><Plus className="mr-2 h-4 w-4" /> Adicionar Docente</Button>
+                            </div>
                         </form>
                     </CardContent>
                 </Card>

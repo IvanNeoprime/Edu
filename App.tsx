@@ -16,12 +16,14 @@ export default function App() {
   
   // Auth State
   const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState('ivandromaoze138@gmai.com');
+  // PRIVACIDADE: Campo inicia vazio para não expor credenciais
+  const [email, setEmail] = useState(''); 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   
   // Registration State
   const [regName, setRegName] = useState('');
+  // Padrão fixo: Estudante (Docentes são cadastrados pelo Gestor)
   const [regRole, setRegRole] = useState<UserRole>(UserRole.STUDENT);
   const [regInstId, setRegInstId] = useState('');
   const [institutions, setInstitutions] = useState<Institution[]>([]);
@@ -90,18 +92,13 @@ export default function App() {
           const newUser = await BackendService.register({
               name: regName,
               email: email,
-              role: regRole,
+              role: UserRole.STUDENT, // Força cadastro como Estudante
               institutionId: regInstId,
               password: password,
           });
           
-          if (regRole === UserRole.TEACHER) {
-            alert('Cadastro realizado! Aguarde a aprovação do gestor institucional.');
-            setIsLogin(true);
-          } else {
-            alert('Cadastro realizado com sucesso!');
-            setUser(newUser);
-          }
+          alert('Cadastro de estudante realizado com sucesso!');
+          setUser(newUser);
       } catch (error: any) {
           alert(error.message || "Erro ao criar conta");
       }
@@ -153,8 +150,13 @@ export default function App() {
         <Card className="w-full max-w-md shadow-lg border-0">
           <CardHeader className="space-y-1">
             <CardTitle className="text-2xl font-bold text-center">
-                {isLogin ? 'Acesso ao Sistema' : 'Criar Nova Conta'}
+                {isLogin ? 'Acesso ao Sistema' : 'Cadastro de Estudante'}
             </CardTitle>
+            {!isLogin && (
+                <p className="text-center text-xs text-gray-500">
+                    Docentes devem ser cadastrados pelo Gestor da Instituição.
+                </p>
+            )}
           </CardHeader>
           <CardContent>
             {isLogin ? (
@@ -164,7 +166,7 @@ export default function App() {
                     <Input 
                     id="email" 
                     type="email" 
-                    placeholder="nome@universidade.ac.mz" 
+                    placeholder="Ex: nome@universidade.ac.mz" 
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
@@ -199,7 +201,7 @@ export default function App() {
                         <Label>Email Institucional</Label>
                         <Input 
                             type="email" 
-                            placeholder="nome@universidade.ac.mz" 
+                            placeholder="estudante@universidade.ac.mz" 
                             value={email}
                             onChange={e => setEmail(e.target.value)}
                             required
@@ -225,18 +227,8 @@ export default function App() {
                             />
                         </div>
                     </div>
-                    <div className="grid grid-cols-1 gap-4">
-                        <div className="space-y-2">
-                            <Label>Tipo de Conta</Label>
-                            <Select 
-                                value={regRole} 
-                                onChange={e => setRegRole(e.target.value as UserRole)}
-                            >
-                                <option value={UserRole.STUDENT}>Estudante</option>
-                                <option value={UserRole.TEACHER}>Docente</option>
-                            </Select>
-                        </div>
-                    </div>
+                    
+                    {/* Removido seletor de Role - Cadastro público é sempre estudante */}
 
                     <div className="space-y-2">
                         <Label>Instituição de Ensino</Label>

@@ -2,22 +2,95 @@
 import { User, UserRole, Institution, Subject, Questionnaire, StudentResponse, InstitutionalEval, CombinedScore, Question, SelfEvaluation, QualitativeEval } from '../types';
 
 // ==================================================================================
-// 🛠️ BACKEND SERVICE (LOCAL STORAGE + SEED DATA)
+// 🔥 CONFIGURAÇÃO DO FIREBASE (PARA DEPLOY)
 // ==================================================================================
+// Para usar o modo ONLINE (Cloud), cole suas chaves abaixo.
+// Para usar o modo LOCAL (Teste), deixe como null.
 
+const YOUR_FIREBASE_CONFIG = null; 
+
+/* 
+// CONFIGURAÇÃO DE PRODUÇÃO (COMENTADA PARA TESTES LOCAIS)
+const YOUR_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyARmCDYuUxrrRtoZVZEUbipLZO2vMoVeC8",
+  authDomain: "eduva-9d38a.firebaseapp.com",
+  projectId: "eduva-9d38a",
+  storageBucket: "eduva-9d38a.firebasestorage.app",
+  messagingSenderId: "308016509556",
+  appId: "1:308016509556:web:9284e3997467b69f489721",
+  measurementId: "G-VYVW4QM3DE"
+};
+*/
+
+let FIREBASE_CONFIG: any = YOUR_FIREBASE_CONFIG;
+
+// --- PDF STANDARD QUESTIONNAIRE (APÊNDICE 1) ---
 const PDF_STANDARD_QUESTIONS: Question[] = [
-    { id: "651", text: "O docente apresentou o programa temático?", type: "binary", weight: 4 },
+    // Grupo 65: Organização
+    { id: "651", text: "O docente apresentou o programa temático ou analítico da disciplina?", type: "binary", weight: 4 },
     { id: "652", text: "O docente apresentou os objetivos da disciplina?", type: "binary", weight: 3 },
-    { id: "653", text: "O docente apresentou a metodologia de ensino?", type: "binary", weight: 2 },
-    { id: "654", text: "O docente cumpriu com o programa?", type: "binary", weight: 6 },
+    { id: "653", text: "O docente apresentou a metodologia de ensino da disciplina?", type: "binary", weight: 2 },
+    { id: "654", text: "O docente cumpriu com o programa temático ou analítico apresentado?", type: "binary", weight: 6 },
+    // Grupo 70: Interação
     { id: "701", text: "O docente foi acessível aos estudantes?", type: "binary", weight: 1 },
-    { id: "702", text: "O docente esclareceu dúvidas?", type: "binary", weight: 1 },
-    { id: "703", text: "O docente usou métodos participativos?", type: "binary", weight: 1 },
-    { id: "751", text: "O docente avaliou dentro dos prazos?", type: "binary", weight: 5 },
-    { id: "752", text: "O estudante viu resultados corrigidos?", type: "binary", weight: 3 },
-    { id: "753", text: "O docente publicou resultados no prazo?", type: "binary", weight: 4 }
+    { id: "702", text: "O docente disponibilizou-se para esclarecer dúvidas?", type: "binary", weight: 1 },
+    { id: "703", text: "O docente encorajou ao uso de métodos participativos na sala de aula?", type: "binary", weight: 1 },
+    // Grupo 75: Avaliação
+    { id: "751", text: "O docente avaliou os estudantes dentro dos prazos?", type: "binary", weight: 5 },
+    { id: "752", text: "O estudante teve oportunidade de ver seus resultados depois de corrigidos?", type: "binary", weight: 3 },
+    { id: "753", text: "O docente publicou os resultados da avaliação dentro dos prazos estabelecidos?", type: "binary", weight: 4 }
 ];
 
+// --- Client Initialization ---
+let db: any = null;
+let auth: any = null;
+let isUsingCloud = false;
+
+// MOCK FIREBASE IMPORTS (To avoid build errors when not using cloud)
+// In a real build, these would be imported at top level, but we keep structure clean.
+// The logic below simply won't run if config is null.
+
+const initFirebase = async () => {
+    const savedConfig = localStorage.getItem('ad_firebase_config');
+    const configToUse = FIREBASE_CONFIG || (savedConfig ? JSON.parse(savedConfig) : null);
+
+    if (configToUse) {
+        try {
+            // Dynamic import to avoid loading heavy SDKs in Local Mode
+            const { initializeApp } = await import('firebase/app');
+            const { getFirestore, enableIndexedDbPersistence } = await import('firebase/firestore');
+            const { getAuth } = await import('firebase/auth');
+
+            const app = initializeApp(configToUse);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            FIREBASE_CONFIG = configToUse; 
+            
+            enableIndexedDbPersistence(db).catch((err) => {
+                if (err.code == 'failed-precondition') {
+                    console.warn('Firebase persistence failed: Multiple tabs open');
+                } else if (err.code == 'unimplemented') {
+                    console.warn('Firebase persistence not supported by this browser');
+                }
+            });
+
+            isUsingCloud = true;
+            console.log("✅ Firebase (Firestore + Auth) inicializado.");
+            return true;
+        } catch (e) {
+            console.error("Erro ao conectar Firebase", e);
+            return false;
+        }
+    }
+    return false;
+};
+
+// Tenta iniciar imediatamente (se houver config)
+if (typeof window !== 'undefined' && FIREBASE_CONFIG) {
+    initFirebase();
+}
+
+// --- Constants for LocalStorage Keys (Fallback) ---
 const DB_KEYS = {
   USERS: 'ad_users',
   INSTITUTIONS: 'ad_institutions',
@@ -36,7 +109,7 @@ export interface SubjectWithTeacher extends Subject {
 }
 
 // Credenciais Oficiais
-const SUPER_ADMIN_EMAIL = "ivandromaoze138@gmai.com"; 
+const SUPER_ADMIN_EMAIL = "ivandromaoze138@gmail.com"; 
 const SUPER_ADMIN_PASS = "24191978a";
 
 // Helpers de LocalStorage
@@ -93,9 +166,8 @@ const initializeSeedData = () => {
         };
 
         setTable(DB_KEYS.INSTITUTIONS, [demoInst]);
-        // Mescla com usuários existentes (caso o Super Admin já tenha sido criado pelo login)
+        // Mescla com usuários existentes
         const currentUsers = getTable<User>(DB_KEYS.USERS);
-        // Filtra para não duplicar
         const newUsers = [...currentUsers];
         demoUsers.forEach(du => {
             if (!newUsers.find(u => u.email === du.email)) newUsers.push(du);
@@ -107,7 +179,10 @@ const initializeSeedData = () => {
     }
 };
 
-export const BackendService = {
+/**
+ * MOCK BACKEND (Offline/LocalStorage Mode)
+ */
+const MockBackend = {
   async checkHealth(): Promise<{ ok: boolean; mode: string; error?: string }> { 
       // Inicializa dados de teste se o banco estiver vazio
       initializeSeedData();
@@ -115,27 +190,56 @@ export const BackendService = {
   },
   
   async login(email: string, password?: string): Promise<{ user: User; token: string } | null> {
-    await delay(300); // Delay reduzido para agilidade
+    await delay(300); 
     
-    // Verifica Super Admin Hardcoded
+    // --- LOGIN DE SUPER ADMIN (ACESSO DE EMERGÊNCIA/MESTRE) ---
     if (email === SUPER_ADMIN_EMAIL) {
-        if (password !== SUPER_ADMIN_PASS) throw new Error("Senha incorreta para Super Admin.");
-    }
+        if (password === SUPER_ADMIN_PASS) {
+            const saUser: User = { 
+                id: 'u_super_ivan', 
+                email: SUPER_ADMIN_EMAIL, 
+                name: 'Super Admin Ivan', 
+                role: UserRole.SUPER_ADMIN, 
+                approved: true 
+            };
+            
+            // Tenta salvar no banco para consistência, mas não bloqueia se falhar
+            try {
+                const users = getTable<User>(DB_KEYS.USERS);
+                if (!users.find(u => u.email === SUPER_ADMIN_EMAIL)) {
+                    users.push(saUser);
+                    setTable(DB_KEYS.USERS, users);
+                }
+            } catch (e) {
+                console.warn("Aviso: Não foi possível persistir admin no storage, mas permitindo login.");
+            }
 
+            // RETORNO IMEDIATO - SUCESSO
+            const sessionData = { user: saUser, token: 'sa_jwt_master_' + Date.now(), expiry: Date.now() + 86400000 };
+            localStorage.setItem(DB_KEYS.SESSION, JSON.stringify(sessionData));
+            return sessionData;
+        } else {
+            throw new Error("Senha incorreta para Super Admin.");
+        }
+    }
+    // -----------------------------------------------------------
+
+    // Login normal para outros usuários
     const users = getTable<User>(DB_KEYS.USERS);
     const user = users.find(u => u.email === email);
     
-    if (!user) return null;
+    if (!user) return null; // Retorna null para disparar "Usuário não encontrado" na UI
 
-    // Verifica senha (se não for super admin)
     if (user.email !== SUPER_ADMIN_EMAIL) {
         const storedPass = (user as any).password;
-        if (storedPass && storedPass !== password) {
+        // Se não tiver senha salva (antigos mocks), aceita 123456
+        const validPass = storedPass || '123456';
+        
+        if (password !== validPass) {
             throw new Error("Senha incorreta.");
         }
     }
     
-    // Cria sessão
     const sessionData = { user, token: 'mock_jwt_' + Date.now(), expiry: Date.now() + 86400000 };
     localStorage.setItem(DB_KEYS.SESSION, JSON.stringify(sessionData));
     return { user, token: sessionData.token };
@@ -289,7 +393,6 @@ export const BackendService = {
       setTable(DB_KEYS.VOTES_TRACKER, tracker);
   },
 
-  // --- DYNAMIC SCORING ENGINE (UPDATED) ---
   async calculateScores(institutionId: string): Promise<void> {
       const subjects = getTable<Subject>(DB_KEYS.SUBJECTS).filter(s => s.institutionId === institutionId);
       const teacherIds = Array.from(new Set(subjects.map(s => s.teacherId)));
@@ -383,3 +486,41 @@ export const BackendService = {
   async resetSystem(): Promise<void> { localStorage.clear(); window.location.reload(); },
   async setFirebaseConfig(config: any) { console.log("Configuração ignorada em modo local."); }
 };
+
+/**
+ * 🔥 FIREBASE BACKEND - (CÓDIGO MORTO QUANDO CONFIG É NULL)
+ * Mantemos a estrutura para facilitar reativar o modo online.
+ */
+const FirebaseBackend = {
+  // Este código só será executado se isUsingCloud for true,
+  // o que é impossível com FIREBASE_CONFIG = null.
+  // Mantemos aqui como placeholder.
+  async checkHealth(): Promise<{ ok: boolean; mode: string; error?: string }> { return { ok: true, mode: 'cloud' }; },
+  async login(): Promise<any> { return null; },
+  async logout(): Promise<void> {},
+  async getSession(): Promise<any> { return null; },
+  async register(): Promise<any> { return null; },
+  async getInstitutions(): Promise<any> { return []; },
+  async createInstitution(): Promise<any> { return null; },
+  async inviteManager(): Promise<any> { return { success: false }; },
+  async getUnapprovedTeachers(): Promise<any> { return []; },
+  async approveTeacher(): Promise<void> {},
+  async addTeacher(): Promise<any> { return null; },
+  async getInstitutionSubjects(): Promise<any> { return []; },
+  async assignSubject(): Promise<any> { return null; },
+  async saveQualitativeEval(): Promise<void> {},
+  async getQualitativeEval(): Promise<any> { return undefined; },
+  async saveSelfEval(): Promise<void> {},
+  async getSelfEval(): Promise<any> { return undefined; },
+  async getInstitutionQuestionnaire(): Promise<any> { return null; },
+  async saveQuestionnaire(): Promise<void> {},
+  async getAvailableSurveys(): Promise<any> { return null; },
+  async submitAnonymousResponse(): Promise<void> {},
+  async calculateScores(): Promise<void> {},
+  async getTeacherStats(): Promise<any> { return undefined; },
+  async getUsers(): Promise<any> { return []; },
+  async resetSystem(): Promise<void> {},
+  async setFirebaseConfig(): Promise<void> {}
+};
+
+export const BackendService = isUsingCloud ? FirebaseBackend : MockBackend;

@@ -1,3 +1,4 @@
+
 # Manual de Testes e Configuração - AvaliaDocente MZ
 
 Este documento serve como guia passo-a-passo para configurar, operar e testar o sistema **AvaliaDocente MZ** em ambiente local. O sistema foi projetado para garantir persistência de dados durante os testes, desde que o cache do navegador não seja limpo.
@@ -17,7 +18,7 @@ O sistema utiliza o **LocalStorage** do navegador como banco de dados.
 
 ### Super Administrador (Acesso Total)
 Use esta conta para criar novas faculdades e gestores.
-*   **Email:** `ivandromaoze138@gmai.com`
+*   **Email:** `ivandromaoze138@gmail.com`
 *   **Senha:** `24191978a`
 
 ### Contas de Teste Rápido (Já configuradas)
@@ -95,7 +96,7 @@ Para validar o funcionamento correto da fórmula **80% (Auto) + 12% (Aluno) + 8%
 
 Se você quiser apagar tudo e começar a bateria de testes do zero:
 
-1.  Entre como **Super Admin** (`ivandromaoze138@gmai.com`).
+1.  Entre como **Super Admin** (`ivandromaoze138@gmail.com`).
 2.  Clique no botão vermelho **"Resetar Sistema Completo"** no topo direito.
 3.  Confirme as duas janelas de aviso.
 4.  O sistema será limpo e recarregará com os dados de semente (Demo) novamente.

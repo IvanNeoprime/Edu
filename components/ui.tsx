@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -12,7 +13,7 @@ export const Button = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttrib
     const variants = {
       primary: 'bg-black text-white hover:bg-gray-800 shadow-sm',
       secondary: 'bg-gray-100 text-gray-900 hover:bg-gray-200',
-      outline: 'border border-gray-200 bg-transparent hover:bg-gray-50 text-gray-900',
+      outline: 'border border-gray-400 bg-transparent hover:bg-gray-50 text-gray-900', // Darker border
       ghost: 'hover:bg-gray-100 text-gray-700',
       destructive: 'bg-red-600 text-white hover:bg-red-700',
     };
@@ -44,7 +45,7 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
       <input
         ref={ref}
         className={cn(
-          'flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-950 disabled:cursor-not-allowed disabled:opacity-50',
+          'flex h-10 w-full rounded-md border border-gray-400 bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-950 disabled:cursor-not-allowed disabled:opacity-50 shadow-sm',
           className
         )}
         {...props}
@@ -84,7 +85,7 @@ export const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttrib
           <select
             ref={ref}
             className={cn(
-              'flex h-10 w-full items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-950 disabled:cursor-not-allowed disabled:opacity-50 appearance-none',
+              'flex h-10 w-full items-center justify-between rounded-md border border-gray-400 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-950 disabled:cursor-not-allowed disabled:opacity-50 appearance-none shadow-sm',
               className
             )}
             {...props}
