@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { BackendService } from '../services/backend';
 import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select } from './ui';
-import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, Download, FileText } from 'lucide-react';
+import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, Download, FileText, Briefcase } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -12,8 +12,9 @@ interface Props {
 }
 
 export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'questionnaire'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'questionnaire' | 'departments'>('overview');
   const [teachers, setTeachers] = useState<User[]>([]);
+  const [deptManagers, setDeptManagers] = useState<User[]>([]);
   const [unapproved, setUnapproved] = useState<User[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   
@@ -28,15 +29,14 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   
   // Form Builder State
   const [newQText, setNewQText] = useState('');
-  const [newQType, setNewQType] = useState<QuestionType>('binary'); // Default Sim/Não
+  const [newQType, setNewQType] = useState<QuestionType>('binary');
   const [newQWeight, setNewQWeight] = useState(1);
-  const [newQOptions, setNewQOptions] = useState(''); // Comma separated
+  const [newQOptions, setNewQOptions] = useState('');
 
   // Form State for New Subject
   const [newSubName, setNewSubName] = useState('');
   const [newSubCode, setNewSubCode] = useState('');
   const [newSubTeacher, setNewSubTeacher] = useState('');
-  // New Fields
   const [newSubYear, setNewSubYear] = useState(new Date().getFullYear().toString());
   const [newSubLevel, setNewSubLevel] = useState('');
   const [newSubSemester, setNewSubSemester] = useState('1');
@@ -48,6 +48,12 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [newTeacherEmail, setNewTeacherEmail] = useState('');
   const [newTeacherPwd, setNewTeacherPwd] = useState('');
 
+  // Form State for New Dept Manager
+  const [newDeptName, setNewDeptName] = useState('');
+  const [newDeptMgrName, setNewDeptMgrName] = useState('');
+  const [newDeptMgrEmail, setNewDeptMgrEmail] = useState('');
+  const [newDeptMgrPwd, setNewDeptMgrPwd] = useState('');
+
   useEffect(() => {
     loadData();
   }, [institutionId]);
@@ -55,10 +61,14 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const loadData = async () => {
     setLoading(true);
     const allUsers = await BackendService.getUsers();
-    // Allow Managers to appear in list if they are also teachers (by role check or context)
-    // For now, filter by TEACHER role as primary check, or MANAGER if assigned to subjects
+    
+    // Filter Teachers
     const potentialTeachers = allUsers.filter(u => (u.role === UserRole.TEACHER || u.role === UserRole.INSTITUTION_MANAGER) && u.institutionId === institutionId);
     setTeachers(potentialTeachers);
+
+    // Filter Dept Managers
+    const deptMgrs = allUsers.filter(u => u.role === UserRole.DEPARTMENT_MANAGER && u.institutionId === institutionId);
+    setDeptManagers(deptMgrs);
     
     setUnapproved(await BackendService.getUnapprovedTeachers(institutionId));
     
@@ -106,6 +116,31 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       } catch (error: any) {
           alert("Erro: " + error.message);
       }
+  };
+
+  const handleAddDeptManager = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDeptName || !newDeptMgrName || !newDeptMgrEmail || !newDeptMgrPwd) {
+        alert("Todos os campos são obrigatórios.");
+        return;
+    }
+    try {
+        await BackendService.addDepartmentManager(
+            institutionId,
+            newDeptMgrName,
+            newDeptMgrEmail,
+            newDeptName,
+            newDeptMgrPwd
+        );
+        setNewDeptName('');
+        setNewDeptMgrName('');
+        setNewDeptMgrEmail('');
+        setNewDeptMgrPwd('');
+        loadData();
+        alert("Chefe de Departamento cadastrado com sucesso!");
+    } catch (e: any) {
+        alert("Erro: " + e.message);
+    }
   };
 
   const handleEvalChange = (teacherId: string, field: 'deadlines' | 'quality', value: string) => {
@@ -172,15 +207,12 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       }
 
       const doc = new jsPDF();
-
-      // Header
       doc.setFontSize(18);
       doc.text("Pauta de Avaliação de Desempenho Docente", 14, 22);
       doc.setFontSize(11);
       doc.text(`Data de Emissão: ${new Date().toLocaleDateString()}`, 14, 30);
       doc.text("Este documento contém o resumo das pontuações do semestre.", 14, 36);
 
-      // Data for Table
       const tableBody = teachers.map(t => {
           const score = scores.find(s => s.teacherId === t.id);
           return [
@@ -193,7 +225,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           ];
       });
 
-      // Table - using function explicitly
       autoTable(doc, {
           startY: 45,
           head: [['Docente', 'Email', 'Auto-Aval.', 'Alunos', 'Inst.', 'FINAL']],
@@ -214,7 +245,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       }
       await BackendService.assignSubject({
           name: newSubName,
-          code: newSubCode, // Optional
+          code: newSubCode,
           teacherId: newSubTeacher,
           institutionId: institutionId,
           academicYear: newSubYear,
@@ -263,7 +294,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       setQuestionnaire(updatedQ);
       setNewQText('');
       setNewQOptions('');
-      // Reset weight default
       setNewQWeight(1);
   };
 
@@ -301,15 +331,80 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             <h1 className="text-3xl font-bold tracking-tight">Gestão Institucional</h1>
             <p className="text-gray-500">Administração de Docentes e Avaliações</p>
         </div>
-        <div className="flex bg-gray-100 p-1 rounded-lg">
-            <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'overview' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Visão Geral</button>
-            <button onClick={() => setActiveTab('questionnaire')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'questionnaire' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Construtor de Questionário</button>
+        <div className="flex bg-gray-100 p-1 rounded-lg overflow-x-auto">
+            <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'overview' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Visão Geral</button>
+            <button onClick={() => setActiveTab('departments')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'departments' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Departamentos</button>
+            <button onClick={() => setActiveTab('questionnaire')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'questionnaire' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Construtor de Questionário</button>
         </div>
       </header>
 
-      {activeTab === 'questionnaire' ? (
+      {activeTab === 'departments' ? (
+          <div className="grid gap-8 lg:grid-cols-12">
+              <div className="lg:col-span-5 space-y-6">
+                  <Card>
+                      <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                              <UserPlus className="h-5 w-5" /> Novo Chefe de Departamento
+                          </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                          <form onSubmit={handleAddDeptManager} className="space-y-4">
+                              <div className="space-y-2">
+                                  <Label>Nome do Departamento</Label>
+                                  <Input value={newDeptName} onChange={e => setNewDeptName(e.target.value)} placeholder="Ex: Engenharias, Ciências Sociais" required />
+                              </div>
+                              <div className="space-y-2">
+                                  <Label>Nome do Responsável</Label>
+                                  <Input value={newDeptMgrName} onChange={e => setNewDeptMgrName(e.target.value)} placeholder="Ex: Prof. Dr. Santos" required />
+                              </div>
+                              <div className="space-y-2">
+                                  <Label>Email Institucional</Label>
+                                  <Input type="email" value={newDeptMgrEmail} onChange={e => setNewDeptMgrEmail(e.target.value)} placeholder="chefe@dept.ac.mz" required />
+                              </div>
+                              <div className="space-y-2">
+                                  <Label>Senha Inicial</Label>
+                                  <div className="relative">
+                                      <Key className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                                      <Input type="text" value={newDeptMgrPwd} onChange={e => setNewDeptMgrPwd(e.target.value)} placeholder="Defina a senha" className="pl-9" required />
+                                  </div>
+                              </div>
+                              <Button type="submit" className="w-full">Cadastrar Responsável</Button>
+                          </form>
+                      </CardContent>
+                  </Card>
+              </div>
+              <div className="lg:col-span-7">
+                  <Card>
+                      <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                              <Briefcase className="h-5 w-5" /> Departamentos e Responsáveis
+                          </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                          <div className="space-y-4">
+                              {deptManagers.length === 0 ? (
+                                  <p className="text-gray-500 italic text-center py-8">Nenhum departamento cadastrado.</p>
+                              ) : (
+                                  deptManagers.map(mgr => (
+                                      <div key={mgr.id} className="p-4 border rounded-lg bg-white shadow-sm flex items-center justify-between">
+                                          <div>
+                                              <p className="font-bold text-gray-900">{mgr.department}</p>
+                                              <p className="text-sm text-gray-600">Resp: {mgr.name}</p>
+                                              <p className="text-xs text-gray-400">{mgr.email}</p>
+                                          </div>
+                                          <div className="text-sm text-green-600 bg-green-50 px-2 py-1 rounded">
+                                              Ativo
+                                          </div>
+                                      </div>
+                                  ))
+                              )}
+                          </div>
+                      </CardContent>
+                  </Card>
+              </div>
+          </div>
+      ) : activeTab === 'questionnaire' ? (
         <div className="grid gap-8 lg:grid-cols-12">
-            {/* Left: Builder Form */}
             <div className="lg:col-span-5 space-y-6">
                 <Card className="sticky top-4">
                     <CardHeader className="bg-slate-900 text-white rounded-t-lg">
@@ -339,7 +434,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label>PONTOS OBTIDOS (Se SIM)</Label>
+                                <Label>PONTOS OBTIDOS</Label>
                                 <Input 
                                     type="number" min="0"
                                     value={newQWeight}
@@ -363,15 +458,10 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                         <Button onClick={handleAddQuestion} className="w-full bg-slate-900">
                             Adicionar ao Questionário
                         </Button>
-                        
-                        <p className="text-xs text-gray-500 leading-relaxed">
-                            <strong>Nota (Full Mark):</strong> Para o tipo 'Sim / Não', o docente ganha a totalidade dos pontos definidos caso a resposta seja SIM, e zero se NÃO.
-                        </p>
                     </CardContent>
                 </Card>
             </div>
 
-            {/* Right: Preview List */}
             <div className="lg:col-span-7 space-y-6">
                  <Card>
                     <CardHeader>

@@ -2,6 +2,7 @@
 export enum UserRole {
   SUPER_ADMIN = 'super_admin',
   INSTITUTION_MANAGER = 'institution_manager',
+  DEPARTMENT_MANAGER = 'department_manager', // Novo Papel
   TEACHER = 'teacher',
   STUDENT = 'student'
 }
@@ -12,6 +13,7 @@ export interface User {
   name: string;
   role: UserRole;
   institutionId?: string;
+  department?: string; // Novo campo
   approved?: boolean; // For teachers
 }
 
@@ -29,10 +31,9 @@ export type TeacherCategory = 'assistente' | 'assistente_estagiario' | 'pleno';
 export interface Subject {
   id: string;
   name: string;
-  code?: string; // Agora opcional
+  code?: string;
   institutionId: string;
   teacherId: string;
-  // Novos campos solicitados
   academicYear?: string;
   level?: string;
   semester?: string;
@@ -44,12 +45,12 @@ export type QuestionType = 'binary' | 'scale_10' | 'stars' | 'text' | 'choice';
 
 export interface Question {
   id: string;
-  code?: string; // Ex: 651
-  category?: string; // Ex: Organização da disciplina
+  code?: string;
+  category?: string;
   text: string;
   type: QuestionType;
-  weight?: number; // Pontos Obtidos
-  options?: string[]; // For multiple choice
+  weight?: number;
+  options?: string[];
 }
 
 export interface Questionnaire {
@@ -78,30 +79,23 @@ export interface InstitutionalEval {
 
 export interface SelfEvaluation {
   teacherId: string;
-  // Cabeçalho da Ficha
   header: {
     department: string;
     category: TeacherCategory;
     function: string;
-    contractRegime: string; // Tempo inteiro/parcial
-    workPeriod: string; // Laboral/PL
+    contractRegime: string;
+    workPeriod: string;
     academicYear: string;
   };
-  // Respostas específicas (Quantidades que serão multiplicadas pelos pontos)
   answers: {
-    // Categoria: Nº de disciplinas (Total 20)
-    gradSubjects?: number; // x15
-    postGradSubjects?: number; // x5
-    
-    // Categoria: Horas de docência (Total 35)
-    theoryHours?: number; // x16
-    practicalHours?: number; // x14
-    consultationHours?: number; // x5
-
-    // Categoria: Supervisão (Apenas Assistente/Pleno) (Total 20)
-    gradSupervision?: number; // x6
-    postGradSupervision?: number; // x6
-    regencySubjects?: number; // x8
+    gradSubjects?: number;
+    postGradSubjects?: number;
+    theoryHours?: number;
+    practicalHours?: number;
+    consultationHours?: number;
+    gradSupervision?: number;
+    postGradSupervision?: number;
+    regencySubjects?: number;
   };
 }
 
@@ -116,10 +110,10 @@ export interface QualitativeEval {
 
 export interface CombinedScore {
   teacherId: string;
-  studentScore: number; // Pontos calculados (Soma * Multiplicador)
+  studentScore: number;
   institutionalScore: number; 
-  selfEvalScore: number; // Pontos absolutos (Soma das quantidades * pontos)
-  finalScore: number; // Soma total
+  selfEvalScore: number;
+  finalScore: number;
   lastCalculated: string;
 }
 

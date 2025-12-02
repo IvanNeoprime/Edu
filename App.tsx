@@ -7,6 +7,7 @@ import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { ManagerDashboard } from './components/ManagerDashboard';
 import { TeacherDashboard } from './components/TeacherDashboard';
 import { StudentDashboard } from './components/StudentDashboard';
+import { DepartmentManagerDashboard } from './components/DepartmentManagerDashboard';
 import { GraduationCap, ShieldCheck, ArrowRight, UserPlus, LogIn } from 'lucide-react';
 
 export default function App() {
@@ -15,17 +16,10 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   
   // Auth State
-  const [isLogin, setIsLogin] = useState(true);
-  // PRIVACIDADE: Campo inicia vazio para não expor credenciais
   const [email, setEmail] = useState(''); 
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   
-  // Registration State
-  const [regName, setRegName] = useState('');
-  // Padrão fixo: Estudante (Docentes são cadastrados pelo Gestor)
-  const [regRole, setRegRole] = useState<UserRole>(UserRole.STUDENT);
-  const [regInstId, setRegInstId] = useState('');
+  // State for institutions list
   const [institutions, setInstitutions] = useState<Institution[]>([]);
 
   const refreshInstitutions = async () => {
@@ -34,7 +28,6 @@ export default function App() {
       setInstitutions(data);
     } catch (e) {
       console.warn("Não foi possível carregar instituições. Verifique a conexão.", e);
-      // Fallback para lista vazia sem quebrar a UI
       setInstitutions([]);
     }
   };
@@ -42,10 +35,7 @@ export default function App() {
   useEffect(() => {
       const init = async () => {
           try {
-            // 1. Lightweight Health Check (Safe to fail)
             await BackendService.checkHealth();
-          
-            // 2. Load Session (from LocalStorage/Cache)
             try {
                 const sessionUser = await BackendService.getSession();
                 if (sessionUser) {
@@ -54,10 +44,7 @@ export default function App() {
             } catch(e) {
                 console.warn("Erro ao recuperar sessão", e);
             }
-
-            // 3. Load Institutions
             await refreshInstitutions();
-
           } catch (e) {
               console.error("Fatal initialization error, ensuring UI renders:", e);
           } finally {
@@ -83,51 +70,13 @@ export default function App() {
     setLoading(false);
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (password !== confirmPassword) {
-          alert("As senhas não coincidem.");
-          return;
-      }
-      if (!regInstId) {
-          alert("Por favor selecione uma instituição.");
-          return;
-      }
-      
-      setLoading(true);
-      try {
-          const newUser = await BackendService.register({
-              name: regName,
-              email: email,
-              role: UserRole.STUDENT, // Força cadastro como Estudante
-              institutionId: regInstId,
-              password: password,
-          });
-          
-          alert('Cadastro de estudante realizado com sucesso!');
-          setUser(newUser);
-      } catch (error: any) {
-          alert(error.message || "Erro ao criar conta");
-      }
-      setLoading(false);
-  };
-
   const handleLogout = async () => {
       await BackendService.logout();
       setUser(null);
       setEmail('');
       setPassword('');
-      setConfirmPassword('');
-      setIsLogin(true);
       refreshInstitutions();
   }
-
-  const switchToRegister = () => {
-      setIsLogin(false);
-      setPassword('');
-      setConfirmPassword('');
-      refreshInstitutions();
-  };
 
   // --- Router Logic ---
   const renderDashboard = () => {
@@ -135,6 +84,7 @@ export default function App() {
     switch (user.role) {
       case UserRole.SUPER_ADMIN: return <SuperAdminDashboard />;
       case UserRole.INSTITUTION_MANAGER: return user.institutionId ? <ManagerDashboard institutionId={user.institutionId} /> : <div>Erro: Sem instituição.</div>;
+      case UserRole.DEPARTMENT_MANAGER: return <DepartmentManagerDashboard user={user} />;
       case UserRole.TEACHER: return <TeacherDashboard user={user} />;
       case UserRole.STUDENT: return <StudentDashboard user={user} />;
       default: return <div>Role desconhecido.</div>;
@@ -157,23 +107,20 @@ export default function App() {
         <Card className="w-full max-w-md shadow-lg border-0">
           <CardHeader className="space-y-1">
             <CardTitle className="text-2xl font-bold text-center">
-                {isLogin ? 'Acesso ao Sistema' : 'Cadastro de Estudante'}
+                Acesso ao Sistema
             </CardTitle>
-            {!isLogin && (
-                <p className="text-center text-xs text-gray-500">
-                    Docentes devem ser cadastrados pelo Gestor da Instituição.
-                </p>
-            )}
+            <p className="text-center text-xs text-gray-500">
+                Alunos e Docentes devem solicitar suas credenciais ao departamento.
+            </p>
           </CardHeader>
           <CardContent>
-            {isLogin ? (
                 <form onSubmit={handleLogin} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="space-y-2">
                     <Label htmlFor="email">Email Institucional</Label>
                     <Input 
                     id="email" 
                     type="email" 
-                    placeholder="Ex: nome@universidade.ac.mz" 
+                    placeholder="Ex: usuario@universidade.ac.mz" 
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
@@ -193,88 +140,6 @@ export default function App() {
                     {loading ? 'Verificando...' : 'Entrar'} <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
                 </form>
-            ) : (
-                <form onSubmit={handleRegister} className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
-                    <div className="space-y-2">
-                        <Label>Nome Completo</Label>
-                        <Input 
-                            placeholder="Ex: João Tique" 
-                            value={regName}
-                            onChange={e => setRegName(e.target.value)}
-                            required
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Email Institucional</Label>
-                        <Input 
-                            type="email" 
-                            placeholder="estudante@universidade.ac.mz" 
-                            value={email}
-                            onChange={e => setEmail(e.target.value)}
-                            required
-                        />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label>Senha</Label>
-                            <Input 
-                                type="password" 
-                                value={password}
-                                onChange={e => setPassword(e.target.value)} 
-                                required
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Confirmar Senha</Label>
-                            <Input 
-                                type="password" 
-                                value={confirmPassword}
-                                onChange={e => setConfirmPassword(e.target.value)} 
-                                required
-                            />
-                        </div>
-                    </div>
-                    
-                    {/* Removido seletor de Role - Cadastro público é sempre estudante */}
-
-                    <div className="space-y-2">
-                        <Label>Instituição de Ensino</Label>
-                        <Select 
-                            value={regInstId} 
-                            onChange={e => setRegInstId(e.target.value)}
-                            required
-                            onFocus={refreshInstitutions}
-                        >
-                            <option value="">Selecione sua universidade...</option>
-                            {institutions.map(inst => (
-                                <option key={inst.id} value={inst.id}>{inst.name}</option>
-                            ))}
-                        </Select>
-                    </div>
-
-                    <Button type="submit" className="w-full h-11" disabled={loading}>
-                        {loading ? 'Criando Conta...' : 'Confirmar Cadastro'}
-                    </Button>
-                </form>
-            )}
-            
-            <div className="mt-6 pt-4 border-t flex justify-center">
-                <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => { 
-                        if(isLogin) switchToRegister(); 
-                        else setIsLogin(true); 
-                    }}
-                    className="text-gray-500 hover:text-black"
-                >
-                    {isLogin ? (
-                        <><UserPlus className="mr-2 h-4 w-4" /> Não tem conta? Cadastre-se</>
-                    ) : (
-                        <><LogIn className="mr-2 h-4 w-4" /> Já tem conta? Entrar</>
-                    )}
-                </Button>
-            </div>
           </CardContent>
         </Card>
         

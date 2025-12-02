@@ -65,7 +65,6 @@ if (typeof window !== 'undefined') {
 }
 
 // --- PDF STANDARD QUESTIONNAIRE (ESTRUTURA RÍGIDA DO REGULAMENTO) ---
-// Baseado na Ficha de Avaliação do Desempenho do Docente pelo Estudante
 const PDF_STANDARD_QUESTIONS: Question[] = [
     // Indicador: Organização da disciplina (15 pts)
     { id: "651", code: "651", category: "Organização da disciplina por semestre/ano", text: "O docente apresentou o programa temático ou analítico da disciplina?", type: "binary", weight: 4 },
@@ -128,11 +127,13 @@ const initializeSeedData = () => {
             { id: 'u_super_ivan', email: SUPER_ADMIN_EMAIL, name: 'Super Admin Ivan', role: UserRole.SUPER_ADMIN, approved: true },
             { id: 'u_mgr_demo', email: 'gestor@demo.ac.mz', name: 'Gestor Modelo', role: UserRole.INSTITUTION_MANAGER, institutionId: demoInstId, approved: true },
             { id: 'u_tchr_demo', email: 'docente@demo.ac.mz', name: 'Prof. Carlos Teste', role: UserRole.TEACHER, institutionId: demoInstId, approved: true },
-            { id: 'u_std_demo', email: 'aluno@demo.ac.mz', name: 'Aluno Exemplo', role: UserRole.STUDENT, institutionId: demoInstId, approved: true }
+            { id: 'u_dept_demo', email: 'chefe@demo.ac.mz', name: 'Chefe Departamento', role: UserRole.DEPARTMENT_MANAGER, institutionId: demoInstId, department: 'Engenharia', approved: true },
+            { id: 'u_std_demo', email: 'aluno@demo.ac.mz', name: 'Aluno Exemplo', role: UserRole.STUDENT, institutionId: demoInstId, department: 'Engenharia', approved: true }
         ];
         (demoUsers[1] as any).password = '123456';
         (demoUsers[2] as any).password = '123456';
         (demoUsers[3] as any).password = '123456';
+        (demoUsers[4] as any).password = '123456';
         const demoSubject: Subject = {
             id: 'sub_demo_1', name: 'Introdução à Informática', code: 'INF101', institutionId: demoInstId, teacherId: 'u_tchr_demo', teacherCategory: 'assistente'
         };
@@ -183,8 +184,9 @@ const MockBackend = {
       try { return JSON.parse(sessionStr).user; } catch { return null; }
   },
   async register(userData: Omit<User, 'id'> & { password?: string; inviteCode?: string }): Promise<User> {
+    // ESTA FUNÇÃO AGORA É POUCO USADA POIS O CADASTRO DE ALUNOS É FEITO PELO GESTOR DE DEPARTAMENTO
+    // MAS MANTEMOS PARA CASOS DE SUPER ADMIN CRIANDO OUTROS USERS
     await delay(500);
-    if (userData.role === UserRole.INSTITUTION_MANAGER) throw new Error("Gestores devem ser cadastrados pelo Super Admin.");
     const users = getTable<User>(DB_KEYS.USERS);
     if (users.find(u => u.email === userData.email)) throw new Error("Email já registado.");
     const newUser: User = { ...userData, id: `user_${Date.now()}`, approved: userData.role !== UserRole.TEACHER };
@@ -201,9 +203,8 @@ const MockBackend = {
       const users = getTable<User>(DB_KEYS.USERS);
       const existingUser = users.find(u => u.email === email);
       
-      // PERMITIR que Administradores/Gestores sejam adicionados como docentes sem erro
       if (existingUser) {
-          if (existingUser.role === UserRole.INSTITUTION_MANAGER || existingUser.role === UserRole.SUPER_ADMIN) {
+          if ([UserRole.INSTITUTION_MANAGER, UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_MANAGER].includes(existingUser.role)) {
               return existingUser; 
           } else if (existingUser.role === UserRole.TEACHER) {
              throw new Error("Este email já está cadastrado como docente.");
@@ -213,6 +214,42 @@ const MockBackend = {
       }
 
       const newUser: User = { id: `user_tch_${Date.now()}`, email, name, role: UserRole.TEACHER, institutionId, approved: true };
+      (newUser as any).password = password || '123456';
+      users.push(newUser);
+      setTable(DB_KEYS.USERS, users);
+      return newUser;
+  },
+  async addDepartmentManager(institutionId: string, name: string, email: string, department: string, password?: string): Promise<User> {
+      const users = getTable<User>(DB_KEYS.USERS);
+      if (users.find(u => u.email === email)) throw new Error("Email já cadastrado.");
+      
+      const newUser: User = { 
+          id: `user_dept_${Date.now()}`, 
+          email, 
+          name, 
+          role: UserRole.DEPARTMENT_MANAGER, 
+          institutionId, 
+          department,
+          approved: true 
+      };
+      (newUser as any).password = password || '123456';
+      users.push(newUser);
+      setTable(DB_KEYS.USERS, users);
+      return newUser;
+  },
+  async addStudent(institutionId: string, department: string, name: string, email: string, password?: string): Promise<User> {
+      const users = getTable<User>(DB_KEYS.USERS);
+      if (users.find(u => u.email === email)) throw new Error("Email já cadastrado.");
+
+      const newUser: User = { 
+          id: `user_std_${Date.now()}`, 
+          email, 
+          name, 
+          role: UserRole.STUDENT, 
+          institutionId, 
+          department,
+          approved: true 
+      };
       (newUser as any).password = password || '123456';
       users.push(newUser);
       setTable(DB_KEYS.USERS, users);
@@ -274,7 +311,6 @@ const MockBackend = {
   },
   async getAvailableSurveys(institutionId: string): Promise<{questionnaire: Questionnaire, subjects: SubjectWithTeacher[]} | null> {
     let activeQ = getTable<Questionnaire>(DB_KEYS.QUESTIONNAIRES).find(q => q.institutionId === institutionId && q.active);
-    // FORCE PDF STANDARD QUESTIONS IF NOT DEFINED
     if (!activeQ) { activeQ = { id: `q_${institutionId}`, institutionId, title: 'Ficha de Avaliação de Desempenho (Padrão)', active: true, questions: PDF_STANDARD_QUESTIONS }; }
     else if (activeQ.questions.length === 0) {
         activeQ.questions = PDF_STANDARD_QUESTIONS;
@@ -309,17 +345,12 @@ const MockBackend = {
       const scores = getTable<CombinedScore>(DB_KEYS.SCORES);
 
       teacherIds.forEach(tid => {
-          // 1. CÁLCULO DA FICHA DE ESTUDANTE (MULTIPLICADOR)
           const teacherResponses = responses.filter(r => r.teacherId === tid);
           let studentPoints = 0;
           
-          // Determinar Categoria (Prevalência: Auto-Avaliação > Cadastro da Disciplina > Padrão)
           const teacherSubjects = subjects.filter(s => s.teacherId === tid);
           const self = selfEvals.find(s => s.teacherId === tid);
-          
           const category: TeacherCategory = self?.header.category || teacherSubjects[0]?.teacherCategory || 'assistente';
-          
-          // "multiplique o total de pontos obtidos por 0.46 se for AE, e por 0.88 se for A"
           const multiplier = category === 'assistente_estagiario' ? 0.46 : 0.88;
 
           if (teacherResponses.length > 0) {
@@ -329,19 +360,14 @@ const MockBackend = {
               teacherResponses.forEach(r => {
                   let rPoints = 0;
                   r.answers.forEach(a => {
-                     // Busca a pergunta na ficha ativa ou no padrão
                      let q = activeQ?.questions.find(qu => qu.id === a.questionId);
                      if (!q) q = PDF_STANDARD_QUESTIONS.find(qu => qu.id === a.questionId);
-                     
                      if (!q || q.type === 'text' || q.type === 'choice') return;
                      const weight = q.weight || 0; 
                      const val = typeof a.value === 'number' ? a.value : 0;
-                     
-                     // Lógica "Full Mark": SIM ganha pontos completos, NÃO ganha 0.
                      if (q.type === 'binary') {
                          if (val === 1) rPoints += weight;
                      } else {
-                         // Para escalas, mantemos proporcionalidade
                          let ratio = 0;
                          if (q.type === 'stars') ratio = val / 5;
                          if (q.type === 'scale_10') ratio = val / 10;
@@ -358,20 +384,14 @@ const MockBackend = {
               }
           }
 
-          // 2. CÁLCULO DA AUTO-AVALIAÇÃO (SOMA DE PONTOS)
-          // "Cada resposta vale X PONTOS OBTIDOS"
           let selfPoints = 0;
           if (self && self.answers) {
               const a = self.answers;
-              // Pontuação baseada nas respostas específicas e multiplicadores da ficha
               selfPoints += (a.gradSubjects || 0) * 15;
               selfPoints += (a.postGradSubjects || 0) * 5;
-              
               selfPoints += (a.theoryHours || 0) * 16;
               selfPoints += (a.practicalHours || 0) * 14;
               selfPoints += (a.consultationHours || 0) * 5;
-              
-              // Apenas Assistente/Pleno ganham pontos de supervisão/regência
               if (category !== 'assistente_estagiario') {
                   selfPoints += (a.gradSupervision || 0) * 6;
                   selfPoints += (a.postGradSupervision || 0) * 6;
@@ -379,14 +399,12 @@ const MockBackend = {
               }
           }
 
-          // 3. AVALIAÇÃO QUALITATIVA (MANTIDA DO GESTOR)
           const qual = qualEvals.find(q => q.teacherId === tid);
           let qualPoints = 0;
           if (qual) {
               qualPoints = (qual.deadlineCompliance || 0) + (qual.workQuality || 0);
           }
 
-          // SOMA FINAL
           const final = studentPoints + selfPoints + qualPoints;
 
           const newScore: CombinedScore = {
@@ -405,13 +423,10 @@ const MockBackend = {
   },
   async getTeacherStats(teacherId: string): Promise<CombinedScore | undefined> { return getTable<CombinedScore>(DB_KEYS.SCORES).find(s => s.teacherId === teacherId); },
   async getInstitutionScores(institutionId: string): Promise<CombinedScore[]> {
-      // Método para o Gestor baixar todos os resultados
       const users = getTable<User>(DB_KEYS.USERS);
       const scores = getTable<CombinedScore>(DB_KEYS.SCORES);
-      
       const instTeachers = users.filter(u => (u.role === UserRole.TEACHER || u.role === UserRole.INSTITUTION_MANAGER) && u.institutionId === institutionId);
       const teacherIds = instTeachers.map(t => t.id);
-      
       return scores.filter(s => teacherIds.includes(s.teacherId));
   },
   async getUsers(): Promise<User[]> { return getTable<User>(DB_KEYS.USERS); },
@@ -419,6 +434,6 @@ const MockBackend = {
   async setFirebaseConfig(config: any) { console.log("Use setAppwriteConfig instead"); }
 };
 
-const AppwriteBackend = MockBackend; // Placeholder for Appwrite logic to avoid compile errors if switched
+const AppwriteBackend = MockBackend; 
 
 export const BackendService = isUsingCloud ? AppwriteBackend : MockBackend;
