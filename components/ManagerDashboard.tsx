@@ -1,9 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { BackendService } from '../services/backend';
-import { User, UserRole, Subject, Questionnaire, QuestionType } from '../types';
+import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select } from './ui';
-import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key } from 'lucide-react';
+import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, Download, FileText } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface Props {
   institutionId: string;
@@ -26,7 +28,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   
   // Form Builder State
   const [newQText, setNewQText] = useState('');
-  const [newQType, setNewQType] = useState<QuestionType>('stars');
+  const [newQType, setNewQType] = useState<QuestionType>('binary'); // Default Sim/Não
   const [newQWeight, setNewQWeight] = useState(1);
   const [newQOptions, setNewQOptions] = useState(''); // Comma separated
 
@@ -34,6 +36,12 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [newSubName, setNewSubName] = useState('');
   const [newSubCode, setNewSubCode] = useState('');
   const [newSubTeacher, setNewSubTeacher] = useState('');
+  // New Fields
+  const [newSubYear, setNewSubYear] = useState(new Date().getFullYear().toString());
+  const [newSubLevel, setNewSubLevel] = useState('');
+  const [newSubSemester, setNewSubSemester] = useState('1');
+  const [newSubCourse, setNewSubCourse] = useState('');
+  const [newSubCategory, setNewSubCategory] = useState<TeacherCategory>('assistente');
 
   // Form State for New Teacher
   const [newTeacherName, setNewTeacherName] = useState('');
@@ -47,8 +55,11 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const loadData = async () => {
     setLoading(true);
     const allUsers = await BackendService.getUsers();
-    const approvedTeachers = allUsers.filter(u => u.role === UserRole.TEACHER && u.institutionId === institutionId && u.approved);
-    setTeachers(approvedTeachers);
+    // Allow Managers to appear in list if they are also teachers (by role check or context)
+    // For now, filter by TEACHER role as primary check, or MANAGER if assigned to subjects
+    const potentialTeachers = allUsers.filter(u => (u.role === UserRole.TEACHER || u.role === UserRole.INSTITUTION_MANAGER) && u.institutionId === institutionId);
+    setTeachers(potentialTeachers);
+    
     setUnapproved(await BackendService.getUnapprovedTeachers(institutionId));
     
     const instSubjects = await BackendService.getInstitutionSubjects(institutionId);
@@ -58,7 +69,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     setQuestionnaire(q);
     
     const loadedEvals: Record<string, { deadlines: number, quality: number }> = {};
-    for (const t of approvedTeachers) {
+    for (const t of potentialTeachers) {
         const ev = await BackendService.getQualitativeEval(t.id);
         if (ev) {
             loadedEvals[t.id] = {
@@ -91,9 +102,9 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           setNewTeacherEmail('');
           setNewTeacherPwd('');
           loadData();
-          alert(`Docente cadastrado com sucesso!\n\nEntregue estas credenciais ao docente:\nEmail: ${newTeacherEmail}\nSenha: ${newTeacherPwd}`);
+          alert(`Docente cadastrado com sucesso!`);
       } catch (error: any) {
-          alert("Erro ao adicionar docente: " + error.message);
+          alert("Erro: " + error.message);
       }
   };
 
@@ -125,21 +136,98 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       alert("Cálculo realizado com sucesso!");
   };
 
+  const handleExportCSV = async () => {
+      const scores = await BackendService.getInstitutionScores(institutionId);
+      if (scores.length === 0) {
+          alert("Ainda não há pontuações calculadas para exportar.");
+          return;
+      }
+
+      let csvContent = `data:text/csv;charset=utf-8,`;
+      csvContent += "Docente,Email,Pontos Alunos (Estudante),Pontos Auto-Avaliação,Pontos Institucionais,SCORE FINAL\n";
+
+      teachers.forEach(t => {
+          const score = scores.find(s => s.teacherId === t.id);
+          if (score) {
+              csvContent += `"${t.name}","${t.email}",${score.studentScore},${score.selfEvalScore},${score.institutionalScore},${score.finalScore}\n`;
+          } else {
+              csvContent += `"${t.name}","${t.email}",0,0,0,0\n`;
+          }
+      });
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `Relatorio_Geral_${new Date().toISOString().slice(0,10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+  };
+
+  const handleExportPDF = async () => {
+      const scores = await BackendService.getInstitutionScores(institutionId);
+      if (scores.length === 0) {
+          alert("Ainda não há pontuações calculadas para exportar.");
+          return;
+      }
+
+      const doc = new jsPDF();
+
+      // Header
+      doc.setFontSize(18);
+      doc.text("Pauta de Avaliação de Desempenho Docente", 14, 22);
+      doc.setFontSize(11);
+      doc.text(`Data de Emissão: ${new Date().toLocaleDateString()}`, 14, 30);
+      doc.text("Este documento contém o resumo das pontuações do semestre.", 14, 36);
+
+      // Data for Table
+      const tableBody = teachers.map(t => {
+          const score = scores.find(s => s.teacherId === t.id);
+          return [
+              t.name,
+              t.email,
+              score ? score.selfEvalScore.toFixed(2) : "0.00",
+              score ? score.studentScore.toFixed(2) : "0.00",
+              score ? score.institutionalScore.toFixed(2) : "0.00",
+              score ? score.finalScore.toFixed(2) : "0.00"
+          ];
+      });
+
+      // Table - using function explicitly
+      autoTable(doc, {
+          startY: 45,
+          head: [['Docente', 'Email', 'Auto-Aval.', 'Alunos', 'Inst.', 'FINAL']],
+          body: tableBody,
+          theme: 'grid',
+          headStyles: { fillColor: [41, 128, 185], textColor: 255 },
+          styles: { fontSize: 9 },
+      });
+
+      doc.save(`Relatorio_Geral_${new Date().toISOString().slice(0,10)}.pdf`);
+  };
+
   const handleCreateSubject = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!newSubName || !newSubCode || !newSubTeacher) {
-          alert("Preencha todos os campos da disciplina.");
+      if (!newSubName || !newSubTeacher) {
+          alert("Nome da disciplina e Docente são obrigatórios.");
           return;
       }
       await BackendService.assignSubject({
           name: newSubName,
-          code: newSubCode,
+          code: newSubCode, // Optional
           teacherId: newSubTeacher,
-          institutionId: institutionId
+          institutionId: institutionId,
+          academicYear: newSubYear,
+          level: newSubLevel,
+          semester: newSubSemester,
+          course: newSubCourse,
+          teacherCategory: newSubCategory
       });
       setNewSubName('');
       setNewSubCode('');
       setNewSubTeacher('');
+      setNewSubLevel('');
+      setNewSubCourse('');
       loadData();
   };
 
@@ -235,7 +323,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                             <Input 
                                 value={newQText}
                                 onChange={(e) => setNewQText(e.target.value)}
-                                placeholder="Ex: Como avalia a pontualidade?"
+                                placeholder="Ex: O docente apresentou o programa?"
                             />
                         </div>
                         
@@ -243,21 +331,20 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                             <div className="space-y-2">
                                 <Label>Tipo de Resposta</Label>
                                 <Select value={newQType} onChange={(e) => setNewQType(e.target.value as QuestionType)}>
+                                    <option value="binary">✅ Sim / Não (Full Mark)</option>
                                     <option value="stars">⭐ Estrelas (1-5)</option>
                                     <option value="scale_10">📊 Escala (0-10)</option>
-                                    <option value="binary">✅ Sim / Não</option>
-                                    <option value="text">📝 Texto / Sugestão</option>
+                                    <option value="text">📝 Texto (Sem pontos)</option>
                                     <option value="choice">🔘 Múltipla Escolha</option>
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label>Peso na Nota</Label>
+                                <Label>PONTOS OBTIDOS (Se SIM)</Label>
                                 <Input 
                                     type="number" min="0"
                                     value={newQWeight}
                                     onChange={(e) => setNewQWeight(Number(e.target.value))}
                                     disabled={newQType === 'text' || newQType === 'choice'}
-                                    title={newQType === 'text' ? 'Perguntas de texto não geram nota' : ''}
                                 />
                             </div>
                         </div>
@@ -278,7 +365,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                         </Button>
                         
                         <p className="text-xs text-gray-500 leading-relaxed">
-                            <strong>Nota:</strong> Perguntas de Texto e Múltipla Escolha são qualitativas e não entram no cálculo automático dos 12% do aluno. Apenas Estrelas, Escala e Sim/Não geram pontuação.
+                            <strong>Nota (Full Mark):</strong> Para o tipo 'Sim / Não', o docente ganha a totalidade dos pontos definidos caso a resposta seja SIM, e zero se NÃO.
                         </p>
                     </CardContent>
                 </Card>
@@ -297,7 +384,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                 value={questionnaire?.title || ''} 
                                 onChange={(e) => handleUpdateTitle(e.target.value)} 
                                 className="mt-1"
-                                placeholder="Ex: Avaliação de Desempenho 2024"
+                                placeholder="Ex: Ficha de Avaliação de Desempenho"
                             />
                         </div>
                     </CardHeader>
@@ -324,13 +411,8 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                                  q.type === 'binary' ? 'Sim/Não' :
                                                  q.type === 'text' ? 'Texto' : 'Múltipla Escolha'}
                                             </span>
-                                            {q.weight > 0 && (
-                                                <span className="text-xs text-gray-500">Peso: {q.weight}</span>
-                                            )}
-                                            {q.options && (
-                                                <span className="text-xs text-gray-400 truncate max-w-[200px]">
-                                                    [{q.options.join(', ')}]
-                                                </span>
+                                            {q.weight !== undefined && q.weight > 0 && (
+                                                <span className="text-xs font-bold text-blue-600">Vale {q.weight} pts</span>
                                             )}
                                         </div>
                                     </div>
@@ -407,7 +489,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                 </div>
                             </div>
                             <div className="flex justify-between items-center pt-2">
-                                <p className="text-xs text-gray-500">* Você deve informar esta senha ao docente.</p>
+                                <p className="text-xs text-gray-500">* Dirigentes também podem ser cadastrados como docentes (use o mesmo email).</p>
                                 <Button type="submit"><Plus className="mr-2 h-4 w-4" /> Adicionar Docente</Button>
                             </div>
                         </form>
@@ -421,33 +503,73 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <form onSubmit={handleCreateSubject} className="bg-gray-50 p-4 rounded-lg border space-y-4">
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Detalhes da Disciplina</h4>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="space-y-2">
-                                    <Label>Disciplina</Label>
-                                    <Input value={newSubName} onChange={e => setNewSubName(e.target.value)} />
+                                    <Label>Nome da Disciplina *</Label>
+                                    <Input value={newSubName} onChange={e => setNewSubName(e.target.value)} placeholder="Ex: Matemática I" />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Código</Label>
-                                    <Input value={newSubCode} onChange={e => setNewSubCode(e.target.value)} />
+                                    <Label>Código (Opcional)</Label>
+                                    <Input value={newSubCode} onChange={e => setNewSubCode(e.target.value)} placeholder="Ex: MAT101" />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Docente</Label>
-                                    <Select value={newSubTeacher} onChange={e => setNewSubTeacher(e.target.value)}>
-                                        <option value="">Selecione...</option>
-                                        {teachers.map(t => (<option key={t.id} value={t.id}>{t.name}</option>))}
+                                    <Label>Curso</Label>
+                                    <Input value={newSubCourse} onChange={e => setNewSubCourse(e.target.value)} placeholder="Ex: Eng. Informática" />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Ano Lectivo</Label>
+                                    <Input value={newSubYear} onChange={e => setNewSubYear(e.target.value)} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Nível (Ano)</Label>
+                                    <Input value={newSubLevel} onChange={e => setNewSubLevel(e.target.value)} placeholder="1º, 2º..." />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Semestre</Label>
+                                    <Select value={newSubSemester} onChange={e => setNewSubSemester(e.target.value)}>
+                                        <option value="1">1º Semestre</option>
+                                        <option value="2">2º Semestre</option>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Categoria Docente (Avaliado)</Label>
+                                    <Select value={newSubCategory} onChange={e => setNewSubCategory(e.target.value as TeacherCategory)}>
+                                        <option value="assistente">Assistente</option>
+                                        <option value="assistente_estagiario">Assistente Estagiário</option>
+                                        <option value="pleno">Pleno</option>
                                     </Select>
                                 </div>
                             </div>
-                            <Button type="submit" disabled={teachers.length === 0}>Adicionar Disciplina</Button>
+
+                            <div className="space-y-2">
+                                <Label>Docente Responsável *</Label>
+                                <Select value={newSubTeacher} onChange={e => setNewSubTeacher(e.target.value)}>
+                                    <option value="">Selecione...</option>
+                                    {teachers.map(t => (<option key={t.id} value={t.id}>{t.name} {t.role === 'institution_manager' ? '(Gestor)' : ''}</option>))}
+                                </Select>
+                            </div>
+
+                            <Button type="submit" className="w-full" disabled={teachers.length === 0}>Adicionar Disciplina</Button>
                         </form>
 
-                        <div className="divide-y border rounded-md overflow-hidden">
+                        <div className="divide-y border rounded-md overflow-hidden max-h-[300px] overflow-y-auto">
+                             {subjects.length === 0 && <p className="p-4 text-center text-gray-500 italic">Nenhuma disciplina cadastrada.</p>}
                              {subjects.map(sub => {
                                 const teacher = teachers.find(t => t.id === sub.teacherId);
                                 return (
-                                    <div key={sub.id} className="p-3 bg-white flex justify-between items-center hover:bg-gray-50">
-                                        <div className="text-sm">{sub.name} <span className="text-gray-500">({sub.code})</span></div>
-                                        <div className="text-xs text-gray-500">{teacher?.name}</div>
+                                    <div key={sub.id} className="p-3 bg-white hover:bg-gray-50 text-sm">
+                                        <div className="flex justify-between font-medium">
+                                            <span>{sub.name}</span>
+                                            <span className="text-gray-500">{sub.code || 'S/ Cod'}</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                            <span>{sub.course} - {sub.level}º Ano</span>
+                                            <span>{teacher?.name || 'Desconhecido'} ({sub.teacherCategory === 'assistente_estagiario' ? 'AE' : 'A'})</span>
+                                        </div>
                                     </div>
                                 );
                              })}
@@ -496,10 +618,21 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                 <Card className="bg-slate-900 text-white border-slate-800 shadow-xl sticky top-4">
                     <CardHeader><CardTitle className="text-white flex items-center gap-2"><Calculator className="h-5 w-5" /> Fecho do Semestre</CardTitle></CardHeader>
                     <CardContent>
-                        <p className="text-sm text-slate-300 mb-4">80% Auto + 12% Alunos + 8% Qualitativa</p>
-                        <Button className="w-full bg-white text-slate-900 hover:bg-slate-100 font-bold" onClick={handleCalculate} disabled={calculating}>
-                            {calculating ? 'Processando...' : 'Calcular Scores'}
-                        </Button>
+                        <p className="text-sm text-slate-300 mb-4">Calcula a pontuação acumulada (Student Points + Self Eval + Qualitative).</p>
+                        <div className="space-y-3">
+                            <Button className="w-full bg-white text-slate-900 hover:bg-slate-100 font-bold" onClick={handleCalculate} disabled={calculating}>
+                                {calculating ? 'Processando...' : 'Calcular Scores'}
+                            </Button>
+                            
+                            <div className="grid grid-cols-2 gap-2">
+                                <Button variant="outline" size="sm" className="w-full text-slate-900 hover:bg-slate-100 border-white/20" onClick={handleExportCSV}>
+                                    <Download className="mr-2 h-4 w-4" /> CSV
+                                </Button>
+                                <Button variant="outline" size="sm" className="w-full text-slate-900 hover:bg-slate-100 border-white/20" onClick={handleExportPDF}>
+                                    <FileText className="mr-2 h-4 w-4" /> PDF
+                                </Button>
+                            </div>
+                        </div>
                     </CardContent>
                 </Card>
             </div>

@@ -33,29 +33,36 @@ export default function App() {
       const data = await BackendService.getInstitutions();
       setInstitutions(data);
     } catch (e) {
-      console.warn("Não foi possível carregar instituições.");
+      console.warn("Não foi possível carregar instituições. Verifique a conexão.", e);
+      // Fallback para lista vazia sem quebrar a UI
+      setInstitutions([]);
     }
   };
 
   useEffect(() => {
       const init = async () => {
-          // 1. Lightweight Health Check
-          await BackendService.checkHealth();
-          
-          // 2. Load Session (from LocalStorage/Cache)
           try {
-            const sessionUser = await BackendService.getSession();
-            if (sessionUser) {
-                setUser(sessionUser);
-            }
-          } catch(e) {
-            console.warn("Erro ao recuperar sessão", e);
-          }
-
-          // 3. Load Institutions
-          refreshInstitutions();
+            // 1. Lightweight Health Check (Safe to fail)
+            await BackendService.checkHealth();
           
-          setAppLoading(false);
+            // 2. Load Session (from LocalStorage/Cache)
+            try {
+                const sessionUser = await BackendService.getSession();
+                if (sessionUser) {
+                    setUser(sessionUser);
+                }
+            } catch(e) {
+                console.warn("Erro ao recuperar sessão", e);
+            }
+
+            // 3. Load Institutions
+            await refreshInstitutions();
+
+          } catch (e) {
+              console.error("Fatal initialization error, ensuring UI renders:", e);
+          } finally {
+             setAppLoading(false);
+          }
       };
       init();
   }, []);
@@ -134,7 +141,7 @@ export default function App() {
     }
   };
 
-  if (appLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500">Iniciando Sistema Local...</div>;
+  if (appLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500 animate-pulse">Iniciando Sistema...</div>;
 
   if (!user) {
     return (
@@ -144,7 +151,7 @@ export default function App() {
                 <GraduationCap size={32} />
             </div>
             <h1 className="text-3xl font-bold tracking-tight text-gray-900">AvaliaDocente MZ</h1>
-            <p className="text-gray-500 mt-2">Sistema Nacional de Avaliação Académica (Modo Local)</p>
+            <p className="text-gray-500 mt-2">Sistema Nacional de Avaliação Académica</p>
         </div>
 
         <Card className="w-full max-w-md shadow-lg border-0">

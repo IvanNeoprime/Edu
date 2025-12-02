@@ -24,12 +24,20 @@ export interface Institution {
   inviteCode?: string;
 }
 
+export type TeacherCategory = 'assistente' | 'assistente_estagiario' | 'pleno';
+
 export interface Subject {
   id: string;
   name: string;
-  code: string;
+  code?: string; // Agora opcional
   institutionId: string;
   teacherId: string;
+  // Novos campos solicitados
+  academicYear?: string;
+  level?: string;
+  semester?: string;
+  course?: string;
+  teacherCategory?: TeacherCategory;
 }
 
 export type QuestionType = 'binary' | 'scale_10' | 'stars' | 'text' | 'choice';
@@ -38,7 +46,7 @@ export interface Question {
   id: string;
   text: string;
   type: QuestionType;
-  weight?: number; // Used for scoring (0 for text/feedback questions)
+  weight?: number; // Pontos Obtidos
   options?: string[]; // For multiple choice
 }
 
@@ -50,31 +58,48 @@ export interface Questionnaire {
   active: boolean;
 }
 
-// Anonymity Guarantee: This interface intentionally lacks a userId or studentId
 export interface StudentResponse {
   id: string;
   questionnaireId: string;
   teacherId: string;
   subjectId: string;
-  answers: { questionId: string; value: number | string }[]; // Value can now be text
+  answers: { questionId: string; value: number | string }[];
   timestamp: string;
 }
 
 export interface InstitutionalEval {
   teacherId: string;
   institutionId: string;
-  score: number; // 0-100
+  score: number;
   evaluatedAt: string;
 }
 
 export interface SelfEvaluation {
   teacherId: string;
-  indicators: {
-    teachingLoad: number;
-    supervision: number;
-    research: number;
-    extension: number;
-    management: number;
+  // Cabeçalho da Ficha
+  header: {
+    department: string;
+    category: TeacherCategory;
+    function: string;
+    contractRegime: string; // Tempo inteiro/parcial
+    workPeriod: string; // Laboral/PL
+    academicYear: string;
+  };
+  // Respostas específicas (Quantidades que serão multiplicadas pelos pontos)
+  answers: {
+    // Categoria: Nº de disciplinas (Total 20)
+    gradSubjects?: number; // x15
+    postGradSubjects?: number; // x5
+    
+    // Categoria: Horas de docência (Total 35)
+    theoryHours?: number; // x16
+    practicalHours?: number; // x14
+    consultationHours?: number; // x5
+
+    // Categoria: Supervisão (Apenas Assistente/Pleno) (Total 20)
+    gradSupervision?: number; // x6
+    postGradSupervision?: number; // x6
+    regencySubjects?: number; // x8
   };
 }
 
@@ -89,9 +114,10 @@ export interface QualitativeEval {
 
 export interface CombinedScore {
   teacherId: string;
-  studentScore: number; // 0-100
-  institutionalScore: number; // 0-100
-  finalScore: number; // (Student * 0.7) + (Inst * 0.3)
+  studentScore: number; // Pontos calculados (Soma * Multiplicador)
+  institutionalScore: number; 
+  selfEvalScore: number; // Pontos absolutos (Soma das quantidades * pontos)
+  finalScore: number; // Soma total
   lastCalculated: string;
 }
 
