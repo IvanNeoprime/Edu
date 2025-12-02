@@ -44,6 +44,8 @@ export type QuestionType = 'binary' | 'scale_10' | 'stars' | 'text' | 'choice';
 
 export interface Question {
   id: string;
+  code?: string; // Ex: 651
+  category?: string; // Ex: Organização da disciplina
   text: string;
   type: QuestionType;
   weight?: number; // Pontos Obtidos

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { User, Questionnaire, Question } from '../types';
 import { BackendService, SubjectWithTeacher } from '../services/backend';
@@ -29,8 +28,6 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
     const qCount = data.questionnaire.questions.length;
     const aCount = Object.keys(answers).length;
     
-    // Basic validation: Allow empty text answers, enforce others? 
-    // For now enforcing all fields.
     if (aCount < qCount) {
         alert(`Por favor responda todas as questões.`);
         return;
@@ -58,11 +55,44 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
     }
   };
 
-  // --- Dynamic Question Renderer ---
+  // Group questions by category
+  const groupedQuestions = React.useMemo<Record<string, Question[]>>(() => {
+      if (!data?.questionnaire) return {};
+      const groups: Record<string, Question[]> = {};
+      data.questionnaire.questions.forEach(q => {
+          const cat = q.category || 'Outros';
+          if (!groups[cat]) groups[cat] = [];
+          groups[cat].push(q);
+      });
+      return groups;
+  }, [data?.questionnaire]);
+
   const renderQuestionInput = (q: Question) => {
       const val = answers[q.id];
 
       switch (q.type) {
+          case 'binary':
+              return (
+                  <div className="flex items-center justify-end gap-2">
+                      <button 
+                        onClick={() => setAnswers(prev => ({...prev, [q.id]: 0}))}
+                        className={`px-4 py-1.5 rounded-md border text-sm font-medium transition-all ${
+                            val === 0 ? 'bg-red-600 text-white border-red-600' : 'bg-white hover:bg-red-50 text-gray-700'
+                        }`}
+                      >
+                          Não
+                      </button>
+                      <button 
+                        onClick={() => setAnswers(prev => ({...prev, [q.id]: 1}))}
+                        className={`px-4 py-1.5 rounded-md border text-sm font-medium transition-all ${
+                            val === 1 ? 'bg-green-600 text-white border-green-600' : 'bg-white hover:bg-green-50 text-gray-700'
+                        }`}
+                      >
+                          Sim
+                      </button>
+                  </div>
+              );
+          
           case 'stars':
               return (
                   <div className="flex gap-2">
@@ -73,101 +103,33 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                               className="focus:outline-none transition-transform active:scale-95"
                           >
                               <Star 
-                                  className={`h-8 w-8 ${(val as number) >= star ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`} 
+                                  className={`h-6 w-6 ${(val as number) >= star ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`} 
                               />
                           </button>
                       ))}
                   </div>
               );
           
-          case 'scale_10':
+          default:
               return (
-                  <div className="space-y-2 w-full max-w-md">
-                      <div className="flex justify-between text-xs text-gray-500 px-1">
-                          <span>0 (Ruim)</span>
-                          <span>10 (Excelente)</span>
-                      </div>
-                      <div className="flex gap-1">
-                        {[0,1,2,3,4,5,6,7,8,9,10].map(num => (
-                             <button
-                                key={num}
-                                onClick={() => setAnswers(prev => ({ ...prev, [q.id]: num }))}
-                                className={`flex-1 h-10 rounded-md text-sm font-medium border transition-all ${
-                                    val === num 
-                                    ? 'bg-blue-600 text-white border-blue-700 shadow-md scale-110' 
-                                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                                }`}
-                             >
-                                 {num}
-                             </button>
-                        ))}
-                      </div>
-                  </div>
-              );
-
-          case 'binary':
-              return (
-                  <div className="flex gap-4">
-                      <button 
-                        onClick={() => setAnswers(prev => ({...prev, [q.id]: 0}))}
-                        className={`flex-1 py-2 px-4 rounded-md border text-sm font-medium transition-all ${
-                            val === 0 ? 'bg-red-100 text-red-800 border-red-300 ring-2 ring-red-200' : 'bg-white hover:bg-gray-50'
-                        }`}
-                      >
-                          Não
-                      </button>
-                      <button 
-                        onClick={() => setAnswers(prev => ({...prev, [q.id]: 1}))}
-                        className={`flex-1 py-2 px-4 rounded-md border text-sm font-medium transition-all ${
-                            val === 1 ? 'bg-green-100 text-green-800 border-green-300 ring-2 ring-green-200' : 'bg-white hover:bg-gray-50'
-                        }`}
-                      >
-                          Sim
-                      </button>
-                  </div>
-              );
-
-          case 'choice':
-              return (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-md">
-                      {q.options?.map((opt) => (
-                          <button
-                              key={opt}
-                              onClick={() => setAnswers(prev => ({ ...prev, [q.id]: opt }))}
-                              className={`py-2 px-4 rounded-md border text-sm text-left transition-all ${
-                                  val === opt 
-                                  ? 'bg-slate-800 text-white border-slate-900' 
-                                  : 'bg-white text-gray-700 hover:bg-gray-50'
-                              }`}
-                          >
-                              {opt}
-                          </button>
-                      ))}
-                  </div>
-              );
-
-          case 'text':
-              return (
-                  <textarea
-                      className="w-full min-h-[100px] p-3 rounded-md border border-gray-300 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y"
-                      placeholder="Digite sua resposta ou sugestão aqui..."
+                  <input 
+                      type="text" 
+                      className="w-full border p-2 rounded" 
+                      placeholder="Sua resposta..." 
                       value={val as string || ''}
                       onChange={(e) => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
                   />
               );
-
-          default:
-              return null;
       }
   };
 
   if (!data) return <div className="p-8 text-center animate-pulse">Carregando questionários...</div>;
 
   return (
-    <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-8 animate-in fade-in duration-500">
+    <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500">
       <header className="text-center md:text-left">
-        <h1 className="text-3xl font-bold text-gray-900">{data.questionnaire.title}</h1>
-        <p className="text-gray-500 mt-1">Avaliação anónima de desempenho docente</p>
+        <h1 className="text-3xl font-bold text-gray-900">FICHA DE AVALIAÇÃO DO DESEMPENHO</h1>
+        <p className="text-gray-500 mt-1">Avaliação do Docente pelo Estudante</p>
         <div className="mt-3 inline-flex items-center gap-2 text-xs text-blue-800 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
             <Lock className="h-3 w-3" /> 100% Anónimo e Seguro
         </div>
@@ -185,12 +147,12 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
         <div className="space-y-6">
             <Card>
                 <CardHeader className="bg-gray-50 border-b pb-4">
-                    <Label>Selecione a Disciplina</Label>
+                    <Label>Selecione a Disciplina e Docente</Label>
                     <Select value={selectedSubjectId} onChange={e => setSelectedSubjectId(e.target.value)} className="mt-2 bg-white">
                         <option value="">Escolha...</option>
                         {data.subjects.map(s => (
                             <option key={s.id} value={s.id}>
-                                {s.name} — Prof. {s.teacherName}
+                                {s.name} — {s.teacherName}
                             </option>
                         ))}
                     </Select>
@@ -198,22 +160,49 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
             </Card>
 
             {selectedSubjectId && (
-                <div className="space-y-6 animate-in slide-in-from-bottom-4 fade-in duration-500">
-                    {data.questionnaire.questions.map((q, idx) => (
-                        <Card key={q.id} className="overflow-visible">
-                            <CardContent className="pt-6">
-                                <div className="mb-4">
-                                    <span className="text-xs font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded mr-2">
-                                        #{idx + 1}
-                                    </span>
-                                    <span className="font-medium text-gray-900 text-lg block mt-1">{q.text}</span>
+                <div className="space-y-8 animate-in slide-in-from-bottom-4 fade-in duration-500">
+                    
+                    {/* INSTRUÇÕES */}
+                    <div className="bg-blue-50 p-4 rounded-md text-sm text-blue-900 border border-blue-100">
+                        <strong>INSTRUÇÕES:</strong>
+                        <ul className="list-disc pl-5 mt-1 space-y-1">
+                            <li>Responda as questões usando "Sim" ou "Não".</li>
+                            <li>Cada parâmetro tem uma única opção de resposta.</li>
+                        </ul>
+                    </div>
+
+                    <Card>
+                        <CardContent className="p-0">
+                             <div className="w-full text-left border-collapse">
+                                <div className="bg-gray-800 text-white grid grid-cols-12 text-sm font-semibold p-3 rounded-t-lg">
+                                    <div className="col-span-2 md:col-span-1 text-center">Cod</div>
+                                    <div className="col-span-7 md:col-span-9">Descrição (Parâmetro)</div>
+                                    <div className="col-span-3 md:col-span-2 text-center">Resposta</div>
                                 </div>
-                                <div className="mt-2">
-                                    {renderQuestionInput(q)}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))}
+                                
+                                {Object.entries(groupedQuestions).map(([category, questions]) => (
+                                    <div key={category} className="border-b last:border-0">
+                                        <div className="bg-gray-100 p-3 font-bold text-gray-700 text-sm border-y border-gray-200">
+                                            INDICADOR: {category}
+                                        </div>
+                                        {questions.map((q, idx) => (
+                                            <div key={q.id} className="grid grid-cols-12 p-3 items-center hover:bg-gray-50 border-b last:border-0">
+                                                <div className="col-span-2 md:col-span-1 text-center font-mono text-xs text-gray-500">
+                                                    {q.code || q.id}
+                                                </div>
+                                                <div className="col-span-7 md:col-span-9 text-sm text-gray-900 pr-4">
+                                                    {q.text}
+                                                </div>
+                                                <div className="col-span-3 md:col-span-2 flex justify-center">
+                                                    {renderQuestionInput(q)}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ))}
+                             </div>
+                        </CardContent>
+                    </Card>
 
                     <div className="sticky bottom-4 pt-4 pb-8 bg-gradient-to-t from-gray-50 to-transparent pointer-events-none flex justify-center">
                         <Button 

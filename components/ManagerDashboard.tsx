@@ -376,7 +376,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                  <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <FileQuestion className="h-5 w-5" /> Estrutura Atual
+                            <FileQuestion className="h-5 w-5" /> Ficha de Avaliação (Estudantes)
                         </CardTitle>
                         <div className="pt-2">
                             <Label className="text-xs text-gray-500">Título do Questionário (Visível ao Aluno)</Label>
@@ -399,10 +399,13 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                             questionnaire.questions.map((q, idx) => (
                                 <div key={q.id} className="flex items-start gap-3 p-3 bg-white border rounded-lg shadow-sm group hover:border-gray-400 transition-colors">
                                     <div className="mt-1 h-6 w-6 flex items-center justify-center bg-gray-100 rounded text-xs font-mono text-gray-500 shrink-0">
-                                        {idx + 1}
+                                        {q.code || idx + 1}
                                     </div>
                                     <div className="flex-1">
                                         <p className="font-medium text-sm text-gray-900">{q.text}</p>
+                                        {q.category && (
+                                            <p className="text-xs text-gray-500 mt-1">Categoria: {q.category}</p>
+                                        )}
                                         <div className="flex items-center gap-3 mt-1.5">
                                             <span className="flex items-center gap-1 text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">
                                                 {getIconForType(q.type)}

@@ -64,19 +64,24 @@ if (typeof window !== 'undefined') {
     initAppwrite();
 }
 
-// --- PDF STANDARD QUESTIONNAIRE (PESOS AJUSTADOS PARA SOMAR ~30) ---
-// Baseado no pedido: Programa(4), Objetivos(3), Metodologia(2)...
+// --- PDF STANDARD QUESTIONNAIRE (ESTRUTURA RÍGIDA DO REGULAMENTO) ---
+// Baseado na Ficha de Avaliação do Desempenho do Docente pelo Estudante
 const PDF_STANDARD_QUESTIONS: Question[] = [
-    { id: "651", text: "O docente apresentou o programa temático ou analítico da disciplina?", type: "binary", weight: 4 },
-    { id: "652", text: "O docente apresentou os objetivos da disciplina?", type: "binary", weight: 3 },
-    { id: "653", text: "O docente apresentou a metodologia de ensino da disciplina?", type: "binary", weight: 2 },
-    { id: "654", text: "O docente cumpriu com o programa temático ou analítico apresentado?", type: "binary", weight: 4 },
-    { id: "701", text: "O docente foi acessível aos estudantes?", type: "binary", weight: 3 },
-    { id: "702", text: "O docente disponibilizou-se para esclarecer dúvidas?", type: "binary", weight: 3 },
-    { id: "703", text: "O docente encorajou ao uso de métodos participativos na sala de aula?", type: "binary", weight: 3 },
-    { id: "751", text: "O docente avaliou os estudantes dentro dos prazos?", type: "binary", weight: 3 },
-    { id: "752", text: "O estudante teve oportunidade de ver seus resultados depois de corrigidos?", type: "binary", weight: 3 },
-    { id: "753", text: "O docente publicou os resultados da avaliação dentro dos prazos estabelecidos?", type: "binary", weight: 2 }
+    // Indicador: Organização da disciplina (15 pts)
+    { id: "651", code: "651", category: "Organização da disciplina por semestre/ano", text: "O docente apresentou o programa temático ou analítico da disciplina?", type: "binary", weight: 4 },
+    { id: "652", code: "652", category: "Organização da disciplina por semestre/ano", text: "O docente apresentou os objetivos da disciplina?", type: "binary", weight: 3 },
+    { id: "653", code: "653", category: "Organização da disciplina por semestre/ano", text: "O docente apresentou a metodologia de ensino da disciplina?", type: "binary", weight: 2 },
+    { id: "654", code: "654", category: "Organização da disciplina por semestre/ano", text: "O docente cumpriu com o programa temático ou analítico apresentado?", type: "binary", weight: 6 },
+    
+    // Indicador: Interação do docente com os estudantes (3 pts)
+    { id: "701", code: "701", category: "Interação do docente com os estudantes", text: "O docente foi acessível aos estudantes?", type: "binary", weight: 1 },
+    { id: "702", code: "702", category: "Interação do docente com os estudantes", text: "O docente disponibilizou-se para esclarecer dúvidas?", type: "binary", weight: 1 },
+    { id: "703", code: "703", category: "Interação do docente com os estudantes", text: "O docente encorajou ao uso de métodos participativos na sala de aula?", type: "binary", weight: 1 },
+    
+    // Indicador: Avaliação do estudante pelo docente (12 pts)
+    { id: "751", code: "751", category: "Avaliação do estudante pelo docente", text: "O docente avaliou os estudantes dentro dos prazos?", type: "binary", weight: 5 },
+    { id: "752", code: "752", category: "Avaliação do estudante pelo docente", text: "O estudante teve oportunidade de ver seus resultados depois de corrigidos?", type: "binary", weight: 3 },
+    { id: "753", code: "753", category: "Avaliação do estudante pelo docente", text: "O docente publicou os resultados da avaliação dentro dos prazos estabelecidos?", type: "binary", weight: 4 }
 ];
 
 // --- CONSTANTS & HELPERS ---
@@ -269,7 +274,12 @@ const MockBackend = {
   },
   async getAvailableSurveys(institutionId: string): Promise<{questionnaire: Questionnaire, subjects: SubjectWithTeacher[]} | null> {
     let activeQ = getTable<Questionnaire>(DB_KEYS.QUESTIONNAIRES).find(q => q.institutionId === institutionId && q.active);
+    // FORCE PDF STANDARD QUESTIONS IF NOT DEFINED
     if (!activeQ) { activeQ = { id: `q_${institutionId}`, institutionId, title: 'Ficha de Avaliação de Desempenho (Padrão)', active: true, questions: PDF_STANDARD_QUESTIONS }; }
+    else if (activeQ.questions.length === 0) {
+        activeQ.questions = PDF_STANDARD_QUESTIONS;
+    }
+
     const subjects = getTable<Subject>(DB_KEYS.SUBJECTS).filter(s => s.institutionId === institutionId);
     const users = getTable<User>(DB_KEYS.USERS);
     const subjectsWithTeachers = subjects.map(s => {
@@ -319,7 +329,10 @@ const MockBackend = {
               teacherResponses.forEach(r => {
                   let rPoints = 0;
                   r.answers.forEach(a => {
-                     const q = activeQ?.questions.find(qu => qu.id === a.questionId);
+                     // Busca a pergunta na ficha ativa ou no padrão
+                     let q = activeQ?.questions.find(qu => qu.id === a.questionId);
+                     if (!q) q = PDF_STANDARD_QUESTIONS.find(qu => qu.id === a.questionId);
+                     
                      if (!q || q.type === 'text' || q.type === 'choice') return;
                      const weight = q.weight || 0; 
                      const val = typeof a.value === 'number' ? a.value : 0;
