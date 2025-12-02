@@ -180,7 +180,7 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                                     <div className="col-span-3 md:col-span-2 text-center">Resposta</div>
                                 </div>
                                 
-                                {Object.entries(groupedQuestions).map(([category, questions]) => (
+                                {Object.entries(groupedQuestions).map(([category, questions]: [string, Question[]]) => (
                                     <div key={category} className="border-b last:border-0">
                                         <div className="bg-gray-100 p-3 font-bold text-gray-700 text-sm border-y border-gray-200">
                                             INDICADOR: {category}
