@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
-import { User, Questionnaire, Question } from '../types';
+import { User, Questionnaire, Question, UserRole } from '../types';
 import { BackendService, SubjectWithTeacher } from '../services/backend';
 import { Card, CardContent, CardHeader, CardTitle, Button, Select, Label, Input } from './ui';
-import { Lock, Send, CheckCircle2, AlertCircle, Star } from 'lucide-react';
+import { Lock, Send, CheckCircle2, AlertCircle, Star, Crown } from 'lucide-react';
 
 interface Props {
   user: User;
@@ -16,11 +17,14 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
 
+  const isClassHead = user.role === UserRole.CLASS_HEAD;
+
   useEffect(() => {
     if (user.institutionId) {
-        BackendService.getAvailableSurveys(user.institutionId).then(setData);
+        // Pass the role so backend fetches the correct survey (student vs class_head)
+        BackendService.getAvailableSurveys(user.institutionId, user.role).then(setData);
     }
-  }, [user.institutionId]);
+  }, [user.institutionId, user.role]);
 
   const handleSubmit = async () => {
     if (!data || !selectedSubjectId) return;
@@ -128,10 +132,22 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500">
       <header className="text-center md:text-left">
-        <h1 className="text-3xl font-bold text-gray-900">FICHA DE AVALIAÇÃO DO DESEMPENHO</h1>
-        <p className="text-gray-500 mt-1">Avaliação do Docente pelo Estudante</p>
-        <div className="mt-3 inline-flex items-center gap-2 text-xs text-blue-800 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
-            <Lock className="h-3 w-3" /> 100% Anónimo e Seguro
+        <h1 className="text-3xl font-bold text-gray-900">
+            {isClassHead ? 'AVALIAÇÃO DO CHEFE DE TURMA' : 'FICHA DE AVALIAÇÃO DO DESEMPENHO'}
+        </h1>
+        <p className="text-gray-500 mt-1">
+            {isClassHead ? `Avaliação Pedagógica Especial (${user.turma || ''} - ${user.classe || ''})` : 'Avaliação do Docente pelo Estudante'}
+        </p>
+        
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+             <div className="inline-flex items-center gap-2 text-xs text-blue-800 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
+                <Lock className="h-3 w-3" /> 100% Anónimo e Seguro
+            </div>
+            {isClassHead && (
+                <div className="inline-flex items-center gap-2 text-xs text-amber-800 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-100">
+                    <Crown className="h-3 w-3" /> Perfil de Responsável
+                </div>
+            )}
         </div>
       </header>
 
@@ -166,7 +182,7 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                     <div className="bg-blue-50 p-4 rounded-md text-sm text-blue-900 border border-blue-100">
                         <strong>INSTRUÇÕES:</strong>
                         <ul className="list-disc pl-5 mt-1 space-y-1">
-                            <li>Responda as questões usando "Sim" ou "Não".</li>
+                            <li>Responda as questões com honestidade.</li>
                             <li>Cada parâmetro tem uma única opção de resposta.</li>
                         </ul>
                     </div>

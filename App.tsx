@@ -87,6 +87,7 @@ export default function App() {
       case UserRole.DEPARTMENT_MANAGER: return <DepartmentManagerDashboard user={user} />;
       case UserRole.TEACHER: return <TeacherDashboard user={user} />;
       case UserRole.STUDENT: return <StudentDashboard user={user} />;
+      case UserRole.CLASS_HEAD: return <StudentDashboard user={user} />;
       default: return <div>Role desconhecido.</div>;
     }
   };

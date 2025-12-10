@@ -2,7 +2,8 @@
 export enum UserRole {
   SUPER_ADMIN = 'super_admin',
   INSTITUTION_MANAGER = 'institution_manager',
-  DEPARTMENT_MANAGER = 'department_manager', // Novo Papel
+  DEPARTMENT_MANAGER = 'department_manager',
+  CLASS_HEAD = 'class_head',
   TEACHER = 'teacher',
   STUDENT = 'student'
 }
@@ -13,8 +14,10 @@ export interface User {
   name: string;
   role: UserRole;
   institutionId?: string;
-  department?: string; // Novo campo
-  approved?: boolean; // For teachers
+  department?: string;
+  turma?: string; // New field for Class Head
+  classe?: string; // New field for Class Head (e.g., 1º Ano, 2º Ano)
+  approved?: boolean;
 }
 
 export interface Institution {
@@ -41,7 +44,9 @@ export interface Subject {
   teacherCategory?: TeacherCategory;
 }
 
-export type QuestionType = 'binary' | 'scale_10' | 'stars' | 'text' | 'choice';
+export type QuestionType = 'binary' | 'scale_10' | 'stars' | 'text' | 'choice' | 'quantity';
+
+export type QuestionnaireTarget = 'student' | 'teacher_self' | 'manager_qual' | 'class_head'; // Added class_head
 
 export interface Question {
   id: string;
@@ -59,6 +64,7 @@ export interface Questionnaire {
   title: string;
   questions: Question[];
   active: boolean;
+  target: QuestionnaireTarget;
 }
 
 export interface StudentResponse {
@@ -87,24 +93,13 @@ export interface SelfEvaluation {
     workPeriod: string;
     academicYear: string;
   };
-  answers: {
-    gradSubjects?: number;
-    postGradSubjects?: number;
-    theoryHours?: number;
-    practicalHours?: number;
-    consultationHours?: number;
-    gradSupervision?: number;
-    postGradSupervision?: number;
-    regencySubjects?: number;
-  };
+  answers: Record<string, number>; 
 }
 
 export interface QualitativeEval {
   teacherId: string;
   institutionId?: string;
-  deadlineCompliance?: number;
-  workQuality?: number;
-  score?: number;
+  answers: Record<string, number>; 
   evaluatedAt?: string;
 }
 
