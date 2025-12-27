@@ -13,6 +13,7 @@ export interface User {
   role: UserRole;
   institutionId?: string;
   approved?: boolean; // For teachers
+  avatar?: string; // Base64 ou URL da foto de perfil
   // Novos campos para alunos
   course?: string;
   level?: string; // Ano curricular (ex: 1, 2, 3)
@@ -22,6 +23,7 @@ export interface Institution {
   id: string;
   name: string;
   code: string;
+  logo?: string; // Base64 ou URL do logotipo
   createdAt: string;
   managerEmails: string[];
   inviteCode?: string;
@@ -35,12 +37,15 @@ export interface Subject {
   code?: string; // Agora opcional
   institutionId: string;
   teacherId: string;
-  // Novos campos solicitados
+  // Novos campos solicitados para contexto
   academicYear?: string;
   level?: string;
   semester?: string;
   course?: string;
   teacherCategory?: TeacherCategory;
+  classGroup?: string; // Identificador da Turma (ex: A, B)
+  shift?: 'Diurno' | 'Noturno'; // Novo campo restrito
+  modality?: 'Presencial' | 'Online'; // Novo campo de modalidade
 }
 
 export type QuestionType = 'binary' | 'scale_10' | 'stars' | 'text' | 'choice';
@@ -62,13 +67,15 @@ export interface Questionnaire {
   // Novos campos para upload
   attachmentUrl?: string; // Base64 ou Link
   attachmentName?: string;
+  // Novo campo para definir público alvo
+  targetRole?: 'student' | 'teacher'; 
 }
 
 export interface StudentResponse {
   id: string;
   questionnaireId: string;
-  teacherId: string;
-  subjectId: string;
+  teacherId?: string; // Opcional se for um inquérito geral para docentes
+  subjectId?: string; // Opcional se for um inquérito geral
   answers: { questionId: string; value: number | string }[];
   timestamp: string;
 }

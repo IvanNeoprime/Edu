@@ -1,20 +1,22 @@
 
 import React, { useState, useEffect } from 'react';
 import { BackendService } from '../services/backend';
-import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory } from '../types';
+import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select } from './ui';
-import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, GraduationCap, Upload, FileText } from 'lucide-react';
+import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, GraduationCap, Upload, FileText, PieChart as PieIcon, Download, Printer, Image as ImageIcon } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
 
 interface Props {
   institutionId: string;
 }
 
 export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'teachers' | 'students' | 'questionnaire'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'teachers' | 'students' | 'questionnaire' | 'stats'>('overview');
   const [teachers, setTeachers] = useState<User[]>([]);
   const [students, setStudents] = useState<User[]>([]);
   const [unapproved, setUnapproved] = useState<User[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [allScores, setAllScores] = useState<CombinedScore[]>([]);
   
   const [qualEvals, setQualEvals] = useState<Record<string, { deadlines: number, quality: number }>>({});
   const [expandedTeacher, setExpandedTeacher] = useState<string | null>(null);
@@ -23,6 +25,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [calculating, setCalculating] = useState(false);
 
   // Questionnaire State
+  const [targetRole, setTargetRole] = useState<'student' | 'teacher'>('student');
   const [questionnaire, setQuestionnaire] = useState<Questionnaire | null>(null);
   
   // Form Builder State
@@ -40,12 +43,16 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [newSubLevel, setNewSubLevel] = useState('');
   const [newSubSemester, setNewSubSemester] = useState('1');
   const [newSubCourse, setNewSubCourse] = useState('');
+  const [newSubClassGroup, setNewSubClassGroup] = useState(''); // Turma
+  const [newSubShift, setNewSubShift] = useState('Diurno');
+  const [newSubModality, setNewSubModality] = useState('Presencial');
   const [newSubCategory, setNewSubCategory] = useState<TeacherCategory>('assistente');
 
   // Form State for New Teacher
   const [newTeacherName, setNewTeacherName] = useState('');
   const [newTeacherEmail, setNewTeacherEmail] = useState('');
   const [newTeacherPwd, setNewTeacherPwd] = useState('');
+  const [newTeacherAvatar, setNewTeacherAvatar] = useState('');
 
   // Form State for New Student
   const [newStudentName, setNewStudentName] = useState('');
@@ -53,10 +60,27 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [newStudentPwd, setNewStudentPwd] = useState('');
   const [newStudentCourse, setNewStudentCourse] = useState('');
   const [newStudentLevel, setNewStudentLevel] = useState('');
+  const [newStudentAvatar, setNewStudentAvatar] = useState('');
 
   useEffect(() => {
     loadData();
   }, [institutionId]);
+
+  // Recarregar questionário quando muda o alvo
+  useEffect(() => {
+      loadQuestionnaire();
+  }, [targetRole, institutionId]);
+
+  useEffect(() => {
+    if (activeTab === 'stats') {
+        BackendService.getAllScores(institutionId).then(setAllScores);
+    }
+  }, [activeTab, institutionId]);
+
+  const loadQuestionnaire = async () => {
+    const q = await BackendService.getInstitutionQuestionnaire(institutionId, targetRole);
+    setQuestionnaire(q);
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -74,8 +98,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     const instSubjects = await BackendService.getInstitutionSubjects(institutionId);
     setSubjects(instSubjects);
 
-    const q = await BackendService.getInstitutionQuestionnaire(institutionId);
-    setQuestionnaire(q);
+    loadQuestionnaire();
     
     const loadedEvals: Record<string, { deadlines: number, quality: number }> = {};
     for (const t of potentialTeachers) {
@@ -99,6 +122,16 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     loadData();
   };
 
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: React.Dispatch<React.SetStateAction<string>>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          if (file.size > 500 * 1024) return alert("Foto muito grande. Máx 500KB.");
+          const reader = new FileReader();
+          reader.onload = (ev) => setter(ev.target?.result as string);
+          reader.readAsDataURL(file);
+      }
+  };
+
   const handleAddTeacher = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!newTeacherName || !newTeacherEmail || !newTeacherPwd) {
@@ -106,10 +139,11 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           return;
       }
       try {
-          await BackendService.addTeacher(institutionId, newTeacherName, newTeacherEmail, newTeacherPwd);
+          await BackendService.addTeacher(institutionId, newTeacherName, newTeacherEmail, newTeacherPwd, newTeacherAvatar);
           setNewTeacherName('');
           setNewTeacherEmail('');
           setNewTeacherPwd('');
+          setNewTeacherAvatar('');
           loadData();
           alert(`Docente cadastrado com sucesso!`);
       } catch (error: any) {
@@ -130,13 +164,15 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
               newStudentEmail, 
               newStudentPwd, 
               newStudentCourse, 
-              newStudentLevel
+              newStudentLevel,
+              newStudentAvatar
           );
           setNewStudentName('');
           setNewStudentEmail('');
           setNewStudentPwd('');
           setNewStudentCourse('');
           setNewStudentLevel('');
+          setNewStudentAvatar('');
           loadData();
           alert(`Estudante cadastrado com sucesso!`);
       } catch (error: any) {
@@ -170,6 +206,8 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       await BackendService.calculateScores(institutionId);
       setCalculating(false);
       alert("Cálculo realizado com sucesso!");
+      // Refresh stats if on stats tab
+      if (activeTab === 'stats') BackendService.getAllScores(institutionId).then(setAllScores);
   };
 
   const handleCreateSubject = async (e: React.FormEvent) => {
@@ -187,6 +225,9 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           level: newSubLevel,
           semester: newSubSemester,
           course: newSubCourse,
+          classGroup: newSubClassGroup,
+          shift: newSubShift,
+          modality: newSubModality,
           teacherCategory: newSubCategory
       });
       setNewSubName('');
@@ -194,6 +235,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       setNewSubTeacher('');
       setNewSubLevel('');
       setNewSubCourse('');
+      setNewSubClassGroup('');
       loadData();
   };
 
@@ -212,16 +254,18 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       let updatedQ: Questionnaire;
       if (!questionnaire) {
           updatedQ = {
-              id: `q_${institutionId}`,
+              id: `q_${institutionId}_${targetRole}`,
               institutionId,
-              title: 'Avaliação Personalizada',
+              title: targetRole === 'student' ? 'Avaliação de Desempenho' : 'Inquérito ao Docente',
               active: true,
-              questions: [newQuestion]
+              questions: [newQuestion],
+              targetRole: targetRole
           };
       } else {
           updatedQ = {
               ...questionnaire,
-              questions: [...questionnaire.questions, newQuestion]
+              questions: [...questionnaire.questions, newQuestion],
+              targetRole: targetRole
           };
       }
       
@@ -267,19 +311,21 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           let updatedQ: Questionnaire;
           if (!questionnaire) {
               updatedQ = {
-                  id: `q_${institutionId}`,
+                  id: `q_${institutionId}_${targetRole}`,
                   institutionId,
-                  title: 'Ficha com Anexo',
+                  title: targetRole === 'student' ? 'Avaliação com Anexo' : 'Inquérito com Anexo',
                   active: true,
                   questions: [],
                   attachmentUrl: base64,
-                  attachmentName: file.name
+                  attachmentName: file.name,
+                  targetRole: targetRole
               };
           } else {
               updatedQ = {
                   ...questionnaire,
                   attachmentUrl: base64,
-                  attachmentName: file.name
+                  attachmentName: file.name,
+                  targetRole: targetRole
               };
           }
           await BackendService.saveQuestionnaire(updatedQ);
@@ -298,6 +344,29 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       };
       await BackendService.saveQuestionnaire(updatedQ);
       setQuestionnaire(updatedQ);
+  };
+
+  // --- REPORT GENERATION ---
+  const handleExportCSV = () => {
+    if (allScores.length === 0) return alert("Sem dados para exportar.");
+    
+    let csv = "Docente,Score Alunos,Score Auto-Aval.,Score Institucional,Score Final,Data\n";
+    allScores.forEach(s => {
+        const t = teachers.find(u => u.id === s.teacherId);
+        csv += `"${t?.name || 'Desconhecido'}",${s.studentScore},${s.selfEvalScore},${s.institutionalScore},${s.finalScore},${new Date(s.lastCalculated).toLocaleDateString()}\n`;
+    });
+
+    const encodedUri = encodeURI("data:text/csv;charset=utf-8," + csv);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `relatorio_global_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handlePrintPDF = () => {
+    window.print();
   };
 
   const getIconForType = (type: QuestionType) => {
@@ -322,9 +391,21 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       return acc;
   }, {} as Record<string, Record<string, User[]>>);
 
+  // Stats Logic
+  const scoreDistribution = [
+      { name: '0-50 (Insuficiente)', value: allScores.filter(s => s.finalScore <= 50).length, color: '#ef4444' },
+      { name: '51-70 (Razoável)', value: allScores.filter(s => s.finalScore > 50 && s.finalScore <= 70).length, color: '#eab308' },
+      { name: '71-85 (Bom)', value: allScores.filter(s => s.finalScore > 70 && s.finalScore <= 85).length, color: '#3b82f6' },
+      { name: '86-100 (Excelente)', value: allScores.filter(s => s.finalScore > 85).length, color: '#22c55e' }
+  ].filter(d => d.value > 0);
+
+  const avgScore = allScores.length > 0 
+    ? (allScores.reduce((acc, curr) => acc + curr.finalScore, 0) / allScores.length).toFixed(1)
+    : '0';
+
   return (
-    <div className="space-y-8 p-4 md:p-8 max-w-6xl mx-auto animate-in fade-in duration-500">
-      <header className="border-b pb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="space-y-8 p-4 md:p-8 max-w-6xl mx-auto animate-in fade-in duration-500 print:p-0 print:max-w-none">
+      <header className="border-b pb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:hidden">
         <div>
             <h1 className="text-3xl font-bold tracking-tight">Gestão Institucional</h1>
             <p className="text-gray-500">Administração de Docentes e Avaliações</p>
@@ -333,13 +414,155 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'overview' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Visão Geral</button>
             <button onClick={() => setActiveTab('teachers')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'teachers' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Docentes</button>
             <button onClick={() => setActiveTab('students')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'students' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Alunos</button>
-            <button onClick={() => setActiveTab('questionnaire')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'questionnaire' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Questionário</button>
+            <button onClick={() => setActiveTab('questionnaire')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'questionnaire' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Questionários</button>
+            <button onClick={() => setActiveTab('stats')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'stats' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Relatórios & Estatísticas</button>
         </div>
       </header>
 
+      {/* --- ABA ESTATÍSTICAS --- */}
+      {activeTab === 'stats' && (
+        <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
+             {/* Report Header for Print */}
+             <div className="hidden print:block text-center mb-8 border-b pb-4">
+                 <h1 className="text-2xl font-bold">Relatório de Avaliação de Desempenho Docente</h1>
+                 <p className="text-gray-500">Relatório Gerado em {new Date().toLocaleDateString()}</p>
+             </div>
+
+             {/* KPIs */}
+             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 print:grid-cols-4">
+                 <Card>
+                     <CardContent className="pt-6">
+                         <div className="text-2xl font-bold">{teachers.length}</div>
+                         <p className="text-xs text-gray-500">Docentes Cadastrados</p>
+                     </CardContent>
+                 </Card>
+                 <Card>
+                     <CardContent className="pt-6">
+                         <div className="text-2xl font-bold">{students.length}</div>
+                         <p className="text-xs text-gray-500">Alunos Ativos</p>
+                     </CardContent>
+                 </Card>
+                 <Card>
+                     <CardContent className="pt-6">
+                         <div className="text-2xl font-bold text-blue-600">{avgScore}</div>
+                         <p className="text-xs text-gray-500">Média Geral da Instituição</p>
+                     </CardContent>
+                 </Card>
+                 <Card>
+                     <CardContent className="pt-6">
+                         <div className="text-2xl font-bold text-green-600">{allScores.length}</div>
+                         <p className="text-xs text-gray-500">Docentes Avaliados</p>
+                     </CardContent>
+                 </Card>
+             </div>
+
+             {/* Charts */}
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 print:block print:space-y-8">
+                 <Card className="print:shadow-none print:border-none">
+                     <CardHeader>
+                         <CardTitle className="text-base">Distribuição de Resultados</CardTitle>
+                     </CardHeader>
+                     <CardContent className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie 
+                                    data={scoreDistribution} 
+                                    dataKey="value" 
+                                    nameKey="name" 
+                                    cx="50%" 
+                                    cy="50%" 
+                                    outerRadius={80} 
+                                    label 
+                                >
+                                    {scoreDistribution.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.color} />
+                                    ))}
+                                </Pie>
+                                <Tooltip />
+                                <Legend />
+                            </PieChart>
+                        </ResponsiveContainer>
+                     </CardContent>
+                 </Card>
+
+                 <Card className="print:shadow-none print:border-none">
+                     <CardHeader>
+                         <CardTitle className="text-base">Médias por Componente</CardTitle>
+                     </CardHeader>
+                     <CardContent className="h-[300px]">
+                        {allScores.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={[
+                                    { name: 'Auto-Avaliação', score: (allScores.reduce((a,b)=>a+b.selfEvalScore,0)/allScores.length).toFixed(1) },
+                                    { name: 'Alunos', score: (allScores.reduce((a,b)=>a+b.studentScore,0)/allScores.length).toFixed(1) },
+                                    { name: 'Gestor', score: (allScores.reduce((a,b)=>a+b.institutionalScore,0)/allScores.length).toFixed(1) },
+                                ]}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                    <XAxis dataKey="name" />
+                                    <YAxis />
+                                    <Tooltip />
+                                    <Bar dataKey="score" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={60} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : <p className="text-center py-10 text-gray-400">Sem dados.</p>}
+                     </CardContent>
+                 </Card>
+             </div>
+
+             {/* Table */}
+             <Card>
+                 <CardHeader>
+                     <CardTitle>Detalhes por Docente</CardTitle>
+                 </CardHeader>
+                 <CardContent>
+                     <div className="overflow-x-auto">
+                         <table className="w-full text-sm text-left">
+                             <thead className="bg-gray-50 text-gray-600 font-medium">
+                                 <tr>
+                                     <th className="p-3">Docente</th>
+                                     <th className="p-3">Auto-Aval. (Max 80)</th>
+                                     <th className="p-3">Alunos (Max 12)</th>
+                                     <th className="p-3">Gestor (Max 8)</th>
+                                     <th className="p-3 font-bold">Final</th>
+                                 </tr>
+                             </thead>
+                             <tbody className="divide-y">
+                                 {allScores.map(s => {
+                                     const t = teachers.find(u => u.id === s.teacherId);
+                                     return (
+                                         <tr key={s.teacherId}>
+                                             <td className="p-3 flex items-center gap-2">
+                                                 {t?.avatar && <img src={t.avatar} className="h-6 w-6 rounded-full object-cover" />}
+                                                 {t?.name || 'Desconhecido'}
+                                             </td>
+                                             <td className="p-3">{s.selfEvalScore}</td>
+                                             <td className="p-3">{s.studentScore}</td>
+                                             <td className="p-3">{s.institutionalScore}</td>
+                                             <td className="p-3 font-bold">{s.finalScore}</td>
+                                         </tr>
+                                     )
+                                 })}
+                             </tbody>
+                         </table>
+                     </div>
+                 </CardContent>
+             </Card>
+
+             {/* Actions */}
+             <div className="flex justify-end gap-4 print:hidden">
+                 <Button variant="outline" onClick={handlePrintPDF}>
+                     <Printer className="mr-2 h-4 w-4" /> Imprimir Relatório (PDF)
+                 </Button>
+                 <Button onClick={handleExportCSV}>
+                     <Download className="mr-2 h-4 w-4" /> Exportar Dados (CSV)
+                 </Button>
+             </div>
+        </div>
+      )}
+
       {/* --- ABA ALUNOS --- */}
       {activeTab === 'students' && (
-          <div className="grid gap-8 lg:grid-cols-12">
+          <div className="grid gap-8 lg:grid-cols-12 print:hidden">
               <div className="lg:col-span-4 space-y-6">
                   <Card>
                     <CardHeader>
@@ -349,10 +572,21 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handleAddStudent} className="bg-gray-50 p-4 rounded-lg border space-y-4">
-                             <div className="space-y-2">
-                                <Label>Nome</Label>
-                                <Input value={newStudentName} onChange={e => setNewStudentName(e.target.value)} placeholder="Nome completo" required />
-                            </div>
+                             <div className="flex gap-4">
+                                <div className="flex-1 space-y-2">
+                                    <Label>Nome</Label>
+                                    <Input value={newStudentName} onChange={e => setNewStudentName(e.target.value)} placeholder="Nome completo" required />
+                                </div>
+                                <div className="w-16 space-y-2">
+                                    <Label>Foto</Label>
+                                    <div className="relative h-10 w-full">
+                                        <input type="file" accept="image/*" onChange={(e) => handleAvatarUpload(e, setNewStudentAvatar)} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                                        <div className="h-full w-full border rounded flex items-center justify-center bg-white hover:bg-gray-50">
+                                            {newStudentAvatar ? <img src={newStudentAvatar} className="h-full w-full object-cover rounded" /> : <ImageIcon className="h-4 w-4 text-gray-400" />}
+                                        </div>
+                                    </div>
+                                </div>
+                             </div>
                             <div className="space-y-2">
                                 <Label>Email</Label>
                                 <Input type="email" value={newStudentEmail} onChange={e => setNewStudentEmail(e.target.value)} placeholder="email@instituicao.ac.mz" required />
@@ -409,9 +643,14 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                                    <div>
                                                        {users.map(std => (
                                                            <div key={std.id} className="p-4 bg-white hover:bg-gray-50 flex justify-between items-center border-b last:border-0">
-                                                               <div>
-                                                                   <p className="font-medium text-gray-900">{std.name}</p>
-                                                                   <p className="text-sm text-gray-500">{std.email}</p>
+                                                               <div className="flex items-center gap-3">
+                                                                   <div className="h-8 w-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+                                                                       {std.avatar ? <img src={std.avatar} className="h-full w-full object-cover" /> : <Users className="h-4 w-4 m-2 text-gray-400" />}
+                                                                   </div>
+                                                                   <div>
+                                                                       <p className="font-medium text-gray-900">{std.name}</p>
+                                                                       <p className="text-sm text-gray-500">{std.email}</p>
+                                                                   </div>
                                                                </div>
                                                                <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full font-medium">
                                                                    Ativo
@@ -433,7 +672,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
       {/* --- ABA DOCENTES --- */}
       {activeTab === 'teachers' && (
-          <div className="grid gap-8 lg:grid-cols-12">
+          <div className="grid gap-8 lg:grid-cols-12 print:hidden">
             <div className="lg:col-span-5 space-y-6">
                  {/* Teacher Management Form */}
                 <Card>
@@ -444,9 +683,20 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handleAddTeacher} className="bg-gray-50 p-4 rounded-lg border space-y-4">
-                                <div className="space-y-2">
-                                    <Label>Nome</Label>
-                                    <Input value={newTeacherName} onChange={e => setNewTeacherName(e.target.value)} placeholder="Nome completo" required />
+                                <div className="flex gap-4">
+                                    <div className="flex-1 space-y-2">
+                                        <Label>Nome</Label>
+                                        <Input value={newTeacherName} onChange={e => setNewTeacherName(e.target.value)} placeholder="Nome completo" required />
+                                    </div>
+                                    <div className="w-16 space-y-2">
+                                        <Label>Foto</Label>
+                                        <div className="relative h-10 w-full">
+                                            <input type="file" accept="image/*" onChange={(e) => handleAvatarUpload(e, setNewTeacherAvatar)} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                                            <div className="h-full w-full border rounded flex items-center justify-center bg-white hover:bg-gray-50">
+                                                {newTeacherAvatar ? <img src={newTeacherAvatar} className="h-full w-full object-cover rounded" /> : <ImageIcon className="h-4 w-4 text-gray-400" />}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Email</Label>
@@ -490,9 +740,14 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                             return (
                                 <div key={t.id} className="border rounded-lg bg-white shadow-sm overflow-hidden">
                                     <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50" onClick={() => setExpandedTeacher(isExpanded ? null : t.id)}>
-                                        <div className="flex flex-col">
-                                            <span className="font-medium text-sm">{t.name}</span>
-                                            <span className="text-xs text-gray-400">{t.email}</span>
+                                        <div className="flex items-center gap-3">
+                                            <div className="h-10 w-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+                                                {t.avatar ? <img src={t.avatar} className="h-full w-full object-cover" /> : <Users className="h-5 w-5 m-2.5 text-gray-400" />}
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="font-medium text-sm">{t.name}</span>
+                                                <span className="text-xs text-gray-400">{t.email}</span>
+                                            </div>
                                         </div>
                                         <div className="flex items-center gap-4">
                                             {(ev.deadlines > 0 || ev.quality > 0) && <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">Avaliado</span>}
@@ -526,17 +781,35 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
       {/* --- ABA QUESTIONÁRIO --- */}
       {activeTab === 'questionnaire' && (
-        <div className="grid gap-8 lg:grid-cols-12">
+        <div className="grid gap-8 lg:grid-cols-12 print:hidden">
             {/* Left: Builder Form */}
             <div className="lg:col-span-5 space-y-6">
                 
+                {/* Target Audience Selector */}
+                <Card className="border-gray-300">
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm">Público Alvo do Questionário</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <Select value={targetRole} onChange={(e) => setTargetRole(e.target.value as 'student' | 'teacher')}>
+                            <option value="student">🎓 Para Alunos (Avaliar Docentes)</option>
+                            <option value="teacher">👨‍🏫 Para Docentes (Inquéritos Institucionais)</option>
+                        </Select>
+                        <p className="text-xs text-gray-500 mt-2">
+                            {targetRole === 'student' 
+                             ? 'Este questionário será exibido aos alunos quando entrarem na disciplina.'
+                             : 'Este questionário aparecerá no painel do docente para preenchimento.'}
+                        </p>
+                    </CardContent>
+                </Card>
+
                 {/* Upload Section */}
                 <Card className="border-blue-200 bg-blue-50/30">
                      <CardHeader className="pb-3">
                          <CardTitle className="flex items-center gap-2 text-blue-900">
                              <Upload className="h-5 w-5" /> Upload de Ficheiro
                          </CardTitle>
-                         <p className="text-xs text-gray-500">Anexe o questionário em formato PDF, Word ou Docx para os alunos baixarem.</p>
+                         <p className="text-xs text-gray-500">Anexe PDF, Word ou Docx.</p>
                      </CardHeader>
                      <CardContent>
                          <div className="space-y-4">
@@ -547,14 +820,17 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                 className="cursor-pointer bg-white"
                             />
                             {questionnaire?.attachmentName ? (
-                                <div className="flex items-center justify-between p-3 bg-white rounded border border-blue-200">
-                                    <div className="flex items-center gap-2 overflow-hidden">
-                                        <FileText className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                                        <span className="text-sm truncate">{questionnaire.attachmentName}</span>
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between p-3 bg-white rounded border border-blue-200">
+                                        <div className="flex items-center gap-2 overflow-hidden">
+                                            <FileText className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                                            <span className="text-sm truncate">{questionnaire.attachmentName}</span>
+                                        </div>
+                                        <Button variant="ghost" size="sm" className="text-red-500 h-8 w-8 p-0" onClick={handleRemoveFile}>
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
                                     </div>
-                                    <Button variant="ghost" size="sm" className="text-red-500 h-8 w-8 p-0" onClick={handleRemoveFile}>
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
+                                    <p className="text-[10px] text-gray-500 text-center">Ficheiro anexado com sucesso.</p>
                                 </div>
                             ) : (
                                 <p className="text-xs text-center text-gray-400 italic py-2">Nenhum ficheiro anexado.</p>
@@ -616,9 +892,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                             Adicionar ao Questionário
                         </Button>
                         
-                        <p className="text-xs text-gray-500 leading-relaxed">
-                            <strong>Nota:</strong> Para o tipo 'Sim / Não', o docente ganha a totalidade dos pontos definidos caso a resposta seja SIM, e zero se NÃO.
-                        </p>
                     </CardContent>
                 </Card>
             </div>
@@ -628,15 +901,15 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                  <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <FileQuestion className="h-5 w-5" /> Estrutura Atual
+                            <FileQuestion className="h-5 w-5" /> {targetRole === 'student' ? 'Formulário do Aluno' : 'Formulário do Docente'}
                         </CardTitle>
                         <div className="pt-2">
-                            <Label className="text-xs text-gray-500">Título do Questionário (Visível ao Aluno)</Label>
+                            <Label className="text-xs text-gray-500">Título do Questionário (Visível ao Respondente)</Label>
                             <Input 
                                 value={questionnaire?.title || ''} 
                                 onChange={(e) => handleUpdateTitle(e.target.value)} 
                                 className="mt-1"
-                                placeholder="Ex: Ficha de Avaliação de Desempenho"
+                                placeholder={targetRole === 'student' ? "Ex: Ficha de Avaliação" : "Ex: Inquérito de Satisfação"}
                             />
                         </div>
                     </CardHeader>
@@ -645,7 +918,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                             <div className="text-center py-12 border-2 border-dashed rounded-lg text-gray-400">
                                 <List className="h-10 w-10 mx-auto mb-2 opacity-20" />
                                 <p>O questionário está vazio.</p>
-                                <p className="text-sm">Adicione perguntas usando o formulário ao lado.</p>
+                                <p className="text-sm">Adicione perguntas manualmente.</p>
                             </div>
                         ) : (
                             questionnaire.questions.map((q, idx) => (
@@ -689,7 +962,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         <>
         {/* Pending Approvals */}
         {unapproved.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 print:hidden">
             <div className="flex items-center gap-2 text-amber-800 mb-3">
                 <AlertCircle className="h-5 w-5" />
                 <h3 className="font-semibold">Aprovações Pendentes</h3>
@@ -707,7 +980,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             </div>
         )}
 
-        <div className="grid gap-8 lg:grid-cols-12">
+        <div className="grid gap-8 lg:grid-cols-12 print:hidden">
             <div className="lg:col-span-8 space-y-8">
                 {/* Subject Management */}
                 <Card>
@@ -732,7 +1005,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                                 <div className="space-y-2">
                                     <Label>Ano Lectivo</Label>
                                     <Input value={newSubYear} onChange={e => setNewSubYear(e.target.value)} />
@@ -741,6 +1014,27 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                     <Label>Nível (Ano)</Label>
                                     <Input value={newSubLevel} onChange={e => setNewSubLevel(e.target.value)} placeholder="1º, 2º..." />
                                 </div>
+                                <div className="space-y-2">
+                                    <Label>Ident. Turma</Label>
+                                    <Input value={newSubClassGroup} onChange={e => setNewSubClassGroup(e.target.value)} placeholder="Ex: A, B" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Turno</Label>
+                                    <Select value={newSubShift} onChange={e => setNewSubShift(e.target.value)}>
+                                        <option value="Diurno">Diurno</option>
+                                        <option value="Noturno">Noturno</option>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Modalidade</Label>
+                                    <Select value={newSubModality} onChange={e => setNewSubModality(e.target.value)}>
+                                        <option value="Presencial">Presencial</option>
+                                        <option value="Online">Online</option>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label>Semestre</Label>
                                     <Select value={newSubSemester} onChange={e => setNewSubSemester(e.target.value)}>
@@ -779,8 +1073,8 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                             <span className="text-gray-500">{sub.code || 'S/ Cod'}</span>
                                         </div>
                                         <div className="flex justify-between text-xs text-gray-500 mt-1">
-                                            <span>{sub.course} - {sub.level}º Ano</span>
-                                            <span>{teacher?.name || 'Desconhecido'} ({sub.teacherCategory === 'assistente_estagiario' ? 'AE' : 'A'})</span>
+                                            <span>{sub.course} ({sub.shift}, {sub.modality})</span>
+                                            <span>{teacher?.name || 'Desconhecido'}</span>
                                         </div>
                                     </div>
                                 );

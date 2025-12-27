@@ -128,7 +128,17 @@ const initializeSeedData = () => {
         (demoUsers[2] as any).password = '123456';
         (demoUsers[3] as any).password = '123456';
         const demoSubject: Subject = {
-            id: 'sub_demo_1', name: 'Introdução à Informática', code: 'INF101', institutionId: demoInstId, teacherId: 'u_tchr_demo', teacherCategory: 'assistente'
+            id: 'sub_demo_1', 
+            name: 'Introdução à Informática', 
+            code: 'INF101', 
+            institutionId: demoInstId, 
+            teacherId: 'u_tchr_demo', 
+            teacherCategory: 'assistente', 
+            course: 'Eng. Informática', 
+            level: '1', 
+            classGroup: 'A',
+            shift: 'Diurno',
+            modality: 'Presencial'
         };
         setTable(DB_KEYS.INSTITUTIONS, [demoInst]);
         const currentUsers = getTable<User>(DB_KEYS.USERS);
@@ -176,14 +186,13 @@ const MockBackend = {
       if (!sessionStr) return null;
       try { return JSON.parse(sessionStr).user; } catch { return null; }
   },
-  async addTeacher(institutionId: string, name: string, email: string, password?: string): Promise<User> {
+  async addTeacher(institutionId: string, name: string, email: string, password?: string, avatar?: string): Promise<User> {
       const users = getTable<User>(DB_KEYS.USERS);
       const existingUser = users.find(u => u.email === email);
       
-      // PERMITIR que Administradores/Gestores sejam adicionados como docentes sem erro
       if (existingUser) {
           if (existingUser.role === UserRole.INSTITUTION_MANAGER || existingUser.role === UserRole.SUPER_ADMIN) {
-              return existingUser; // Retorna o usuário existente para ser usado na lista
+              return existingUser; 
           } else if (existingUser.role === UserRole.TEACHER) {
              throw new Error("Este email já está cadastrado como docente.");
           } else {
@@ -191,13 +200,21 @@ const MockBackend = {
           }
       }
 
-      const newUser: User = { id: `user_tch_${Date.now()}`, email, name, role: UserRole.TEACHER, institutionId, approved: true };
+      const newUser: User = { 
+          id: `user_tch_${Date.now()}`, 
+          email, 
+          name, 
+          role: UserRole.TEACHER, 
+          institutionId, 
+          approved: true,
+          avatar
+      };
       (newUser as any).password = password || '123456';
       users.push(newUser);
       setTable(DB_KEYS.USERS, users);
       return newUser;
   },
-  async addStudent(institutionId: string, name: string, email: string, password?: string, course?: string, level?: string): Promise<User> {
+  async addStudent(institutionId: string, name: string, email: string, password?: string, course?: string, level?: string, avatar?: string): Promise<User> {
       const users = getTable<User>(DB_KEYS.USERS);
       const existingUser = users.find(u => u.email === email);
       if (existingUser) throw new Error("Email já cadastrado.");
@@ -210,7 +227,8 @@ const MockBackend = {
           institutionId, 
           approved: true,
           course: course || '',
-          level: level || '' 
+          level: level || '',
+          avatar
       };
       (newUser as any).password = password || '123456';
       users.push(newUser);
@@ -218,7 +236,7 @@ const MockBackend = {
       return newUser;
   },
   async getInstitutions(): Promise<Institution[]> { return getTable<Institution>(DB_KEYS.INSTITUTIONS); },
-  async createInstitution(data: any): Promise<Institution> {
+  async createInstitution(data: { name: string, code: string, managerEmails: string[], logo?: string }): Promise<Institution> {
       const list = getTable<Institution>(DB_KEYS.INSTITUTIONS);
       const newItem = { ...data, id: `inst_${Date.now()}`, inviteCode: `${data.code}-${Math.floor(1000 + Math.random() * 9000)}`, createdAt: new Date().toISOString() };
       list.push(newItem); setTable(DB_KEYS.INSTITUTIONS, list); return newItem;
@@ -262,18 +280,30 @@ const MockBackend = {
   async getSelfEval(teacherId: string): Promise<SelfEvaluation | undefined> {
       return getTable<SelfEvaluation>(DB_KEYS.SELF_EVALS).find(s => s.teacherId === teacherId);
   },
-  async getInstitutionQuestionnaire(institutionId: string): Promise<Questionnaire | null> {
-      return getTable<Questionnaire>(DB_KEYS.QUESTIONNAIRES).find(q => q.institutionId === institutionId) || null;
+  async getInstitutionQuestionnaire(institutionId: string, role: 'student' | 'teacher' = 'student'): Promise<Questionnaire | null> {
+      return getTable<Questionnaire>(DB_KEYS.QUESTIONNAIRES).find(q => q.institutionId === institutionId && (q.targetRole === role || (!q.targetRole && role === 'student'))) || null;
   },
   async saveQuestionnaire(data: Questionnaire): Promise<void> {
       const quests = getTable<Questionnaire>(DB_KEYS.QUESTIONNAIRES);
-      const idx = quests.findIndex(q => q.institutionId === data.institutionId);
+      // Remove anterior do mesmo tipo
+      const idx = quests.findIndex(q => q.institutionId === data.institutionId && (q.targetRole === data.targetRole || (!q.targetRole && !data.targetRole)));
       if (idx >= 0) quests[idx] = data; else quests.push(data);
       setTable(DB_KEYS.QUESTIONNAIRES, quests);
   },
-  async getAvailableSurveys(institutionId: string): Promise<{questionnaire: Questionnaire, subjects: SubjectWithTeacher[]} | null> {
-    let activeQ = getTable<Questionnaire>(DB_KEYS.QUESTIONNAIRES).find(q => q.institutionId === institutionId && q.active);
-    if (!activeQ) { activeQ = { id: `q_${institutionId}`, institutionId, title: 'Ficha de Avaliação de Desempenho (Padrão)', active: true, questions: PDF_STANDARD_QUESTIONS }; }
+  async getAvailableSurveys(institutionId: string, userRole: UserRole = UserRole.STUDENT): Promise<{questionnaire: Questionnaire, subjects: SubjectWithTeacher[]} | null> {
+    const target = userRole === UserRole.TEACHER ? 'teacher' : 'student';
+    let activeQ = getTable<Questionnaire>(DB_KEYS.QUESTIONNAIRES).find(q => q.institutionId === institutionId && q.active && (q.targetRole === target || (!q.targetRole && target === 'student')));
+    
+    // Default se não existir para aluno
+    if (!activeQ && target === 'student') { 
+        activeQ = { id: `q_${institutionId}`, institutionId, title: 'Ficha de Avaliação de Desempenho (Padrão)', active: true, questions: PDF_STANDARD_QUESTIONS, targetRole: 'student' }; 
+    }
+    
+    // Se não existir para professor, retorna null (não há default survey institucional para professor além da auto-avaliação)
+    if (!activeQ && target === 'teacher') return null;
+
+    if (!activeQ) return null;
+
     const subjects = getTable<Subject>(DB_KEYS.SUBJECTS).filter(s => s.institutionId === institutionId);
     const users = getTable<User>(DB_KEYS.USERS);
     const subjectsWithTeachers = subjects.map(s => {
@@ -284,11 +314,15 @@ const MockBackend = {
   },
   async submitAnonymousResponse(userId: string, response: any): Promise<void> {
       const tracker = getTable<string>(DB_KEYS.VOTES_TRACKER);
-      if (tracker.includes(`${userId}_${response.subjectId}`)) throw new Error("Já votaste nesta disciplina.");
+      // Permitir que professores respondam múltiplas vezes se for questionário geral (subjectId pode ser 'general')
+      const trackKey = `${userId}_${response.subjectId || response.questionnaireId}`;
+      
+      if (tracker.includes(trackKey)) throw new Error("Já submeteu esta avaliação.");
+      
       const responses = getTable<StudentResponse>(DB_KEYS.RESPONSES);
       responses.push({ ...response, id: `resp_${Date.now()}`, timestamp: new Date().toISOString() });
       setTable(DB_KEYS.RESPONSES, responses);
-      tracker.push(`${userId}_${response.subjectId}`);
+      tracker.push(trackKey);
       setTable(DB_KEYS.VOTES_TRACKER, tracker);
   },
   async calculateScores(institutionId: string): Promise<void> {
@@ -298,7 +332,7 @@ const MockBackend = {
       const selfEvals = getTable<SelfEvaluation>(DB_KEYS.SELF_EVALS);
       const qualEvals = getTable<QualitativeEval>(DB_KEYS.INST_EVALS);
       const questionnaires = getTable<Questionnaire>(DB_KEYS.QUESTIONNAIRES);
-      let activeQ = questionnaires.find(q => q.institutionId === institutionId);
+      let activeQ = questionnaires.find(q => q.institutionId === institutionId && (q.targetRole === 'student' || !q.targetRole));
       if (!activeQ) activeQ = { id: 'default', institutionId, title: 'Default', active: true, questions: PDF_STANDARD_QUESTIONS };
       const scores = getTable<CombinedScore>(DB_KEYS.SCORES);
 
@@ -389,6 +423,23 @@ const MockBackend = {
       setTable(DB_KEYS.SCORES, scores);
   },
   async getTeacherStats(teacherId: string): Promise<CombinedScore | undefined> { return getTable<CombinedScore>(DB_KEYS.SCORES).find(s => s.teacherId === teacherId); },
+  
+  // New Methods for Stats & Reports
+  async getAllScores(institutionId: string): Promise<CombinedScore[]> {
+      const subjects = getTable<Subject>(DB_KEYS.SUBJECTS).filter(s => s.institutionId === institutionId);
+      const teacherIds = new Set(subjects.map(s => s.teacherId));
+      return getTable<CombinedScore>(DB_KEYS.SCORES).filter(s => teacherIds.has(s.teacherId));
+  },
+  async getStudentProgress(studentId: string): Promise<{completed: number, pending: number, history: any[]}> {
+      const votes = getTable<string>(DB_KEYS.VOTES_TRACKER);
+      // Votes format: userId_subjectId
+      const myVotes = votes.filter(v => v.startsWith(studentId));
+      
+      // Need context to know pending... assuming "Pending" is hard to calculate accurately without knowing all enrollments
+      // Simplified: return count
+      return { completed: myVotes.length, pending: 0, history: [] };
+  },
+
   async getUsers(): Promise<User[]> { return getTable<User>(DB_KEYS.USERS); },
   async resetSystem(): Promise<void> { localStorage.clear(); window.location.reload(); },
   async setFirebaseConfig(config: any) { console.log("Use setAppwriteConfig instead"); }

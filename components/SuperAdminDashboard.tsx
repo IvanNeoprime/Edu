@@ -3,13 +3,14 @@ import React, { useState, useEffect } from 'react';
 import { BackendService } from '../services/backend';
 import { Institution } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from './ui';
-import { Building2, Plus, Mail, Trash2, User as UserIcon, AlertTriangle, Lock } from 'lucide-react';
+import { Building2, Plus, Mail, Trash2, User as UserIcon, AlertTriangle, Lock, Upload, Image as ImageIcon } from 'lucide-react';
 
 export const SuperAdminDashboard: React.FC = () => {
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [loading, setLoading] = useState(true);
   const [newInstName, setNewInstName] = useState('');
   const [newInstCode, setNewInstCode] = useState('');
+  const [newInstLogo, setNewInstLogo] = useState(''); // Base64
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
   const [invitePassword, setInvitePassword] = useState('');
@@ -26,6 +27,19 @@ export const SuperAdminDashboard: React.FC = () => {
     setLoading(false);
   };
 
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          if (file.size > 500 * 1024) { // 500KB limit for localStorage safety
+              alert("Por favor escolha um logo menor que 500KB.");
+              return;
+          }
+          const reader = new FileReader();
+          reader.onload = (ev) => setNewInstLogo(ev.target?.result as string);
+          reader.readAsDataURL(file);
+      }
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newInstName || !newInstCode || !inviteEmail || !inviteName || !invitePassword) {
@@ -38,7 +52,8 @@ export const SuperAdminDashboard: React.FC = () => {
         const newInst = await BackendService.createInstitution({
           name: newInstName,
           code: newInstCode,
-          managerEmails: [inviteEmail]
+          managerEmails: [inviteEmail],
+          logo: newInstLogo
         });
     
         // Create Manager Account with Password
@@ -46,6 +61,7 @@ export const SuperAdminDashboard: React.FC = () => {
     
         setNewInstName('');
         setNewInstCode('');
+        setNewInstLogo('');
         setInviteEmail('');
         setInviteName('');
         setInvitePassword('');
@@ -107,8 +123,12 @@ export const SuperAdminDashboard: React.FC = () => {
                     <Card key={inst.id}>
                       <CardContent className="p-4 flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                          <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center">
-                            <Building2 className="h-5 w-5 text-gray-600" />
+                          <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden border">
+                            {inst.logo ? (
+                                <img src={inst.logo} alt={inst.name} className="h-full w-full object-cover" />
+                            ) : (
+                                <Building2 className="h-6 w-6 text-gray-600" />
+                            )}
                           </div>
                           <div>
                             <h3 className="font-medium">{inst.name}</h3>
@@ -146,14 +166,25 @@ export const SuperAdminDashboard: React.FC = () => {
                 {/* Institution Info */}
                 <div className="space-y-3 p-3 bg-gray-50 rounded-md border">
                     <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Dados da Instituição</h4>
-                    <div className="space-y-2">
-                        <Label htmlFor="name">Nome da Universidade</Label>
-                        <Input 
-                            id="name" 
-                            placeholder="Ex: Universidade Lúrio" 
-                            value={newInstName}
-                            onChange={(e) => setNewInstName(e.target.value)}
-                        />
+                    <div className="flex gap-4">
+                        <div className="flex-1 space-y-2">
+                            <Label htmlFor="name">Nome da Universidade</Label>
+                            <Input 
+                                id="name" 
+                                placeholder="Ex: Universidade Lúrio" 
+                                value={newInstName}
+                                onChange={(e) => setNewInstName(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-2 w-24">
+                            <Label>Logo</Label>
+                            <div className="relative h-10 w-full">
+                                <input type="file" accept="image/*" onChange={handleLogoUpload} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                                <div className="h-full w-full border rounded flex items-center justify-center bg-white hover:bg-gray-50">
+                                    {newInstLogo ? <img src={newInstLogo} className="h-full w-full object-contain p-1" /> : <ImageIcon className="h-4 w-4 text-gray-400" />}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="code">Sigla / Código</Label>

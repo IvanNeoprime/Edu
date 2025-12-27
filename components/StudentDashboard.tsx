@@ -1,17 +1,24 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { User, Questionnaire, Question } from '../types';
 import { BackendService, SubjectWithTeacher } from '../services/backend';
 import { Card, CardContent, CardHeader, CardTitle, Button, Select, Label, Input } from './ui';
-import { Lock, Send, CheckCircle2, AlertCircle, Star, Download, FileText } from 'lucide-react';
+import { Lock, Send, CheckCircle2, AlertCircle, Star, Download, FileText, User as UserIcon, BookOpen, PieChart as PieChartIcon, Check } from 'lucide-react';
+import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface Props {
   user: User;
 }
 
 export const StudentDashboard: React.FC<Props> = ({ user }) => {
+  const [activeTab, setActiveTab] = useState<'survey' | 'stats'>('survey');
   const [data, setData] = useState<{questionnaire: Questionnaire, subjects: SubjectWithTeacher[]} | null>(null);
+  const [progress, setProgress] = useState<{completed: number, pending: number}>({ completed: 0, pending: 0 });
+  
+  // Estados para seleção em duas etapas
+  const [selectedTeacherId, setSelectedTeacherId] = useState('');
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  
   // Answer value can be string (for text/choice) or number
   const [answers, setAnswers] = useState<Record<string, string | number>>({}); 
   const [submitting, setSubmitting] = useState(false);
@@ -19,9 +26,45 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
 
   useEffect(() => {
     if (user.institutionId) {
-        BackendService.getAvailableSurveys(user.institutionId).then(setData);
+        BackendService.getAvailableSurveys(user.institutionId).then(d => {
+            setData(d);
+            if(d) {
+                BackendService.getStudentProgress(user.id).then(p => {
+                    // Calculo de pendentes aproximado: total subjects - completed (simplified)
+                    const totalSubjects = d.subjects.length;
+                    setProgress({ completed: p.completed, pending: Math.max(0, totalSubjects - p.completed) });
+                });
+            }
+        });
     }
-  }, [user.institutionId]);
+  }, [user.institutionId, user.id]);
+
+  // Extrair lista única de docentes disponíveis
+  const uniqueTeachers = useMemo(() => {
+      if (!data) return [];
+      const seen = new Set();
+      const teachers: { id: string, name: string }[] = [];
+      
+      data.subjects.forEach(s => {
+          if (!seen.has(s.teacherId)) {
+              seen.add(s.teacherId);
+              teachers.push({ id: s.teacherId, name: s.teacherName });
+          }
+      });
+      return teachers;
+  }, [data]);
+
+  // Filtrar disciplinas baseadas no docente selecionado
+  const availableSubjects = useMemo(() => {
+      if (!data || !selectedTeacherId) return [];
+      return data.subjects.filter(s => s.teacherId === selectedTeacherId);
+  }, [data, selectedTeacherId]);
+
+  const handleTeacherChange = (teacherId: string) => {
+      setSelectedTeacherId(teacherId);
+      setSelectedSubjectId(''); // Reseta disciplina ao trocar docente
+      setAnswers({});
+  };
 
   const handleSubmit = async () => {
     if (!data || !selectedSubjectId) return;
@@ -29,8 +72,6 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
     const qCount = data.questionnaire.questions.length;
     const aCount = Object.keys(answers).length;
     
-    // Basic validation: Allow empty text answers, enforce others? 
-    // For now enforcing all fields.
     if (aCount < qCount) {
         alert(`Por favor responda todas as questões.`);
         return;
@@ -48,8 +89,11 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
             answers: Object.entries(answers).map(([k, v]) => ({ questionId: k, value: v }))
         });
         setSuccess(true);
+        // Update stats
+        setProgress(prev => ({ completed: prev.completed + 1, pending: Math.max(0, prev.pending - 1) }));
         setAnswers({});
         setSelectedSubjectId('');
+        setSelectedTeacherId('');
         setTimeout(() => setSuccess(false), 3000);
     } catch (e: any) {
         alert(e.message || "Erro ao submeter");
@@ -163,96 +207,194 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
 
   if (!data) return <div className="p-8 text-center animate-pulse">Carregando questionários...</div>;
 
+  const chartData = [
+      { name: 'Avaliado', value: progress.completed, color: '#22c55e' },
+      { name: 'Pendente', value: progress.pending, color: '#e5e7eb' },
+  ];
+
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-8 animate-in fade-in duration-500">
-      <header className="text-center md:text-left">
-        <h1 className="text-3xl font-bold text-gray-900">{data.questionnaire.title}</h1>
-        <p className="text-gray-500 mt-1">Avaliação anónima de desempenho docente</p>
-        <div className="mt-3 inline-flex items-center gap-2 text-xs text-blue-800 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
-            <Lock className="h-3 w-3" /> 100% Anónimo e Seguro
+      <header className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+        <div>
+            <h1 className="text-3xl font-bold text-gray-900">{data.questionnaire.title}</h1>
+            <p className="text-gray-500 mt-1">Avaliação anónima de desempenho docente</p>
+        </div>
+        <div className="flex bg-gray-100 p-1 rounded-lg">
+            <button onClick={() => setActiveTab('survey')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'survey' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Avaliar</button>
+            <button onClick={() => setActiveTab('stats')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'stats' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Meu Progresso</button>
         </div>
       </header>
 
-      {success ? (
-          <Card className="bg-green-50 border-green-200 animate-in zoom-in duration-300">
-              <CardContent className="flex flex-col items-center justify-center py-12 text-green-800">
-                  <CheckCircle2 className="h-16 w-16 mb-4" />
-                  <h2 className="text-xl font-bold">Obrigado!</h2>
-                  <p>Sua avaliação foi registrada com sucesso.</p>
-              </CardContent>
-          </Card>
-      ) : (
-        <div className="space-y-6">
-            <Card>
-                <CardHeader className="bg-gray-50 border-b pb-4">
-                    <Label>Selecione a Disciplina</Label>
-                    <Select value={selectedSubjectId} onChange={e => setSelectedSubjectId(e.target.value)} className="mt-2 bg-white">
-                        <option value="">Escolha...</option>
-                        {data.subjects.map(s => (
-                            <option key={s.id} value={s.id}>
-                                {s.name} — Prof. {s.teacherName}
-                            </option>
-                        ))}
-                    </Select>
-                </CardHeader>
-            </Card>
-
-            {selectedSubjectId && (
-                <div className="space-y-6 animate-in slide-in-from-bottom-4 fade-in duration-500">
-                    
-                    {/* Attachment Download Section */}
-                    {data.questionnaire.attachmentUrl && (
-                        <Card className="border-blue-200 bg-blue-50/20">
-                            <CardContent className="flex items-center justify-between p-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="bg-blue-100 p-2 rounded-lg">
-                                        <FileText className="h-6 w-6 text-blue-700" />
-                                    </div>
-                                    <div>
-                                        <p className="font-semibold text-gray-900">Ficha de Avaliação (Anexo)</p>
-                                        <p className="text-xs text-gray-500">{data.questionnaire.attachmentName}</p>
-                                    </div>
-                                </div>
-                                <Button 
-                                    onClick={() => window.open(data.questionnaire.attachmentUrl)}
-                                    variant="outline"
-                                    className="border-blue-300 text-blue-700 hover:bg-blue-50"
+      {/* --- ABA MEU PROGRESSO --- */}
+      {activeTab === 'stats' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card>
+                  <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2"><Check className="h-4 w-4"/> Status de Avaliação</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex items-center justify-center">
+                      <div className="w-full h-[200px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                    data={chartData}
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={50}
+                                    outerRadius={70}
+                                    paddingAngle={5}
+                                    dataKey="value"
                                 >
-                                    <Download className="mr-2 h-4 w-4" /> Baixar Documento
-                                </Button>
-                            </CardContent>
-                        </Card>
-                    )}
+                                    {chartData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.color} />
+                                    ))}
+                                </Pie>
+                                <Legend />
+                                <Tooltip />
+                            </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                  </CardContent>
+              </Card>
+              <div className="space-y-4">
+                  <Card>
+                      <CardContent className="pt-6">
+                          <div className="text-3xl font-bold text-green-600">{progress.completed}</div>
+                          <p className="text-gray-500 text-sm">Disciplinas Avaliadas</p>
+                      </CardContent>
+                  </Card>
+                  <Card>
+                      <CardContent className="pt-6">
+                          <div className="text-3xl font-bold text-gray-400">{progress.pending}</div>
+                          <p className="text-gray-500 text-sm">Disciplinas Pendentes (Estimado)</p>
+                      </CardContent>
+                  </Card>
+              </div>
+          </div>
+      )}
 
-                    {data.questionnaire.questions.map((q, idx) => (
-                        <Card key={q.id} className="overflow-visible">
-                            <CardContent className="pt-6">
-                                <div className="mb-4">
-                                    <span className="text-xs font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded mr-2">
-                                        #{idx + 1}
-                                    </span>
-                                    <span className="font-medium text-gray-900 text-lg block mt-1">{q.text}</span>
-                                </div>
-                                <div className="mt-2">
-                                    {renderQuestionInput(q)}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))}
-
-                    <div className="sticky bottom-4 pt-4 pb-8 bg-gradient-to-t from-gray-50 to-transparent pointer-events-none flex justify-center">
-                        <Button 
-                            size="lg" 
-                            className="w-full max-w-sm shadow-xl text-base font-semibold h-12 bg-black hover:bg-gray-800 pointer-events-auto" 
-                            onClick={handleSubmit} 
-                            disabled={submitting}
-                        >
-                            {submitting ? 'Enviando...' : <><Send className="mr-2 h-4 w-4" /> Enviar Avaliação</>}
-                        </Button>
+      {/* --- ABA AVALIAR --- */}
+      {activeTab === 'survey' && (
+        <>
+            {success ? (
+                <Card className="bg-green-50 border-green-200 animate-in zoom-in duration-300">
+                    <CardContent className="flex flex-col items-center justify-center py-12 text-green-800">
+                        <CheckCircle2 className="h-16 w-16 mb-4" />
+                        <h2 className="text-xl font-bold">Obrigado!</h2>
+                        <p>Sua avaliação foi registrada com sucesso.</p>
+                    </CardContent>
+                </Card>
+            ) : (
+                <div className="space-y-6">
+                    <div className="inline-flex items-center gap-2 text-xs text-blue-800 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
+                        <Lock className="h-3 w-3" /> 100% Anónimo e Seguro
                     </div>
+                    {/* Selection Card */}
+                    <Card>
+                        <CardHeader className="bg-gray-50 border-b pb-4">
+                            <CardTitle className="text-base text-gray-700">Seleção de Avaliação</CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-6 space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2">
+                                        <UserIcon className="h-4 w-4" /> 1. Selecione o Docente
+                                    </Label>
+                                    <Select 
+                                        value={selectedTeacherId} 
+                                        onChange={e => handleTeacherChange(e.target.value)} 
+                                        className="bg-white"
+                                    >
+                                        <option value="">Escolha o docente...</option>
+                                        {uniqueTeachers.map(t => (
+                                            <option key={t.id} value={t.id}>{t.name}</option>
+                                        ))}
+                                    </Select>
+                                </div>
+                                
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2">
+                                        <BookOpen className="h-4 w-4" /> 2. Selecione a Disciplina
+                                    </Label>
+                                    <Select 
+                                        value={selectedSubjectId} 
+                                        onChange={e => setSelectedSubjectId(e.target.value)} 
+                                        className="bg-white"
+                                        disabled={!selectedTeacherId}
+                                    >
+                                        <option value="">Escolha a disciplina...</option>
+                                        {availableSubjects.length === 0 && selectedTeacherId && (
+                                            <option disabled>Nenhuma disciplina encontrada</option>
+                                        )}
+                                        {availableSubjects.map(s => (
+                                            <option key={s.id} value={s.id}>
+                                                {s.name} ({s.code || 'S/C'}) - {s.course} - {s.shift} ({s.modality}) {s.classGroup ? `(Turma ${s.classGroup})` : ''}
+                                            </option>
+                                        ))}
+                                    </Select>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {selectedSubjectId && (
+                        <div className="space-y-6 animate-in slide-in-from-bottom-4 fade-in duration-500">
+                            
+                            {/* Attachment Download Section */}
+                            {data.questionnaire.attachmentUrl && (
+                                <Card className="border-blue-200 bg-blue-50/20">
+                                    <CardContent className="flex items-center justify-between p-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="bg-blue-100 p-2 rounded-lg">
+                                                <FileText className="h-6 w-6 text-blue-700" />
+                                            </div>
+                                            <div>
+                                                <p className="font-semibold text-gray-900">Ficha de Avaliação (Anexo)</p>
+                                                <p className="text-xs text-gray-500">{data.questionnaire.attachmentName}</p>
+                                            </div>
+                                        </div>
+                                        <Button 
+                                            onClick={() => window.open(data.questionnaire.attachmentUrl)}
+                                            variant="outline"
+                                            className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                                        >
+                                            <Download className="mr-2 h-4 w-4" /> Baixar Documento
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {data.questionnaire.questions.map((q, idx) => (
+                                <Card key={q.id} className="overflow-visible">
+                                    <CardContent className="pt-6">
+                                        <div className="mb-4">
+                                            <span className="text-xs font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded mr-2">
+                                                #{idx + 1}
+                                            </span>
+                                            <span className="font-medium text-gray-900 text-lg block mt-1">{q.text}</span>
+                                        </div>
+                                        <div className="mt-2">
+                                            {renderQuestionInput(q)}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
+
+                            <div className="sticky bottom-4 pt-4 pb-8 bg-gradient-to-t from-gray-50 to-transparent pointer-events-none flex justify-center">
+                                <Button 
+                                    size="lg" 
+                                    className="w-full max-w-sm shadow-xl text-base font-semibold h-12 bg-black hover:bg-gray-800 pointer-events-auto" 
+                                    onClick={handleSubmit} 
+                                    disabled={submitting}
+                                >
+                                    {submitting ? 'Enviando...' : <><Send className="mr-2 h-4 w-4" /> Enviar Avaliação</>}
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
-        </div>
+        </>
       )}
     </div>
   );

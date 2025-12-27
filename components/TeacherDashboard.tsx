@@ -1,19 +1,25 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, CombinedScore, SelfEvaluation, TeacherCategory } from '../types';
+import { User, CombinedScore, SelfEvaluation, TeacherCategory, Questionnaire, UserRole, Question } from '../types';
 import { BackendService } from '../services/backend';
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label, Select } from './ui';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { Download, TrendingUp, FileText, BarChart3, Save } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
+import { Download, TrendingUp, FileText, BarChart3, Save, FileQuestion, Star, CheckCircle2, Lock, Printer } from 'lucide-react';
 
 interface Props {
   user: User;
 }
 
 export const TeacherDashboard: React.FC<Props> = ({ user }) => {
-  const [activeTab, setActiveTab] = useState<'stats' | 'self-eval'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'self-eval' | 'surveys'>('stats');
   const [stats, setStats] = useState<CombinedScore | undefined>(undefined);
   
+  // Surveys State
+  const [availableSurvey, setAvailableSurvey] = useState<{questionnaire: Questionnaire} | null>(null);
+  const [surveyAnswers, setSurveyAnswers] = useState<Record<string, string | number>>({});
+  const [surveySubmitting, setSurveySubmitting] = useState(false);
+  const [surveySuccess, setSurveySuccess] = useState(false);
+
   // New Complex State for Self Eval
   const [header, setHeader] = useState<SelfEvaluation['header']>({
       category: 'assistente',
@@ -38,6 +44,7 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
 
   useEffect(() => {
     loadData();
+    loadSurveys();
   }, [user.id]);
 
   const loadData = async () => {
@@ -49,6 +56,17 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
         setHeader(savedEval.header);
         setAnswers(savedEval.answers);
     }
+  };
+
+  const loadSurveys = async () => {
+      if (user.institutionId) {
+          const res = await BackendService.getAvailableSurveys(user.institutionId, UserRole.TEACHER);
+          if (res) {
+              setAvailableSurvey({ questionnaire: res.questionnaire });
+          } else {
+              setAvailableSurvey(null);
+          }
+      }
   };
 
   const handleSaveSelfEval = async (e: React.FormEvent) => {
@@ -64,7 +82,26 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
       loadData();
   };
 
-  const handleExport = () => {
+  const handleSubmitSurvey = async () => {
+    if (!availableSurvey) return;
+    setSurveySubmitting(true);
+    try {
+        await BackendService.submitAnonymousResponse(user.id, {
+            questionnaireId: availableSurvey.questionnaire.id,
+            subjectId: 'general', // General Institutional Survey
+            teacherId: user.id, // Target is self or general
+            answers: Object.entries(surveyAnswers).map(([k, v]) => ({ questionId: k, value: v }))
+        });
+        setSurveySuccess(true);
+        setTimeout(() => setSurveySuccess(false), 3000);
+    } catch (e: any) {
+        alert(e.message);
+    } finally {
+        setSurveySubmitting(false);
+    }
+  };
+
+  const handleExportCSV = () => {
       if (!stats) return;
       
       const csvContent = `data:text/csv;charset=utf-8,` 
@@ -82,94 +119,195 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
       link.setAttribute("href", encodedUri);
       link.setAttribute("download", `relatorio_${user.name.replace(/\s+/g, '_').toLowerCase()}.csv`);
       document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
   };
 
+  const handlePrintPDF = () => {
+      window.print();
+  };
+
+  // --- Dynamic Question Renderer (Duplicated from StudentDashboard for now, ideally shared) ---
+  const renderQuestionInput = (q: Question) => {
+      const val = surveyAnswers[q.id];
+      const setAns = (v: any) => setSurveyAnswers(prev => ({ ...prev, [q.id]: v }));
+
+      switch (q.type) {
+          case 'stars':
+              return (
+                  <div className="flex gap-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                          <button key={star} onClick={() => setAns(star)} className="focus:outline-none">
+                              <Star className={`h-8 w-8 ${(val as number) >= star ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`} />
+                          </button>
+                      ))}
+                  </div>
+              );
+          case 'binary':
+              return (
+                  <div className="flex gap-4">
+                      <button onClick={() => setAns(0)} className={`flex-1 py-2 px-4 rounded-md border ${val === 0 ? 'bg-red-100 border-red-300' : 'bg-white'}`}>Não</button>
+                      <button onClick={() => setAns(1)} className={`flex-1 py-2 px-4 rounded-md border ${val === 1 ? 'bg-green-100 border-green-300' : 'bg-white'}`}>Sim</button>
+                  </div>
+              );
+          case 'text':
+              return <textarea className="w-full p-2 border rounded" value={val as string || ''} onChange={(e) => setAns(e.target.value)} />;
+          default:
+              return <Input value={val as string || ''} onChange={(e) => setAns(e.target.value)} />;
+      }
+  };
+
+  // Pie Chart Data
+  const pieData = stats ? [
+      { name: 'Auto-Avaliação', value: stats.selfEvalScore, fill: '#8b5cf6' },
+      { name: 'Alunos', value: stats.studentScore, fill: '#3b82f6' },
+      { name: 'Gestor', value: stats.institutionalScore, fill: '#10b981' }
+  ] : [];
+
   return (
-    <div className="space-y-8 p-4 md:p-8 max-w-6xl mx-auto animate-in fade-in duration-500">
-      <header className="border-b pb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="space-y-8 p-4 md:p-8 max-w-6xl mx-auto animate-in fade-in duration-500 print:p-0 print:max-w-none">
+      <header className="border-b pb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:hidden">
         <div>
             <h1 className="text-3xl font-bold tracking-tight">Painel do Docente</h1>
             <p className="text-gray-500">Acompanhamento de Desempenho e Auto-Avaliação</p>
         </div>
         <div className="flex bg-gray-100 p-1 rounded-lg">
-            <button onClick={() => setActiveTab('stats')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'stats' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Resultados</button>
+            <button onClick={() => setActiveTab('stats')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'stats' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Relatórios</button>
             <button onClick={() => setActiveTab('self-eval')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'self-eval' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Auto-Avaliação</button>
+            <button onClick={() => setActiveTab('surveys')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'surveys' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Inquéritos</button>
         </div>
       </header>
 
-      {activeTab === 'stats' ? (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pontuação Final</CardTitle>
-              <TrendingUp className="h-4 w-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats?.finalScore || 0}</div>
-              <p className="text-xs text-gray-500">Acumulado do Semestre</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Alunos (Ponderada)</CardTitle>
-              <UsersIcon className="h-4 w-4 text-blue-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats?.studentScore || 0}</div>
-              <p className="text-xs text-gray-500">Baseado em questionários</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Auto-Avaliação</CardTitle>
-              <FileText className="h-4 w-4 text-purple-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats?.selfEvalScore || 0}</div>
-              <p className="text-xs text-gray-500">Baseado na Ficha Preenchida</p>
-            </CardContent>
-          </Card>
-          <Card>
-             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Relatório</CardTitle>
-                <Download className="h-4 w-4 text-gray-600" />
-             </CardHeader>
-             <CardContent>
-                <Button variant="outline" size="sm" className="w-full" onClick={handleExport} disabled={!stats}>
-                    Exportar CSV
-                </Button>
-             </CardContent>
-          </Card>
+      {/* Print Header */}
+      <div className="hidden print:block text-center mb-6">
+          <h2 className="text-2xl font-bold">Relatório Individual de Desempenho</h2>
+          <p className="text-gray-600">Docente: {user.name}</p>
+          <p className="text-gray-500 text-sm">Gerado em: {new Date().toLocaleDateString()}</p>
+      </div>
 
-          {stats && (
-            <Card className="col-span-full md:col-span-2 lg:col-span-4 mt-4">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5"/> Distribuição da Pontuação</CardTitle>
-                </CardHeader>
-                <CardContent className="h-[300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={[
-                            { name: 'Alunos', value: stats.studentScore },
-                            { name: 'Auto-Aval.', value: stats.selfEvalScore },
-                            { name: 'Institucional', value: stats.institutionalScore },
-                        ]}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                            <XAxis dataKey="name" />
-                            <YAxis />
-                            <Tooltip cursor={{fill: 'transparent'}} />
-                            <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                                <Cell fill="#3b82f6" />
-                                <Cell fill="#8b5cf6" />
-                                <Cell fill="#10b981" />
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                </CardContent>
-            </Card>
-          )}
+      {activeTab === 'stats' && (
+        <div className="space-y-6">
+            {!stats ? (
+                 <div className="p-12 text-center border-2 border-dashed rounded-lg bg-gray-50">
+                    <BarChart3 className="h-12 w-12 mx-auto text-gray-300 mb-2" />
+                    <p className="text-gray-500">Ainda não há dados calculados para este semestre.</p>
+                    <p className="text-xs text-gray-400 mt-1">O cálculo é realizado pelo gestor ao fim do ciclo.</p>
+                 </div>
+            ) : (
+                <>
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 print:grid-cols-4">
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Pontuação Final</CardTitle>
+                    <TrendingUp className="h-4 w-4 text-green-600" />
+                    </CardHeader>
+                    <CardContent>
+                    <div className="text-2xl font-bold">{stats.finalScore}</div>
+                    <p className="text-xs text-gray-500">Acumulado do Semestre</p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Alunos (Ponderada)</CardTitle>
+                    <div className="h-4 w-4 text-blue-600">🎓</div>
+                    </CardHeader>
+                    <CardContent>
+                    <div className="text-2xl font-bold">{stats.studentScore}</div>
+                    <p className="text-xs text-gray-500">Baseado em questionários</p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Auto-Avaliação</CardTitle>
+                    <FileText className="h-4 w-4 text-purple-600" />
+                    </CardHeader>
+                    <CardContent>
+                    <div className="text-2xl font-bold">{stats.selfEvalScore}</div>
+                    <p className="text-xs text-gray-500">Baseado na Ficha Preenchida</p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Institucional</CardTitle>
+                    <div className="h-4 w-4 text-green-600">🏛️</div>
+                    </CardHeader>
+                    <CardContent>
+                    <div className="text-2xl font-bold">{stats.institutionalScore}</div>
+                    <p className="text-xs text-gray-500">Avaliação do Gestor</p>
+                    </CardContent>
+                </Card>
+                </div>
+
+                <div className="grid gap-6 md:grid-cols-2 print:block print:space-y-6">
+                    <Card className="print:shadow-none print:border-none">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5"/> Composição da Nota</CardTitle>
+                        </CardHeader>
+                        <CardContent className="h-[300px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={[
+                                    { name: 'Alunos', value: stats.studentScore },
+                                    { name: 'Auto-Aval.', value: stats.selfEvalScore },
+                                    { name: 'Institucional', value: stats.institutionalScore },
+                                ]}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                    <XAxis dataKey="name" />
+                                    <YAxis />
+                                    <Tooltip cursor={{fill: 'transparent'}} />
+                                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                                        <Cell fill="#3b82f6" />
+                                        <Cell fill="#8b5cf6" />
+                                        <Cell fill="#10b981" />
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="print:shadow-none print:border-none">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">Distribuição de Peso</CardTitle>
+                        </CardHeader>
+                        <CardContent className="h-[300px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={pieData}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={60}
+                                        outerRadius={80}
+                                        paddingAngle={5}
+                                        dataKey="value"
+                                        label
+                                    >
+                                        {pieData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip />
+                                    <Legend />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div className="flex justify-end gap-4 print:hidden">
+                    <Button variant="outline" onClick={handlePrintPDF}>
+                        <Printer className="mr-2 h-4 w-4" /> Imprimir Relatório (PDF)
+                    </Button>
+                    <Button onClick={handleExportCSV}>
+                        <Download className="mr-2 h-4 w-4" /> Exportar CSV
+                    </Button>
+                </div>
+                </>
+            )}
         </div>
-      ) : (
-        <form onSubmit={handleSaveSelfEval} className="space-y-6 animate-in slide-in-from-right-4 fade-in duration-300">
+      )}
+
+      {activeTab === 'self-eval' && (
+        <form onSubmit={handleSaveSelfEval} className="space-y-6 animate-in slide-in-from-right-4 fade-in duration-300 print:hidden">
             {/* Header Section */}
             <Card className="border-blue-100 bg-blue-50/50">
                 <CardHeader>
@@ -274,6 +412,55 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                 </CardContent>
             </Card>
         </form>
+      )}
+
+      {activeTab === 'surveys' && (
+          <div className="max-w-2xl mx-auto print:hidden">
+              {!availableSurvey ? (
+                  <div className="text-center py-12 border-2 border-dashed rounded-lg">
+                      <FileQuestion className="h-10 w-10 mx-auto text-gray-300 mb-2" />
+                      <p className="text-gray-500">Nenhum inquérito institucional disponível para resposta no momento.</p>
+                  </div>
+              ) : surveySuccess ? (
+                <Card className="bg-green-50 border-green-200 animate-in zoom-in duration-300">
+                    <CardContent className="flex flex-col items-center justify-center py-12 text-green-800">
+                        <CheckCircle2 className="h-16 w-16 mb-4" />
+                        <h2 className="text-xl font-bold">Obrigado!</h2>
+                        <p>Sua resposta foi registrada com sucesso.</p>
+                    </CardContent>
+                </Card>
+              ) : (
+                  <Card>
+                      <CardHeader>
+                          <CardTitle>{availableSurvey.questionnaire.title}</CardTitle>
+                          <div className="mt-2 inline-flex items-center gap-2 text-xs text-blue-800 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
+                                <Lock className="h-3 w-3" /> Anónimo e Confidencial
+                          </div>
+                      </CardHeader>
+                      <CardContent className="space-y-6">
+                           {availableSurvey.questionnaire.attachmentUrl && (
+                                <div className="p-4 bg-gray-50 border rounded-lg flex items-center justify-between">
+                                    <span className="text-sm font-medium">{availableSurvey.questionnaire.attachmentName}</span>
+                                    <Button variant="outline" size="sm" onClick={() => window.open(availableSurvey.questionnaire.attachmentUrl)}>
+                                        <Download className="mr-2 h-4 w-4" /> Baixar Anexo
+                                    </Button>
+                                </div>
+                           )}
+
+                           {availableSurvey.questionnaire.questions.map((q, idx) => (
+                               <div key={q.id} className="space-y-2">
+                                   <Label className="text-base">{idx + 1}. {q.text}</Label>
+                                   <div className="pt-2">{renderQuestionInput(q)}</div>
+                               </div>
+                           ))}
+
+                           <Button className="w-full mt-4" onClick={handleSubmitSurvey} disabled={surveySubmitting}>
+                               {surveySubmitting ? 'Enviando...' : 'Submeter Respostas'}
+                           </Button>
+                      </CardContent>
+                  </Card>
+              )}
+          </div>
       )}
     </div>
   );
