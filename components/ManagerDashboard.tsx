@@ -1,45 +1,41 @@
 
 import React, { useState, useEffect } from 'react';
 import { BackendService } from '../services/backend';
-import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, QuestionnaireTarget, Question } from '../types';
+import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select } from './ui';
-import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, Download, FileText, Briefcase, Hash } from 'lucide-react';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, GraduationCap, Upload, FileText } from 'lucide-react';
 
 interface Props {
   institutionId: string;
 }
 
 export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'questionnaire' | 'departments'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'teachers' | 'students' | 'questionnaire'>('overview');
   const [teachers, setTeachers] = useState<User[]>([]);
-  const [deptManagers, setDeptManagers] = useState<User[]>([]);
+  const [students, setStudents] = useState<User[]>([]);
   const [unapproved, setUnapproved] = useState<User[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   
-  // Qualitative Evals - Now dynamic
-  const [qualEvals, setQualEvals] = useState<Record<string, Record<string, number>>>({});
-  const [qualQuestionnaire, setQualQuestionnaire] = useState<Questionnaire | null>(null);
-
+  const [qualEvals, setQualEvals] = useState<Record<string, { deadlines: number, quality: number }>>({});
   const [expandedTeacher, setExpandedTeacher] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
 
-  // Questionnaire Builder State
-  const [builderTarget, setBuilderTarget] = useState<QuestionnaireTarget>('student');
-  const [currentQuestionnaire, setCurrentQuestionnaire] = useState<Questionnaire | null>(null);
+  // Questionnaire State
+  const [questionnaire, setQuestionnaire] = useState<Questionnaire | null>(null);
   
+  // Form Builder State
   const [newQText, setNewQText] = useState('');
-  const [newQType, setNewQType] = useState<QuestionType>('binary');
+  const [newQType, setNewQType] = useState<QuestionType>('binary'); // Default Sim/Não
   const [newQWeight, setNewQWeight] = useState(1);
-  const [newQOptions, setNewQOptions] = useState('');
-  const [newQCategory, setNewQCategory] = useState('');
+  const [newQOptions, setNewQOptions] = useState(''); // Comma separated
 
   // Form State for New Subject
   const [newSubName, setNewSubName] = useState('');
   const [newSubCode, setNewSubCode] = useState('');
   const [newSubTeacher, setNewSubTeacher] = useState('');
+  // New Fields
   const [newSubYear, setNewSubYear] = useState(new Date().getFullYear().toString());
   const [newSubLevel, setNewSubLevel] = useState('');
   const [newSubSemester, setNewSubSemester] = useState('1');
@@ -51,64 +47,51 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [newTeacherEmail, setNewTeacherEmail] = useState('');
   const [newTeacherPwd, setNewTeacherPwd] = useState('');
 
-  // Form State for New Dept Manager
-  const [newDeptName, setNewDeptName] = useState('');
-  const [newDeptMgrName, setNewDeptMgrName] = useState('');
-  const [newDeptMgrEmail, setNewDeptMgrEmail] = useState('');
-  const [newDeptMgrPwd, setNewDeptMgrPwd] = useState('');
+  // Form State for New Student
+  const [newStudentName, setNewStudentName] = useState('');
+  const [newStudentEmail, setNewStudentEmail] = useState('');
+  const [newStudentPwd, setNewStudentPwd] = useState('');
+  const [newStudentCourse, setNewStudentCourse] = useState('');
+  const [newStudentLevel, setNewStudentLevel] = useState('');
 
   useEffect(() => {
     loadData();
   }, [institutionId]);
 
-  useEffect(() => {
-    // When tab changes or builder target changes, reload specific questionnaire
-    if (activeTab === 'questionnaire') {
-        loadBuilderQuestionnaire();
-    }
-  }, [activeTab, builderTarget]);
-
   const loadData = async () => {
     setLoading(true);
     const allUsers = await BackendService.getUsers();
-    
-    // Filter Teachers
+    // Allow Managers to appear in list if they are also teachers (by role check or context)
+    // For now, filter by TEACHER role as primary check, or MANAGER if assigned to subjects
     const potentialTeachers = allUsers.filter(u => (u.role === UserRole.TEACHER || u.role === UserRole.INSTITUTION_MANAGER) && u.institutionId === institutionId);
     setTeachers(potentialTeachers);
-
-    // Filter Dept Managers
-    const deptMgrs = allUsers.filter(u => u.role === UserRole.DEPARTMENT_MANAGER && u.institutionId === institutionId);
-    setDeptManagers(deptMgrs);
     
+    const instStudents = allUsers.filter(u => u.role === UserRole.STUDENT && u.institutionId === institutionId);
+    setStudents(instStudents);
+
     setUnapproved(await BackendService.getUnapprovedTeachers(institutionId));
-    setSubjects(await BackendService.getInstitutionSubjects(institutionId));
-
-    // Load Qualitative Questionnaire & Responses
-    const qQ = await BackendService.getQuestionnaire(institutionId, 'manager_qual');
-    setQualQuestionnaire(qQ);
     
-    const loadedEvals: Record<string, Record<string, number>> = {};
+    const instSubjects = await BackendService.getInstitutionSubjects(institutionId);
+    setSubjects(instSubjects);
+
+    const q = await BackendService.getInstitutionQuestionnaire(institutionId);
+    setQuestionnaire(q);
+    
+    const loadedEvals: Record<string, { deadlines: number, quality: number }> = {};
     for (const t of potentialTeachers) {
         const ev = await BackendService.getQualitativeEval(t.id);
         if (ev) {
-            loadedEvals[t.id] = ev.answers || {};
-            // Backwards compat check
-            if (Object.keys(loadedEvals[t.id]).length === 0 && (ev as any).deadlineCompliance) {
-                 // Map old fields to new questions if possible (hard assumption of IDs)
-                 // Or just leave empty and user has to fill again. Safest is empty.
-            }
+            loadedEvals[t.id] = {
+                deadlines: ev.deadlineCompliance || 0,
+                quality: ev.workQuality || 0
+            };
         } else {
-            loadedEvals[t.id] = {};
+            loadedEvals[t.id] = { deadlines: 0, quality: 0 };
         }
     }
     setQualEvals(loadedEvals);
 
     setLoading(false);
-  };
-
-  const loadBuilderQuestionnaire = async () => {
-      const q = await BackendService.getQuestionnaire(institutionId, builderTarget);
-      setCurrentQuestionnaire(q);
   };
 
   const handleApprove = async (id: string) => {
@@ -118,37 +101,64 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
   const handleAddTeacher = async (e: React.FormEvent) => {
       e.preventDefault();
+      if (!newTeacherName || !newTeacherEmail || !newTeacherPwd) {
+          alert("Nome, Email e Senha são obrigatórios.");
+          return;
+      }
       try {
           await BackendService.addTeacher(institutionId, newTeacherName, newTeacherEmail, newTeacherPwd);
-          setNewTeacherName(''); setNewTeacherEmail(''); setNewTeacherPwd('');
+          setNewTeacherName('');
+          setNewTeacherEmail('');
+          setNewTeacherPwd('');
           loadData();
           alert(`Docente cadastrado com sucesso!`);
-      } catch (error: any) { alert("Erro: " + error.message); }
+      } catch (error: any) {
+          alert("Erro: " + error.message);
+      }
   };
 
-  const handleAddDeptManager = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-        await BackendService.addDepartmentManager(institutionId, newDeptMgrName, newDeptMgrEmail, newDeptName, newDeptMgrPwd);
-        setNewDeptName(''); setNewDeptMgrName(''); setNewDeptMgrEmail(''); setNewDeptMgrPwd('');
-        loadData();
-        alert("Chefe de Departamento cadastrado!");
-    } catch (e: any) { alert("Erro: " + e.message); }
+  const handleAddStudent = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newStudentName || !newStudentEmail || !newStudentPwd) {
+          alert("Nome, Email e Senha são obrigatórios.");
+          return;
+      }
+      try {
+          await BackendService.addStudent(
+              institutionId, 
+              newStudentName, 
+              newStudentEmail, 
+              newStudentPwd, 
+              newStudentCourse, 
+              newStudentLevel
+          );
+          setNewStudentName('');
+          setNewStudentEmail('');
+          setNewStudentPwd('');
+          setNewStudentCourse('');
+          setNewStudentLevel('');
+          loadData();
+          alert(`Estudante cadastrado com sucesso!`);
+      } catch (error: any) {
+          alert("Erro: " + error.message);
+      }
   };
 
-  const handleEvalChange = (teacherId: string, questionId: string, value: string) => {
-      const val = Math.max(0, parseInt(value) || 0); 
+  const handleEvalChange = (teacherId: string, field: 'deadlines' | 'quality', value: string) => {
+      const val = Math.min(Math.max(parseInt(value) || 0, 0), 10); 
       setQualEvals(prev => ({
           ...prev,
-          [teacherId]: { ...prev[teacherId], [questionId]: val }
+          [teacherId]: { ...prev[teacherId], [field]: val }
       }));
   };
 
   const handleEvalSubmit = async (teacherId: string) => {
+    const evalData = qualEvals[teacherId];
     await BackendService.saveQualitativeEval({
         teacherId,
         institutionId,
-        answers: qualEvals[teacherId] || {},
+        deadlineCompliance: evalData.deadlines,
+        workQuality: evalData.quality,
         evaluatedAt: new Date().toISOString()
     });
     setExpandedTeacher(null);
@@ -162,88 +172,132 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       alert("Cálculo realizado com sucesso!");
   };
 
-  const handleExportCSV = async () => {
-      // ... existing CSV logic ...
-      const scores = await BackendService.getInstitutionScores(institutionId);
-      let csvContent = `data:text/csv;charset=utf-8,Docente,Email,Pontos Alunos,Pontos Auto-Avaliação,Pontos Institucionais,SCORE FINAL\n`;
-      teachers.forEach(t => {
-          const score = scores.find(s => s.teacherId === t.id);
-          const s1 = score ? score.studentScore : 0;
-          const s2 = score ? score.selfEvalScore : 0;
-          const s3 = score ? score.institutionalScore : 0;
-          const sF = score ? score.finalScore : 0;
-          csvContent += `"${t.name}","${t.email}",${s1},${s2},${s3},${sF}\n`;
-      });
-      const link = document.createElement("a");
-      link.setAttribute("href", encodeURI(csvContent));
-      link.setAttribute("download", `Relatorio_Geral_${new Date().toISOString().slice(0,10)}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-  };
-
-  const handleExportPDF = async () => {
-      // ... existing PDF logic with autoTable ...
-      const scores = await BackendService.getInstitutionScores(institutionId);
-      const doc = new jsPDF();
-      doc.setFontSize(18); doc.text("Pauta de Avaliação", 14, 22);
-      doc.setFontSize(11); doc.text(`Data: ${new Date().toLocaleDateString()}`, 14, 30);
-      const tableBody = teachers.map(t => {
-          const score = scores.find(s => s.teacherId === t.id);
-          return [t.name, t.email, score?.selfEvalScore.toFixed(2)||'0', score?.studentScore.toFixed(2)||'0', score?.institutionalScore.toFixed(2)||'0', score?.finalScore.toFixed(2)||'0'];
-      });
-      autoTable(doc, { startY: 45, head: [['Docente', 'Email', 'Auto', 'Alunos', 'Inst.', 'FINAL']], body: tableBody });
-      doc.save(`Relatorio_Geral.pdf`);
-  };
-
   const handleCreateSubject = async (e: React.FormEvent) => {
       e.preventDefault();
+      if (!newSubName || !newSubTeacher) {
+          alert("Nome da disciplina e Docente são obrigatórios.");
+          return;
+      }
       await BackendService.assignSubject({
-          name: newSubName, code: newSubCode, teacherId: newSubTeacher, institutionId: institutionId,
-          academicYear: newSubYear, level: newSubLevel, semester: newSubSemester, course: newSubCourse, teacherCategory: newSubCategory
+          name: newSubName,
+          code: newSubCode, // Optional
+          teacherId: newSubTeacher,
+          institutionId: institutionId,
+          academicYear: newSubYear,
+          level: newSubLevel,
+          semester: newSubSemester,
+          course: newSubCourse,
+          teacherCategory: newSubCategory
       });
-      setNewSubName(''); setNewSubCode(''); setNewSubTeacher('');
+      setNewSubName('');
+      setNewSubCode('');
+      setNewSubTeacher('');
+      setNewSubLevel('');
+      setNewSubCourse('');
       loadData();
   };
 
   // --- Form Builder Logic ---
   const handleAddQuestion = async () => {
-      if (!newQText || !currentQuestionnaire) return;
+      if (!newQText) return;
       
-      const newQuestion: Question = {
+      const newQuestion = {
           id: `q_${Date.now()}`,
           text: newQText,
           type: newQType,
-          category: newQCategory || 'Geral',
           weight: newQType === 'text' ? 0 : newQWeight,
           options: newQType === 'choice' ? newQOptions.split(',').map(o => o.trim()) : undefined
       };
 
-      const updatedQ = {
-          ...currentQuestionnaire,
-          questions: [...currentQuestionnaire.questions, newQuestion]
-      };
+      let updatedQ: Questionnaire;
+      if (!questionnaire) {
+          updatedQ = {
+              id: `q_${institutionId}`,
+              institutionId,
+              title: 'Avaliação Personalizada',
+              active: true,
+              questions: [newQuestion]
+          };
+      } else {
+          updatedQ = {
+              ...questionnaire,
+              questions: [...questionnaire.questions, newQuestion]
+          };
+      }
       
       await BackendService.saveQuestionnaire(updatedQ);
-      setCurrentQuestionnaire(updatedQ);
-      setNewQText(''); setNewQOptions(''); setNewQWeight(1);
+      setQuestionnaire(updatedQ);
+      setNewQText('');
+      setNewQOptions('');
+      // Reset weight default
+      setNewQWeight(1);
   };
 
   const handleRemoveQuestion = async (qId: string) => {
-      if (!currentQuestionnaire) return;
+      if (!questionnaire) return;
       const updatedQ = {
-          ...currentQuestionnaire,
-          questions: currentQuestionnaire.questions.filter(q => q.id !== qId)
+          ...questionnaire,
+          questions: questionnaire.questions.filter(q => q.id !== qId)
       };
       await BackendService.saveQuestionnaire(updatedQ);
-      setCurrentQuestionnaire(updatedQ);
+      setQuestionnaire(updatedQ);
   };
 
   const handleUpdateTitle = async (title: string) => {
-      if (!currentQuestionnaire) return;
-      const updatedQ = { ...currentQuestionnaire, title };
+      if (!questionnaire) return;
+      const updatedQ = { ...questionnaire, title };
       await BackendService.saveQuestionnaire(updatedQ);
-      setCurrentQuestionnaire(updatedQ);
+      setQuestionnaire(updatedQ);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      // Limit size to ~2MB for LocalStorage safety
+      if (file.size > 2 * 1024 * 1024) {
+          alert("O ficheiro é muito grande. O limite é 2MB.");
+          return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+          const base64 = ev.target?.result as string;
+          
+          let updatedQ: Questionnaire;
+          if (!questionnaire) {
+              updatedQ = {
+                  id: `q_${institutionId}`,
+                  institutionId,
+                  title: 'Ficha com Anexo',
+                  active: true,
+                  questions: [],
+                  attachmentUrl: base64,
+                  attachmentName: file.name
+              };
+          } else {
+              updatedQ = {
+                  ...questionnaire,
+                  attachmentUrl: base64,
+                  attachmentName: file.name
+              };
+          }
+          await BackendService.saveQuestionnaire(updatedQ);
+          setQuestionnaire(updatedQ);
+          alert("Ficheiro anexado com sucesso!");
+      };
+      reader.readAsDataURL(file);
+  };
+
+  const handleRemoveFile = async () => {
+      if (!questionnaire) return;
+      const updatedQ = {
+          ...questionnaire,
+          attachmentUrl: undefined,
+          attachmentName: undefined
+      };
+      await BackendService.saveQuestionnaire(updatedQ);
+      setQuestionnaire(updatedQ);
   };
 
   const getIconForType = (type: QuestionType) => {
@@ -253,9 +307,20 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           case 'binary': return <Check className="h-4 w-4 text-green-500" />;
           case 'text': return <Type className="h-4 w-4 text-gray-500" />;
           case 'choice': return <List className="h-4 w-4 text-purple-500" />;
-          case 'quantity': return <Hash className="h-4 w-4 text-orange-500" />;
       }
   };
+
+  // Group Students Logic
+  const groupedStudents = students.reduce((acc, student) => {
+      const course = student.course || 'Sem Curso Atribuído';
+      const level = student.level ? `${student.level}º Ano` : 'Sem Ano';
+      
+      if (!acc[course]) acc[course] = {};
+      if (!acc[course][level]) acc[course][level] = [];
+      
+      acc[course][level].push(student);
+      return acc;
+  }, {} as Record<string, Record<string, User[]>>);
 
   return (
     <div className="space-y-8 p-4 md:p-8 max-w-6xl mx-auto animate-in fade-in duration-500">
@@ -264,168 +329,189 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             <h1 className="text-3xl font-bold tracking-tight">Gestão Institucional</h1>
             <p className="text-gray-500">Administração de Docentes e Avaliações</p>
         </div>
-        <div className="flex bg-gray-100 p-1 rounded-lg overflow-x-auto">
-            <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 text-sm font-medium rounded-md whitespace-nowrap ${activeTab === 'overview' ? 'bg-white shadow text-black' : 'text-gray-500'}`}>Visão Geral</button>
-            <button onClick={() => setActiveTab('departments')} className={`px-4 py-2 text-sm font-medium rounded-md whitespace-nowrap ${activeTab === 'departments' ? 'bg-white shadow text-black' : 'text-gray-500'}`}>Departamentos</button>
-            <button onClick={() => setActiveTab('questionnaire')} className={`px-4 py-2 text-sm font-medium rounded-md whitespace-nowrap ${activeTab === 'questionnaire' ? 'bg-white shadow text-black' : 'text-gray-500'}`}>Construtor de Fichas</button>
+        <div className="flex bg-gray-100 p-1 rounded-lg flex-wrap gap-1">
+            <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'overview' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Visão Geral</button>
+            <button onClick={() => setActiveTab('teachers')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'teachers' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Docentes</button>
+            <button onClick={() => setActiveTab('students')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'students' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Alunos</button>
+            <button onClick={() => setActiveTab('questionnaire')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'questionnaire' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Questionário</button>
         </div>
       </header>
 
-      {activeTab === 'departments' ? (
+      {/* --- ABA ALUNOS --- */}
+      {activeTab === 'students' && (
           <div className="grid gap-8 lg:grid-cols-12">
-             <div className="lg:col-span-5"><Card><CardHeader><CardTitle>Novo Chefe de Departamento</CardTitle></CardHeader><CardContent><form onSubmit={handleAddDeptManager} className="space-y-4"><Input value={newDeptName} onChange={e => setNewDeptName(e.target.value)} placeholder="Nome Dept." required /><Input value={newDeptMgrName} onChange={e => setNewDeptMgrName(e.target.value)} placeholder="Nome Responsável" required /><Input value={newDeptMgrEmail} onChange={e => setNewDeptMgrEmail(e.target.value)} placeholder="Email" required /><Input value={newDeptMgrPwd} onChange={e => setNewDeptMgrPwd(e.target.value)} placeholder="Senha" required /><Button type="submit" className="w-full">Cadastrar</Button></form></CardContent></Card></div>
-             <div className="lg:col-span-7"><Card><CardHeader><CardTitle>Departamentos e Responsáveis</CardTitle></CardHeader><CardContent><div className="space-y-2">{deptManagers.map(m => (<div key={m.id} className="p-3 border rounded flex justify-between"><span>{m.department} - {m.name}</span><span className="text-gray-500">{m.email}</span></div>))}</div></CardContent></Card></div>
-          </div>
-      ) : activeTab === 'questionnaire' ? (
-        <div className="grid gap-8 lg:grid-cols-12">
-            <div className="lg:col-span-12 mb-4">
-                <Card className="bg-slate-50 border-slate-200">
-                    <CardContent className="p-4 flex items-center gap-4">
-                        <Label className="whitespace-nowrap font-bold text-slate-700">Selecione a Ficha para Editar:</Label>
-                        <Select 
-                            value={builderTarget} 
-                            onChange={(e) => setBuilderTarget(e.target.value as QuestionnaireTarget)}
-                            className="bg-white"
-                        >
-                            <option value="student">👨‍🎓 Avaliação pelo Estudante</option>
-                            <option value="teacher_self">🧑‍🏫 Auto-Avaliação do Docente</option>
-                            <option value="manager_qual">👔 Avaliação Qualitativa (Gestor)</option>
-                            <option value="class_head">👑 Avaliação pelo Chefe de Turma</option>
-                        </Select>
-                    </CardContent>
-                </Card>
-            </div>
-
-            <div className="lg:col-span-5 space-y-6">
-                <Card className="sticky top-4">
-                    <CardHeader className="bg-slate-900 text-white rounded-t-lg">
+              <div className="lg:col-span-4 space-y-6">
+                  <Card>
+                    <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <Plus className="h-5 w-5" /> Adicionar Pergunta
+                            <GraduationCap className="h-5 w-5" /> Cadastrar Aluno
                         </CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-4 pt-6">
-                        <div className="space-y-2">
-                            <Label>Categoria (Agrupamento)</Label>
-                            <Input value={newQCategory} onChange={e => setNewQCategory(e.target.value)} placeholder={builderTarget === 'teacher_self' ? "Ex: Investigação" : "Ex: Organização"} />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Texto da Pergunta</Label>
-                            <Input value={newQText} onChange={(e) => setNewQText(e.target.value)} placeholder="Ex: Quantos artigos publicados?" />
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Tipo de Resposta</Label>
-                                <Select value={newQType} onChange={(e) => setNewQType(e.target.value as QuestionType)}>
-                                    <option value="binary">Sim / Não</option>
-                                    <option value="stars">Estrelas (1-5)</option>
-                                    <option value="scale_10">Escala (0-10)</option>
-                                    <option value="quantity"># Quantidade Numérica</option>
-                                    <option value="text">Texto (Sem pontos)</option>
-                                    <option value="choice">Múltipla Escolha</option>
-                                </Select>
+                    <CardContent>
+                        <form onSubmit={handleAddStudent} className="bg-gray-50 p-4 rounded-lg border space-y-4">
+                             <div className="space-y-2">
+                                <Label>Nome</Label>
+                                <Input value={newStudentName} onChange={e => setNewStudentName(e.target.value)} placeholder="Nome completo" required />
                             </div>
                             <div className="space-y-2">
-                                <Label>PESO (Pontos)</Label>
-                                <Input type="number" min="0" value={newQWeight} onChange={(e) => setNewQWeight(Number(e.target.value))} disabled={newQType === 'text' || newQType === 'choice'} />
+                                <Label>Email</Label>
+                                <Input type="email" value={newStudentEmail} onChange={e => setNewStudentEmail(e.target.value)} placeholder="email@instituicao.ac.mz" required />
                             </div>
-                        </div>
-                        {newQType === 'choice' && <div className="space-y-2"><Label>Opções (CSV)</Label><Input value={newQOptions} onChange={(e) => setNewQOptions(e.target.value)} /></div>}
-                        <Button onClick={handleAddQuestion} className="w-full bg-slate-900">Adicionar</Button>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Curso</Label>
+                                    <Input value={newStudentCourse} onChange={e => setNewStudentCourse(e.target.value)} placeholder="Ex: Informática" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Ano/Nível</Label>
+                                    <Input value={newStudentLevel} onChange={e => setNewStudentLevel(e.target.value)} placeholder="Ex: 1, 2" />
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Senha de Acesso</Label>
+                                <div className="relative">
+                                    <Key className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                                    <Input 
+                                        type="text" 
+                                        value={newStudentPwd} 
+                                        onChange={e => setNewStudentPwd(e.target.value)} 
+                                        placeholder="Atribua uma senha" 
+                                        className="pl-9"
+                                        required 
+                                    />
+                                </div>
+                            </div>
+                            <Button type="submit" className="w-full"><Plus className="mr-2 h-4 w-4" /> Adicionar Estudante</Button>
+                        </form>
+                    </CardContent>
+                  </Card>
+              </div>
+              <div className="lg:col-span-8">
+                  <Card>
+                      <CardHeader>
+                          <CardTitle className="flex items-center gap-2">Lista de Estudantes ({students.length})</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                           {students.length === 0 && <p className="p-8 text-center text-gray-500 italic">Nenhum estudante cadastrado.</p>}
+                           
+                           <div className="space-y-6">
+                               {Object.entries(groupedStudents).map(([course, levels]) => (
+                                   <div key={course} className="border rounded-md overflow-hidden">
+                                       <div className="bg-gray-100 px-4 py-2 font-semibold text-gray-800 border-b">
+                                           {course}
+                                       </div>
+                                       <div className="divide-y">
+                                           {Object.entries(levels).map(([level, users]) => (
+                                               <div key={level}>
+                                                   <div className="bg-gray-50 px-4 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
+                                                       {level}
+                                                   </div>
+                                                   <div>
+                                                       {users.map(std => (
+                                                           <div key={std.id} className="p-4 bg-white hover:bg-gray-50 flex justify-between items-center border-b last:border-0">
+                                                               <div>
+                                                                   <p className="font-medium text-gray-900">{std.name}</p>
+                                                                   <p className="text-sm text-gray-500">{std.email}</p>
+                                                               </div>
+                                                               <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full font-medium">
+                                                                   Ativo
+                                                               </div>
+                                                           </div>
+                                                       ))}
+                                                   </div>
+                                               </div>
+                                           ))}
+                                       </div>
+                                   </div>
+                               ))}
+                           </div>
+                      </CardContent>
+                  </Card>
+              </div>
+          </div>
+      )}
+
+      {/* --- ABA DOCENTES --- */}
+      {activeTab === 'teachers' && (
+          <div className="grid gap-8 lg:grid-cols-12">
+            <div className="lg:col-span-5 space-y-6">
+                 {/* Teacher Management Form */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <UserPlus className="h-5 w-5" /> Cadastrar Novo Docente
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <form onSubmit={handleAddTeacher} className="bg-gray-50 p-4 rounded-lg border space-y-4">
+                                <div className="space-y-2">
+                                    <Label>Nome</Label>
+                                    <Input value={newTeacherName} onChange={e => setNewTeacherName(e.target.value)} placeholder="Nome completo" required />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Email</Label>
+                                    <Input type="email" value={newTeacherEmail} onChange={e => setNewTeacherEmail(e.target.value)} placeholder="email@instituicao.ac.mz" required />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Senha de Acesso</Label>
+                                    <div className="relative">
+                                        <Key className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                                        <Input 
+                                            type="text" 
+                                            value={newTeacherPwd} 
+                                            onChange={e => setNewTeacherPwd(e.target.value)} 
+                                            placeholder="Atribua uma senha" 
+                                            className="pl-9"
+                                            required 
+                                        />
+                                    </div>
+                                </div>
+                            <div className="flex justify-between items-center pt-2">
+                                <p className="text-[10px] text-gray-500 w-1/2">* Dirigentes também podem ser cadastrados como docentes.</p>
+                                <Button type="submit"><Plus className="mr-2 h-4 w-4" /> Salvar</Button>
+                            </div>
+                        </form>
                     </CardContent>
                 </Card>
             </div>
 
             <div className="lg:col-span-7 space-y-6">
-                 <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <FileQuestion className="h-5 w-5" /> Estrutura da Ficha
-                        </CardTitle>
-                        <Input value={currentQuestionnaire?.title || ''} onChange={(e) => handleUpdateTitle(e.target.value)} className="mt-1 font-bold" />
-                    </CardHeader>
-                    <CardContent className="space-y-3 max-h-[600px] overflow-y-auto">
-                        {!currentQuestionnaire?.questions.length ? <p className="text-gray-500 text-center py-8">Vazio.</p> : 
-                            currentQuestionnaire.questions.map((q, idx) => (
-                                <div key={q.id} className="flex items-start gap-3 p-3 bg-white border rounded shadow-sm">
-                                    <div className="mt-1 h-6 w-6 flex items-center justify-center bg-gray-100 rounded text-xs">{idx + 1}</div>
-                                    <div className="flex-1">
-                                        <p className="font-medium text-sm">{q.text}</p>
-                                        <p className="text-xs text-gray-500">{q.category}</p>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <span className="flex items-center gap-1 text-xs bg-gray-100 px-2 rounded">{getIconForType(q.type)} {q.type}</span>
-                                            {q.weight && <span className="text-xs font-bold text-blue-600">x{q.weight}</span>}
-                                        </div>
-                                    </div>
-                                    <button onClick={() => handleRemoveQuestion(q.id)} className="p-2 text-red-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
-                                </div>
-                            ))
-                        }
-                    </CardContent>
-                </Card>
-            </div>
-        </div>
-      ) : (
-        // OVERVIEW TAB
-        <>
-        {/* ... teacher approvals block ... */}
-        {unapproved.length > 0 && <div className="bg-amber-50 p-4 rounded mb-6"><h3 className="text-amber-800 font-bold">Pendentes</h3>{unapproved.map(u => <div key={u.id} className="flex justify-between mt-2"><span>{u.name}</span><Button size="sm" onClick={() => handleApprove(u.id)}>Aprovar</Button></div>)}</div>}
-
-        <div className="grid gap-8 lg:grid-cols-12">
-            <div className="lg:col-span-8 space-y-8">
-                {/* Teacher & Subject Management Forms (Simplified for brevity as they didn't change logic, just re-rendering) */}
-                <Card>
-                    <CardHeader><CardTitle>Cadastrar Docente</CardTitle></CardHeader>
-                    <CardContent>
-                        <form onSubmit={handleAddTeacher} className="flex gap-4"><Input placeholder="Nome" value={newTeacherName} onChange={e => setNewTeacherName(e.target.value)} /><Input placeholder="Email" value={newTeacherEmail} onChange={e => setNewTeacherEmail(e.target.value)} /><Input placeholder="Senha" value={newTeacherPwd} onChange={e => setNewTeacherPwd(e.target.value)} /><Button type="submit">Add</Button></form>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader><CardTitle>Disciplinas</CardTitle></CardHeader>
-                    <CardContent>
-                         <form onSubmit={handleCreateSubject} className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded">
-                             <Input placeholder="Nome Disciplina" value={newSubName} onChange={e => setNewSubName(e.target.value)} />
-                             <Input placeholder="Código" value={newSubCode} onChange={e => setNewSubCode(e.target.value)} />
-                             <Select value={newSubTeacher} onChange={e => setNewSubTeacher(e.target.value)}><option value="">Docente...</option>{teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
-                             <Button type="submit">Salvar Disciplina</Button>
-                         </form>
-                    </CardContent>
-                </Card>
-
-                {/* UPDATED QUALITATIVE EVALUATION */}
+                {/* Qualitative Eval & List */}
                 <Card>
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" /> Avaliação Qualitativa (8%)</CardTitle>
-                        <p className="text-xs text-gray-500">Avalie os docentes com base na ficha definida no construtor.</p>
+                        <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" /> Lista de Docentes & Avaliação Qualitativa</CardTitle>
+                        <p className="text-xs text-gray-500">Expanda para atribuir nota de 0 a 10 nos critérios institucionais.</p>
                     </CardHeader>
                     <CardContent className="space-y-2">
+                        {teachers.length === 0 && <p className="text-center py-8 text-gray-500">Nenhum docente cadastrado.</p>}
                         {teachers.map(t => {
                             const isExpanded = expandedTeacher === t.id;
-                            const ev = qualEvals[t.id] || {};
+                            const ev = qualEvals[t.id] || { deadlines: 0, quality: 0 };
                             return (
                                 <div key={t.id} className="border rounded-lg bg-white shadow-sm overflow-hidden">
                                     <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50" onClick={() => setExpandedTeacher(isExpanded ? null : t.id)}>
-                                        <span className="font-medium text-sm">{t.name}</span>
-                                        {isExpanded ? <ChevronUp className="h-4 w-4"/> : <ChevronDown className="h-4 w-4"/>}
+                                        <div className="flex flex-col">
+                                            <span className="font-medium text-sm">{t.name}</span>
+                                            <span className="text-xs text-gray-400">{t.email}</span>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            {(ev.deadlines > 0 || ev.quality > 0) && <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">Avaliado</span>}
+                                            {isExpanded ? <ChevronUp className="h-4 w-4"/> : <ChevronDown className="h-4 w-4"/>}
+                                        </div>
                                     </div>
                                     {isExpanded && (
-                                        <div className="p-4 bg-gray-50 border-t space-y-4">
-                                            {!qualQuestionnaire || qualQuestionnaire.questions.length === 0 ? (
-                                                <p className="text-red-500 text-sm">Configure a Ficha Qualitativa no Construtor primeiro.</p>
-                                            ) : (
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    {qualQuestionnaire.questions.map(q => (
-                                                        <div key={q.id} className="space-y-1">
-                                                            <Label className="text-xs text-gray-600">{q.text} (Max {q.type === 'scale_10' ? 10 : '?'})</Label>
-                                                            <Input 
-                                                                type="number" min="0" 
-                                                                value={ev[q.id] || 0} 
-                                                                onChange={(e) => handleEvalChange(t.id, q.id, e.target.value)} 
-                                                            />
-                                                        </div>
-                                                    ))}
+                                        <div className="p-4 bg-gray-50 border-t space-y-4 animate-in slide-in-from-top-2">
+                                            <h5 className="text-xs font-bold text-gray-700 uppercase">Avaliação do Gestor (Peso 8%)</h5>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-2">
+                                                    <Label>Cumprimento de Prazos (0-10)</Label>
+                                                    <Input type="number" min="0" max="10" value={ev.deadlines} onChange={(e) => handleEvalChange(t.id, 'deadlines', e.target.value)} />
                                                 </div>
-                                            )}
+                                                <div className="space-y-2">
+                                                    <Label>Qualidade do Trabalho (0-10)</Label>
+                                                    <Input type="number" min="0" max="10" value={ev.quality} onChange={(e) => handleEvalChange(t.id, 'quality', e.target.value)} />
+                                                </div>
+                                            </div>
                                             <Button size="sm" onClick={() => handleEvalSubmit(t.id)}>Salvar Avaliação</Button>
                                         </div>
                                     )}
@@ -435,20 +521,283 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                     </CardContent>
                 </Card>
             </div>
+          </div>
+      )}
+
+      {/* --- ABA QUESTIONÁRIO --- */}
+      {activeTab === 'questionnaire' && (
+        <div className="grid gap-8 lg:grid-cols-12">
+            {/* Left: Builder Form */}
+            <div className="lg:col-span-5 space-y-6">
+                
+                {/* Upload Section */}
+                <Card className="border-blue-200 bg-blue-50/30">
+                     <CardHeader className="pb-3">
+                         <CardTitle className="flex items-center gap-2 text-blue-900">
+                             <Upload className="h-5 w-5" /> Upload de Ficheiro
+                         </CardTitle>
+                         <p className="text-xs text-gray-500">Anexe o questionário em formato PDF, Word ou Docx para os alunos baixarem.</p>
+                     </CardHeader>
+                     <CardContent>
+                         <div className="space-y-4">
+                            <Input 
+                                type="file" 
+                                accept=".pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                onChange={handleFileUpload}
+                                className="cursor-pointer bg-white"
+                            />
+                            {questionnaire?.attachmentName ? (
+                                <div className="flex items-center justify-between p-3 bg-white rounded border border-blue-200">
+                                    <div className="flex items-center gap-2 overflow-hidden">
+                                        <FileText className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                                        <span className="text-sm truncate">{questionnaire.attachmentName}</span>
+                                    </div>
+                                    <Button variant="ghost" size="sm" className="text-red-500 h-8 w-8 p-0" onClick={handleRemoveFile}>
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            ) : (
+                                <p className="text-xs text-center text-gray-400 italic py-2">Nenhum ficheiro anexado.</p>
+                            )}
+                         </div>
+                     </CardContent>
+                </Card>
+
+                <Card className="sticky top-4">
+                    <CardHeader className="bg-slate-900 text-white rounded-t-lg">
+                        <CardTitle className="flex items-center gap-2">
+                            <Plus className="h-5 w-5" /> Adicionar Pergunta Digital
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4 pt-6">
+                        <div className="space-y-2">
+                            <Label>Texto da Pergunta</Label>
+                            <Input 
+                                value={newQText}
+                                onChange={(e) => setNewQText(e.target.value)}
+                                placeholder="Ex: O docente apresentou o programa?"
+                            />
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Tipo de Resposta</Label>
+                                <Select value={newQType} onChange={(e) => setNewQType(e.target.value as QuestionType)}>
+                                    <option value="binary">✅ Sim / Não (Full Mark)</option>
+                                    <option value="stars">⭐ Estrelas (1-5)</option>
+                                    <option value="scale_10">📊 Escala (0-10)</option>
+                                    <option value="text">📝 Texto (Sem pontos)</option>
+                                    <option value="choice">🔘 Múltipla Escolha</option>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Pontos Obtidos (Se SIM)</Label>
+                                <Input 
+                                    type="number" min="0"
+                                    value={newQWeight}
+                                    onChange={(e) => setNewQWeight(Number(e.target.value))}
+                                    disabled={newQType === 'text' || newQType === 'choice'}
+                                />
+                            </div>
+                        </div>
+
+                        {newQType === 'choice' && (
+                            <div className="space-y-2">
+                                <Label>Opções (separadas por vírgula)</Label>
+                                <Input 
+                                    value={newQOptions}
+                                    onChange={(e) => setNewQOptions(e.target.value)}
+                                    placeholder="Ex: Ruim, Regular, Bom, Excelente"
+                                />
+                            </div>
+                        )}
+
+                        <Button onClick={handleAddQuestion} className="w-full bg-slate-900">
+                            Adicionar ao Questionário
+                        </Button>
+                        
+                        <p className="text-xs text-gray-500 leading-relaxed">
+                            <strong>Nota:</strong> Para o tipo 'Sim / Não', o docente ganha a totalidade dos pontos definidos caso a resposta seja SIM, e zero se NÃO.
+                        </p>
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* Right: Preview List */}
+            <div className="lg:col-span-7 space-y-6">
+                 <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <FileQuestion className="h-5 w-5" /> Estrutura Atual
+                        </CardTitle>
+                        <div className="pt-2">
+                            <Label className="text-xs text-gray-500">Título do Questionário (Visível ao Aluno)</Label>
+                            <Input 
+                                value={questionnaire?.title || ''} 
+                                onChange={(e) => handleUpdateTitle(e.target.value)} 
+                                className="mt-1"
+                                placeholder="Ex: Ficha de Avaliação de Desempenho"
+                            />
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                        {(!questionnaire || questionnaire.questions.length === 0) ? (
+                            <div className="text-center py-12 border-2 border-dashed rounded-lg text-gray-400">
+                                <List className="h-10 w-10 mx-auto mb-2 opacity-20" />
+                                <p>O questionário está vazio.</p>
+                                <p className="text-sm">Adicione perguntas usando o formulário ao lado.</p>
+                            </div>
+                        ) : (
+                            questionnaire.questions.map((q, idx) => (
+                                <div key={q.id} className="flex items-start gap-3 p-3 bg-white border rounded-lg shadow-sm group hover:border-gray-400 transition-colors">
+                                    <div className="mt-1 h-6 w-6 flex items-center justify-center bg-gray-100 rounded text-xs font-mono text-gray-500 shrink-0">
+                                        {idx + 1}
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="font-medium text-sm text-gray-900">{q.text}</p>
+                                        <div className="flex items-center gap-3 mt-1.5">
+                                            <span className="flex items-center gap-1 text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">
+                                                {getIconForType(q.type)}
+                                                {q.type === 'scale_10' ? 'Escala 0-10' : 
+                                                 q.type === 'stars' ? 'Estrelas' :
+                                                 q.type === 'binary' ? 'Sim/Não' :
+                                                 q.type === 'text' ? 'Texto' : 'Múltipla Escolha'}
+                                            </span>
+                                            {q.weight !== undefined && q.weight > 0 && (
+                                                <span className="text-xs font-bold text-blue-600">Vale {q.weight} pts</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={() => handleRemoveQuestion(q.id)}
+                                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                        title="Remover Pergunta"
+                                    >
+                                        <Trash2 className="h-4 w-4" />
+                                    </button>
+                                </div>
+                            ))
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+        </div>
+      )} 
+      
+      {/* --- ABA VISÃO GERAL --- */}
+      {activeTab === 'overview' && (
+        <>
+        {/* Pending Approvals */}
+        {unapproved.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+            <div className="flex items-center gap-2 text-amber-800 mb-3">
+                <AlertCircle className="h-5 w-5" />
+                <h3 className="font-semibold">Aprovações Pendentes</h3>
+            </div>
+            <div className="grid gap-2">
+                {unapproved.map(u => (
+                <div key={u.id} className="flex items-center justify-between bg-white p-3 rounded border border-amber-100">
+                    <span>{u.name} ({u.email})</span>
+                    <Button size="sm" onClick={() => handleApprove(u.id)}>
+                    <Check className="mr-1 h-3 w-3" /> Aprovar
+                    </Button>
+                </div>
+                ))}
+            </div>
+            </div>
+        )}
+
+        <div className="grid gap-8 lg:grid-cols-12">
+            <div className="lg:col-span-8 space-y-8">
+                {/* Subject Management */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2"><BookOpen className="h-5 w-5" /> Gestão de Disciplinas</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <form onSubmit={handleCreateSubject} className="bg-gray-50 p-4 rounded-lg border space-y-4">
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Detalhes da Disciplina</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Nome da Disciplina *</Label>
+                                    <Input value={newSubName} onChange={e => setNewSubName(e.target.value)} placeholder="Ex: Matemática I" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Código (Opcional)</Label>
+                                    <Input value={newSubCode} onChange={e => setNewSubCode(e.target.value)} placeholder="Ex: MAT101" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Curso</Label>
+                                    <Input value={newSubCourse} onChange={e => setNewSubCourse(e.target.value)} placeholder="Ex: Eng. Informática" />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Ano Lectivo</Label>
+                                    <Input value={newSubYear} onChange={e => setNewSubYear(e.target.value)} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Nível (Ano)</Label>
+                                    <Input value={newSubLevel} onChange={e => setNewSubLevel(e.target.value)} placeholder="1º, 2º..." />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Semestre</Label>
+                                    <Select value={newSubSemester} onChange={e => setNewSubSemester(e.target.value)}>
+                                        <option value="1">1º Semestre</option>
+                                        <option value="2">2º Semestre</option>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Categoria Docente</Label>
+                                    <Select value={newSubCategory} onChange={e => setNewSubCategory(e.target.value as TeacherCategory)}>
+                                        <option value="assistente">Assistente</option>
+                                        <option value="assistente_estagiario">Assistente Estagiário</option>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Docente Responsável *</Label>
+                                <Select value={newSubTeacher} onChange={e => setNewSubTeacher(e.target.value)}>
+                                    <option value="">Selecione...</option>
+                                    {teachers.map(t => (<option key={t.id} value={t.id}>{t.name} {t.role === 'institution_manager' ? '(Gestor)' : ''}</option>))}
+                                </Select>
+                            </div>
+
+                            <Button type="submit" className="w-full" disabled={teachers.length === 0}>Adicionar Disciplina</Button>
+                        </form>
+
+                        <div className="divide-y border rounded-md overflow-hidden max-h-[300px] overflow-y-auto">
+                             {subjects.length === 0 && <p className="p-4 text-center text-gray-500 italic">Nenhuma disciplina cadastrada.</p>}
+                             {subjects.map(sub => {
+                                const teacher = teachers.find(t => t.id === sub.teacherId);
+                                return (
+                                    <div key={sub.id} className="p-3 bg-white hover:bg-gray-50 text-sm">
+                                        <div className="flex justify-between font-medium">
+                                            <span>{sub.name}</span>
+                                            <span className="text-gray-500">{sub.code || 'S/ Cod'}</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                            <span>{sub.course} - {sub.level}º Ano</span>
+                                            <span>{teacher?.name || 'Desconhecido'} ({sub.teacherCategory === 'assistente_estagiario' ? 'AE' : 'A'})</span>
+                                        </div>
+                                    </div>
+                                );
+                             })}
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
 
             <div className="lg:col-span-4 space-y-6">
                 <Card className="bg-slate-900 text-white border-slate-800 shadow-xl sticky top-4">
                     <CardHeader><CardTitle className="text-white flex items-center gap-2"><Calculator className="h-5 w-5" /> Fecho do Semestre</CardTitle></CardHeader>
                     <CardContent>
-                        <div className="space-y-3">
-                            <Button className="w-full bg-white text-slate-900 hover:bg-slate-100 font-bold" onClick={handleCalculate} disabled={calculating}>
-                                {calculating ? 'Processando...' : 'Calcular Scores'}
-                            </Button>
-                            <div className="grid grid-cols-2 gap-2">
-                                <Button variant="outline" size="sm" className="text-slate-900 border-white/20" onClick={handleExportCSV}><Download className="mr-2 h-4 w-4" /> CSV</Button>
-                                <Button variant="outline" size="sm" className="text-slate-900 border-white/20" onClick={handleExportPDF}><FileText className="mr-2 h-4 w-4" /> PDF</Button>
-                            </div>
-                        </div>
+                        <p className="text-sm text-slate-300 mb-4">Calcula a pontuação acumulada (Student Points + Self Eval + Qualitative).</p>
+                        <Button className="w-full bg-white text-slate-900 hover:bg-slate-100 font-bold" onClick={handleCalculate} disabled={calculating}>
+                            {calculating ? 'Processando...' : 'Calcular Scores'}
+                        </Button>
                     </CardContent>
                 </Card>
             </div>

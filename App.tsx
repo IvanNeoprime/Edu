@@ -7,7 +7,6 @@ import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { ManagerDashboard } from './components/ManagerDashboard';
 import { TeacherDashboard } from './components/TeacherDashboard';
 import { StudentDashboard } from './components/StudentDashboard';
-import { DepartmentManagerDashboard } from './components/DepartmentManagerDashboard';
 import { GraduationCap, ShieldCheck, ArrowRight, UserPlus, LogIn } from 'lucide-react';
 
 export default function App() {
@@ -19,23 +18,13 @@ export default function App() {
   const [email, setEmail] = useState(''); 
   const [password, setPassword] = useState('');
   
-  // State for institutions list
-  const [institutions, setInstitutions] = useState<Institution[]>([]);
-
-  const refreshInstitutions = async () => {
-    try {
-      const data = await BackendService.getInstitutions();
-      setInstitutions(data);
-    } catch (e) {
-      console.warn("Não foi possível carregar instituições. Verifique a conexão.", e);
-      setInstitutions([]);
-    }
-  };
-
   useEffect(() => {
       const init = async () => {
           try {
+            // 1. Lightweight Health Check (Safe to fail)
             await BackendService.checkHealth();
+          
+            // 2. Load Session (from LocalStorage/Cache)
             try {
                 const sessionUser = await BackendService.getSession();
                 if (sessionUser) {
@@ -44,7 +33,6 @@ export default function App() {
             } catch(e) {
                 console.warn("Erro ao recuperar sessão", e);
             }
-            await refreshInstitutions();
           } catch (e) {
               console.error("Fatal initialization error, ensuring UI renders:", e);
           } finally {
@@ -75,7 +63,6 @@ export default function App() {
       setUser(null);
       setEmail('');
       setPassword('');
-      refreshInstitutions();
   }
 
   // --- Router Logic ---
@@ -84,10 +71,8 @@ export default function App() {
     switch (user.role) {
       case UserRole.SUPER_ADMIN: return <SuperAdminDashboard />;
       case UserRole.INSTITUTION_MANAGER: return user.institutionId ? <ManagerDashboard institutionId={user.institutionId} /> : <div>Erro: Sem instituição.</div>;
-      case UserRole.DEPARTMENT_MANAGER: return <DepartmentManagerDashboard user={user} />;
       case UserRole.TEACHER: return <TeacherDashboard user={user} />;
       case UserRole.STUDENT: return <StudentDashboard user={user} />;
-      case UserRole.CLASS_HEAD: return <StudentDashboard user={user} />;
       default: return <div>Role desconhecido.</div>;
     }
   };
@@ -110,37 +95,34 @@ export default function App() {
             <CardTitle className="text-2xl font-bold text-center">
                 Acesso ao Sistema
             </CardTitle>
-            <p className="text-center text-xs text-gray-500">
-                Alunos e Docentes devem solicitar suas credenciais ao departamento.
-            </p>
           </CardHeader>
           <CardContent>
-                <form onSubmit={handleLogin} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                <div className="space-y-2">
-                    <Label htmlFor="email">Email Institucional</Label>
-                    <Input 
-                    id="email" 
-                    type="email" 
-                    placeholder="Ex: usuario@universidade.ac.mz" 
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    />
-                </div>
-                <div className="space-y-2">
-                    <Label htmlFor="password">Senha</Label>
-                    <Input 
-                        id="password" 
-                        type="password" 
-                        placeholder="••••••••" 
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                    />
-                </div>
-                <Button type="submit" className="w-full h-11" disabled={loading}>
-                    {loading ? 'Verificando...' : 'Entrar'} <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-                </form>
+            <form onSubmit={handleLogin} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+            <div className="space-y-2">
+                <Label htmlFor="email">Email Institucional</Label>
+                <Input 
+                id="email" 
+                type="email" 
+                placeholder="Ex: nome@universidade.ac.mz" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                />
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="password">Senha</Label>
+                <Input 
+                    id="password" 
+                    type="password" 
+                    placeholder="••••••••" 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                />
+            </div>
+            <Button type="submit" className="w-full h-11" disabled={loading}>
+                {loading ? 'Verificando...' : 'Entrar'} <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+            </form>
           </CardContent>
         </Card>
         

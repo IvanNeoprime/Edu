@@ -2,8 +2,6 @@
 export enum UserRole {
   SUPER_ADMIN = 'super_admin',
   INSTITUTION_MANAGER = 'institution_manager',
-  DEPARTMENT_MANAGER = 'department_manager',
-  CLASS_HEAD = 'class_head',
   TEACHER = 'teacher',
   STUDENT = 'student'
 }
@@ -14,10 +12,10 @@ export interface User {
   name: string;
   role: UserRole;
   institutionId?: string;
-  department?: string;
-  turma?: string; // New field for Class Head
-  classe?: string; // New field for Class Head (e.g., 1º Ano, 2º Ano)
-  approved?: boolean;
+  approved?: boolean; // For teachers
+  // Novos campos para alunos
+  course?: string;
+  level?: string; // Ano curricular (ex: 1, 2, 3)
 }
 
 export interface Institution {
@@ -29,14 +27,15 @@ export interface Institution {
   inviteCode?: string;
 }
 
-export type TeacherCategory = 'assistente' | 'assistente_estagiario' | 'pleno';
+export type TeacherCategory = 'assistente' | 'assistente_estagiario';
 
 export interface Subject {
   id: string;
   name: string;
-  code?: string;
+  code?: string; // Agora opcional
   institutionId: string;
   teacherId: string;
+  // Novos campos solicitados
   academicYear?: string;
   level?: string;
   semester?: string;
@@ -44,18 +43,14 @@ export interface Subject {
   teacherCategory?: TeacherCategory;
 }
 
-export type QuestionType = 'binary' | 'scale_10' | 'stars' | 'text' | 'choice' | 'quantity';
-
-export type QuestionnaireTarget = 'student' | 'teacher_self' | 'manager_qual' | 'class_head'; // Added class_head
+export type QuestionType = 'binary' | 'scale_10' | 'stars' | 'text' | 'choice';
 
 export interface Question {
   id: string;
-  code?: string;
-  category?: string;
   text: string;
   type: QuestionType;
-  weight?: number;
-  options?: string[];
+  weight?: number; // Pontos Obtidos
+  options?: string[]; // For multiple choice
 }
 
 export interface Questionnaire {
@@ -64,7 +59,9 @@ export interface Questionnaire {
   title: string;
   questions: Question[];
   active: boolean;
-  target: QuestionnaireTarget;
+  // Novos campos para upload
+  attachmentUrl?: string; // Base64 ou Link
+  attachmentName?: string;
 }
 
 export interface StudentResponse {
@@ -85,30 +82,42 @@ export interface InstitutionalEval {
 
 export interface SelfEvaluation {
   teacherId: string;
+  // Cabeçalho
   header: {
-    department: string;
     category: TeacherCategory;
     function: string;
-    contractRegime: string;
-    workPeriod: string;
+    contractRegime: string; // Tempo inteiro/parcial
+    workPeriod: string; // Laboral/PL
     academicYear: string;
   };
-  answers: Record<string, number>; 
+  // Respostas específicas (Quantidades que serão multiplicadas pelos pontos)
+  answers: {
+    gradSubjects?: number;
+    postGradSubjects?: number;
+    theoryHours?: number;
+    practicalHours?: number;
+    consultationHours?: number;
+    gradSupervision?: number;
+    postGradSupervision?: number;
+    regencySubjects?: number;
+  };
 }
 
 export interface QualitativeEval {
   teacherId: string;
   institutionId?: string;
-  answers: Record<string, number>; 
+  deadlineCompliance?: number;
+  workQuality?: number;
+  score?: number;
   evaluatedAt?: string;
 }
 
 export interface CombinedScore {
   teacherId: string;
-  studentScore: number;
+  studentScore: number; // Pontos calculados (Coeficiente aplicado)
   institutionalScore: number; 
-  selfEvalScore: number;
-  finalScore: number;
+  selfEvalScore: number; // Pontos absolutos
+  finalScore: number; // Soma total
   lastCalculated: string;
 }
 
