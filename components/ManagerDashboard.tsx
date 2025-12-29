@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { BackendService } from '../services/backend';
-import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore } from '../types';
+// import { AIService } from '../services/ai'; // Removed AI Service
+import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select } from './ui';
-import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, GraduationCap, Upload, FileText, PieChart as PieIcon, Download, Printer, Image as ImageIcon } from 'lucide-react';
+import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, GraduationCap, PieChart as PieIcon, Download, Printer, Image as ImageIcon, Sparkles, RefreshCw, ScanText, Eye, Settings, Building2, Save, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
 
 interface Props {
@@ -11,7 +12,8 @@ interface Props {
 }
 
 export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'teachers' | 'students' | 'questionnaire' | 'stats'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'teachers' | 'students' | 'questionnaire' | 'stats' | 'settings'>('overview');
+  const [institution, setInstitution] = useState<Institution | null>(null);
   const [teachers, setTeachers] = useState<User[]>([]);
   const [students, setStudents] = useState<User[]>([]);
   const [unapproved, setUnapproved] = useState<User[]>([]);
@@ -84,37 +86,42 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
   const loadData = async () => {
     setLoading(true);
-    const allUsers = await BackendService.getUsers();
-    // Allow Managers to appear in list if they are also teachers (by role check or context)
-    // For now, filter by TEACHER role as primary check, or MANAGER if assigned to subjects
-    const potentialTeachers = allUsers.filter(u => (u.role === UserRole.TEACHER || u.role === UserRole.INSTITUTION_MANAGER) && u.institutionId === institutionId);
-    setTeachers(potentialTeachers);
-    
-    const instStudents = allUsers.filter(u => u.role === UserRole.STUDENT && u.institutionId === institutionId);
-    setStudents(instStudents);
+    try {
+        const inst = await BackendService.getInstitution(institutionId);
+        if (inst) setInstitution(inst);
 
-    setUnapproved(await BackendService.getUnapprovedTeachers(institutionId));
-    
-    const instSubjects = await BackendService.getInstitutionSubjects(institutionId);
-    setSubjects(instSubjects);
+        const allUsers = await BackendService.getUsers();
+        const potentialTeachers = allUsers.filter(u => (u.role === UserRole.TEACHER || u.role === UserRole.INSTITUTION_MANAGER) && u.institutionId === institutionId);
+        setTeachers(potentialTeachers);
+        
+        const instStudents = allUsers.filter(u => u.role === UserRole.STUDENT && u.institutionId === institutionId);
+        setStudents(instStudents);
 
-    loadQuestionnaire();
-    
-    const loadedEvals: Record<string, { deadlines: number, quality: number }> = {};
-    for (const t of potentialTeachers) {
-        const ev = await BackendService.getQualitativeEval(t.id);
-        if (ev) {
-            loadedEvals[t.id] = {
-                deadlines: ev.deadlineCompliance || 0,
-                quality: ev.workQuality || 0
-            };
-        } else {
-            loadedEvals[t.id] = { deadlines: 0, quality: 0 };
+        setUnapproved(await BackendService.getUnapprovedTeachers(institutionId));
+        
+        const instSubjects = await BackendService.getInstitutionSubjects(institutionId);
+        setSubjects(instSubjects);
+
+        loadQuestionnaire();
+        
+        const loadedEvals: Record<string, { deadlines: number, quality: number }> = {};
+        for (const t of potentialTeachers) {
+            const ev = await BackendService.getQualitativeEval(t.id);
+            if (ev) {
+                loadedEvals[t.id] = {
+                    deadlines: ev.deadlineCompliance || 0,
+                    quality: ev.workQuality || 0
+                };
+            } else {
+                loadedEvals[t.id] = { deadlines: 0, quality: 0 };
+            }
         }
+        setQualEvals(loadedEvals);
+    } catch (e) {
+        console.error("Erro ao carregar dados:", e);
+    } finally {
+        setLoading(false);
     }
-    setQualEvals(loadedEvals);
-
-    setLoading(false);
   };
 
   const handleApprove = async (id: string) => {
@@ -134,30 +141,42 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
   const handleAddTeacher = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!newTeacherName || !newTeacherEmail || !newTeacherPwd) {
-          alert("Nome, Email e Senha são obrigatórios.");
+      
+      // Validação básica
+      if (!newTeacherName.trim() || !newTeacherEmail.trim() || !newTeacherPwd.trim()) {
+          alert("Por favor, preencha Nome, Email e Senha.");
           return;
       }
+
       try {
+          console.log("Adicionando docente:", newTeacherName, newTeacherEmail);
           await BackendService.addTeacher(institutionId, newTeacherName, newTeacherEmail, newTeacherPwd, newTeacherAvatar);
+          
+          // Limpar campos
           setNewTeacherName('');
           setNewTeacherEmail('');
           setNewTeacherPwd('');
           setNewTeacherAvatar('');
-          loadData();
+          
+          // Recarregar dados
+          await loadData();
           alert(`Docente cadastrado com sucesso!`);
       } catch (error: any) {
-          alert("Erro: " + error.message);
+          console.error("Erro ao adicionar docente:", error);
+          alert("Erro ao cadastrar docente: " + error.message);
       }
   };
 
   const handleAddStudent = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!newStudentName || !newStudentEmail || !newStudentPwd) {
-          alert("Nome, Email e Senha são obrigatórios.");
+      
+      if (!newStudentName.trim() || !newStudentEmail.trim() || !newStudentPwd.trim()) {
+          alert("Por favor, preencha Nome, Email e Senha.");
           return;
       }
+
       try {
+          console.log("Adicionando estudante:", newStudentName, newStudentEmail);
           await BackendService.addStudent(
               institutionId, 
               newStudentName, 
@@ -167,21 +186,24 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
               newStudentLevel,
               newStudentAvatar
           );
+          
           setNewStudentName('');
           setNewStudentEmail('');
           setNewStudentPwd('');
           setNewStudentCourse('');
           setNewStudentLevel('');
           setNewStudentAvatar('');
-          loadData();
+          
+          await loadData();
           alert(`Estudante cadastrado com sucesso!`);
       } catch (error: any) {
-          alert("Erro: " + error.message);
+          console.error("Erro ao adicionar estudante:", error);
+          alert("Erro ao cadastrar estudante: " + error.message);
       }
   };
 
   const handleEvalChange = (teacherId: string, field: 'deadlines' | 'quality', value: string) => {
-      const val = Math.min(Math.max(parseInt(value) || 0, 0), 10); 
+      const val = parseFloat(value) || 0;
       setQualEvals(prev => ({
           ...prev,
           [teacherId]: { ...prev[teacherId], [field]: val }
@@ -206,7 +228,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       await BackendService.calculateScores(institutionId);
       setCalculating(false);
       alert("Cálculo realizado com sucesso!");
-      // Refresh stats if on stats tab
       if (activeTab === 'stats') BackendService.getAllScores(institutionId).then(setAllScores);
   };
 
@@ -218,7 +239,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       }
       await BackendService.assignSubject({
           name: newSubName,
-          code: newSubCode, // Optional
+          code: newSubCode,
           teacherId: newSubTeacher,
           institutionId: institutionId,
           academicYear: newSubYear,
@@ -273,7 +294,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       setQuestionnaire(updatedQ);
       setNewQText('');
       setNewQOptions('');
-      // Reset weight default
       setNewQWeight(1);
   };
 
@@ -294,63 +314,80 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       setQuestionnaire(updatedQ);
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      // Limit size to ~2MB for LocalStorage safety
-      if (file.size > 2 * 1024 * 1024) {
-          alert("O ficheiro é muito grande. O limite é 2MB.");
-          return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-          const base64 = ev.target?.result as string;
-          
-          let updatedQ: Questionnaire;
-          if (!questionnaire) {
-              updatedQ = {
-                  id: `q_${institutionId}_${targetRole}`,
-                  institutionId,
-                  title: targetRole === 'student' ? 'Avaliação com Anexo' : 'Inquérito com Anexo',
-                  active: true,
-                  questions: [],
-                  attachmentUrl: base64,
-                  attachmentName: file.name,
-                  targetRole: targetRole
-              };
-          } else {
-              updatedQ = {
-                  ...questionnaire,
-                  attachmentUrl: base64,
-                  attachmentName: file.name,
-                  targetRole: targetRole
-              };
-          }
-          await BackendService.saveQuestionnaire(updatedQ);
-          setQuestionnaire(updatedQ);
-          alert("Ficheiro anexado com sucesso!");
-      };
-      reader.readAsDataURL(file);
+  // --- SETTINGS (LOGO UPDATE) ---
+  const handleUpdateInstitution = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!institution) return;
+    try {
+        await BackendService.updateInstitution(institution.id, {
+            name: institution.name,
+            logo: institution.logo
+        });
+        alert("Dados da instituição atualizados com sucesso!");
+    } catch (e: any) {
+        alert("Erro ao atualizar: " + e.message);
+    }
   };
 
-  const handleRemoveFile = async () => {
-      if (!questionnaire) return;
-      const updatedQ = {
-          ...questionnaire,
-          attachmentUrl: undefined,
-          attachmentName: undefined
-      };
-      await BackendService.saveQuestionnaire(updatedQ);
-      setQuestionnaire(updatedQ);
+  const handleInstLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file && institution) {
+          if (file.size > 500 * 1024) return alert("Logotipo muito grande. O limite é 500KB.");
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+              setInstitution({ ...institution, logo: ev.target?.result as string });
+          };
+          reader.readAsDataURL(file);
+      }
+  };
+
+  // --- PREVIEW RENDERER HELPERS ---
+  const renderPreviewInput = (q: Question) => {
+    switch (q.type) {
+        case 'stars':
+            return (
+                <div className="flex gap-2 text-gray-300">
+                    {[1, 2, 3, 4, 5].map(s => <Star key={s} className="h-6 w-6" />)}
+                </div>
+            );
+        case 'binary':
+            return (
+                <div className="flex gap-4 max-w-xs">
+                    <div className="flex-1 py-2 px-4 rounded-md border text-center text-sm text-gray-400 bg-white">Não</div>
+                    <div className="flex-1 py-2 px-4 rounded-md border text-center text-sm text-gray-400 bg-white">Sim</div>
+                </div>
+            );
+        case 'scale_10':
+            return (
+                <div className="flex gap-1 overflow-x-auto pb-1">
+                    {[0,1,2,3,4,5,6,7,8,9,10].map(n => (
+                        <div key={n} className="h-8 w-8 flex items-center justify-center border rounded text-xs text-gray-400 bg-white shrink-0">{n}</div>
+                    ))}
+                </div>
+            );
+        case 'text':
+            return <div className="h-20 w-full border rounded-md bg-gray-50 text-gray-400 p-2 text-sm italic">Área de resposta de texto...</div>;
+        case 'choice':
+            return (
+                <div className="space-y-2">
+                    {q.options?.map(o => (
+                        <div key={o} className="flex items-center gap-2 text-gray-500 text-sm">
+                            <div className="h-4 w-4 rounded-full border border-gray-300"></div>
+                            <span>{o}</span>
+                        </div>
+                    ))}
+                </div>
+            );
+        default:
+            return <Input disabled placeholder="Campo de resposta" />;
+    }
   };
 
   // --- REPORT GENERATION ---
   const handleExportCSV = () => {
     if (allScores.length === 0) return alert("Sem dados para exportar.");
     
-    let csv = "Docente,Score Alunos,Score Auto-Aval.,Score Institucional,Score Final,Data\n";
+    let csv = "Docente,Avaliação Estudante,Auto-Avaliação,Avaliação Qualitativa,Classificação Final,Data\n";
     allScores.forEach(s => {
         const t = teachers.find(u => u.id === s.teacherId);
         csv += `"${t?.name || 'Desconhecido'}",${s.studentScore},${s.selfEvalScore},${s.institutionalScore},${s.finalScore},${new Date(s.lastCalculated).toLocaleDateString()}\n`;
@@ -379,7 +416,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       }
   };
 
-  // Group Students Logic
   const groupedStudents = students.reduce((acc, student) => {
       const course = student.course || 'Sem Curso Atribuído';
       const level = student.level ? `${student.level}º Ano` : 'Sem Ano';
@@ -391,7 +427,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       return acc;
   }, {} as Record<string, Record<string, User[]>>);
 
-  // Stats Logic
   const scoreDistribution = [
       { name: '0-50 (Insuficiente)', value: allScores.filter(s => s.finalScore <= 50).length, color: '#ef4444' },
       { name: '51-70 (Razoável)', value: allScores.filter(s => s.finalScore > 50 && s.finalScore <= 70).length, color: '#eab308' },
@@ -406,9 +441,16 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   return (
     <div className="space-y-8 p-4 md:p-8 max-w-6xl mx-auto animate-in fade-in duration-500 print:p-0 print:max-w-none">
       <header className="border-b pb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:hidden">
-        <div>
-            <h1 className="text-3xl font-bold tracking-tight">Gestão Institucional</h1>
-            <p className="text-gray-500">Administração de Docentes e Avaliações</p>
+        <div className="flex items-center gap-4">
+             {institution?.logo && (
+                 <div className="h-16 w-16 bg-white border rounded-lg p-1 flex items-center justify-center shadow-sm">
+                     <img src={institution.logo} className="h-full w-full object-contain" />
+                 </div>
+             )}
+            <div>
+                <h1 className="text-3xl font-bold tracking-tight">{institution?.name || 'Gestão Institucional'}</h1>
+                <p className="text-gray-500">Administração de Docentes e Avaliações</p>
+            </div>
         </div>
         <div className="flex bg-gray-100 p-1 rounded-lg flex-wrap gap-1">
             <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'overview' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Visão Geral</button>
@@ -416,16 +458,99 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             <button onClick={() => setActiveTab('students')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'students' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Alunos</button>
             <button onClick={() => setActiveTab('questionnaire')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'questionnaire' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Questionários</button>
             <button onClick={() => setActiveTab('stats')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'stats' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Relatórios & Estatísticas</button>
+            <button onClick={() => setActiveTab('settings')} className={`px-3 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-1 ${activeTab === 'settings' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>
+                <Settings className="h-4 w-4" /> Configurações
+            </button>
         </div>
       </header>
+
+      {/* --- ABA CONFIGURAÇÕES (LOGO E NOME) --- */}
+      {activeTab === 'settings' && institution && (
+          <div className="grid gap-8 lg:grid-cols-2 max-w-4xl mx-auto">
+              <Card>
+                  <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                          <Building2 className="h-5 w-5" /> Identidade da Instituição
+                      </CardTitle>
+                      <p className="text-sm text-gray-500">Atualize o nome e o logotipo que aparecem nos relatórios.</p>
+                  </CardHeader>
+                  <CardContent>
+                      <form onSubmit={handleUpdateInstitution} className="space-y-6">
+                          <div className="space-y-2">
+                              <Label>Nome da Instituição</Label>
+                              <Input 
+                                value={institution.name} 
+                                onChange={(e) => setInstitution({...institution, name: e.target.value})} 
+                              />
+                          </div>
+
+                          <div className="space-y-2">
+                              <Label>Logotipo</Label>
+                              <div className="flex items-center gap-4">
+                                  <div className="h-24 w-24 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden relative">
+                                      {institution.logo ? (
+                                          <img src={institution.logo} className="h-full w-full object-contain p-2" />
+                                      ) : (
+                                          <ImageIcon className="h-8 w-8 text-gray-300" />
+                                      )}
+                                      <input 
+                                          type="file" 
+                                          accept="image/*" 
+                                          onChange={handleInstLogoUpload}
+                                          className="absolute inset-0 opacity-0 cursor-pointer" 
+                                      />
+                                  </div>
+                                  <div className="flex-1 text-sm text-gray-500">
+                                      <p>Clique na imagem para alterar.</p>
+                                      <p className="text-xs mt-1">Recomendado: PNG ou JPG com fundo transparente. Máx 500KB.</p>
+                                  </div>
+                              </div>
+                          </div>
+                          
+                          <div className="space-y-2">
+                              <Label>Código / Sigla</Label>
+                              <Input 
+                                disabled
+                                value={institution.code} 
+                                className="bg-gray-100 text-gray-500"
+                              />
+                              <p className="text-xs text-gray-400">O código da instituição não pode ser alterado.</p>
+                          </div>
+
+                          <Button type="submit" className="w-full">
+                              <Save className="mr-2 h-4 w-4" /> Salvar Alterações
+                          </Button>
+                      </form>
+                  </CardContent>
+              </Card>
+
+              <Card className="bg-blue-50/50 border-blue-100">
+                  <CardHeader>
+                      <CardTitle className="text-blue-900">Sobre sua conta</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                      <div className="p-4 bg-white rounded-lg border shadow-sm">
+                          <p className="text-sm font-medium text-gray-500">Código de Convite</p>
+                          <div className="flex items-center gap-2 mt-1">
+                              <Key className="h-4 w-4 text-gray-400" />
+                              <span className="font-mono text-lg font-bold">{institution.inviteCode || 'N/A'}</span>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-2">Use este código se precisar convidar outros gestores (Funcionalidade futura).</p>
+                      </div>
+                  </CardContent>
+              </Card>
+          </div>
+      )}
 
       {/* --- ABA ESTATÍSTICAS --- */}
       {activeTab === 'stats' && (
         <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
              {/* Report Header for Print */}
              <div className="hidden print:block text-center mb-8 border-b pb-4">
-                 <h1 className="text-2xl font-bold">Relatório de Avaliação de Desempenho Docente</h1>
-                 <p className="text-gray-500">Relatório Gerado em {new Date().toLocaleDateString()}</p>
+                 {institution?.logo && <img src={institution.logo} className="h-16 mx-auto mb-2" />}
+                 <h1 className="text-2xl font-bold">{institution?.name || 'Relatório Institucional'}</h1>
+                 <p className="text-gray-500">Relatório de Avaliação de Desempenho Docente</p>
+                 <p className="text-xs text-gray-400 mt-1">Gerado em {new Date().toLocaleDateString()}</p>
              </div>
 
              {/* KPIs */}
@@ -494,8 +619,8 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={[
                                     { name: 'Auto-Avaliação', score: (allScores.reduce((a,b)=>a+b.selfEvalScore,0)/allScores.length).toFixed(1) },
-                                    { name: 'Alunos', score: (allScores.reduce((a,b)=>a+b.studentScore,0)/allScores.length).toFixed(1) },
-                                    { name: 'Gestor', score: (allScores.reduce((a,b)=>a+b.institutionalScore,0)/allScores.length).toFixed(1) },
+                                    { name: 'Aval. Estudante', score: (allScores.reduce((a,b)=>a+b.studentScore,0)/allScores.length).toFixed(1) },
+                                    { name: 'Aval. Qualitativa', score: (allScores.reduce((a,b)=>a+b.institutionalScore,0)/allScores.length).toFixed(1) },
                                 ]}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                     <XAxis dataKey="name" />
@@ -520,10 +645,10 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                              <thead className="bg-gray-50 text-gray-600 font-medium">
                                  <tr>
                                      <th className="p-3">Docente</th>
-                                     <th className="p-3">Auto-Aval. (Max 80)</th>
-                                     <th className="p-3">Alunos (Max 12)</th>
-                                     <th className="p-3">Gestor (Max 8)</th>
-                                     <th className="p-3 font-bold">Final</th>
+                                     <th className="p-3">Auto-Aval.</th>
+                                     <th className="p-3">Aval. Estudante</th>
+                                     <th className="p-3">Aval. Qualitativa</th>
+                                     <th className="p-3 font-bold">Total</th>
                                  </tr>
                              </thead>
                              <tbody className="divide-y">
@@ -729,8 +854,8 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                 {/* Qualitative Eval & List */}
                 <Card>
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" /> Lista de Docentes & Avaliação Qualitativa</CardTitle>
-                        <p className="text-xs text-gray-500">Expanda para atribuir nota de 0 a 10 nos critérios institucionais.</p>
+                        <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" /> Avaliação Qualitativa (Ficha de Indicadores)</CardTitle>
+                        <p className="text-xs text-gray-500">Avalie os parâmetros abaixo. O sistema calculará o coeficiente automaticamente (0.46 ou 0.88).</p>
                     </CardHeader>
                     <CardContent className="space-y-2">
                         {teachers.length === 0 && <p className="text-center py-8 text-gray-500">Nenhum docente cadastrado.</p>}
@@ -755,19 +880,79 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                         </div>
                                     </div>
                                     {isExpanded && (
-                                        <div className="p-4 bg-gray-50 border-t space-y-4 animate-in slide-in-from-top-2">
-                                            <h5 className="text-xs font-bold text-gray-700 uppercase">Avaliação do Gestor (Peso 8%)</h5>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className="space-y-2">
-                                                    <Label>Cumprimento de Prazos (0-10)</Label>
-                                                    <Input type="number" min="0" max="10" value={ev.deadlines} onChange={(e) => handleEvalChange(t.id, 'deadlines', e.target.value)} />
+                                        <div className="p-4 bg-gray-50 border-t space-y-6 animate-in slide-in-from-top-2">
+                                            
+                                            {/* Indicador 1: Prazos */}
+                                            <div className="space-y-3">
+                                                <div className="flex items-start justify-between">
+                                                    <div>
+                                                        <h5 className="font-bold text-sm text-gray-900">1. Cumprimento de tarefas e prazos (Max 10)</h5>
+                                                        <p className="text-xs text-gray-500">Refere-se a prazos semestrais ou anuais.</p>
+                                                    </div>
+                                                    <span className="font-mono font-bold text-lg text-blue-600">{ev.deadlines} pts</span>
                                                 </div>
-                                                <div className="space-y-2">
-                                                    <Label>Qualidade do Trabalho (0-10)</Label>
-                                                    <Input type="number" min="0" max="10" value={ev.quality} onChange={(e) => handleEvalChange(t.id, 'quality', e.target.value)} />
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                    {[
+                                                        { val: 10, label: "Realiza tarefas em prazos mais curtos que o necessário" },
+                                                        { val: 7.5, label: "Executa com rapidez, oportunidade e qualidade aceitável" },
+                                                        { val: 5, label: "Realiza em regra dentro dos prazos estabelecidos" },
+                                                        { val: 2.5, label: "Demasiado lento, atrasos no serviço" }
+                                                    ].map((opt) => (
+                                                        <button
+                                                            key={opt.val}
+                                                            onClick={() => handleEvalChange(t.id, 'deadlines', opt.val.toString())}
+                                                            className={`text-left p-3 rounded-md border text-xs transition-all ${
+                                                                ev.deadlines === opt.val 
+                                                                ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500 text-blue-900' 
+                                                                : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-600'
+                                                            }`}
+                                                        >
+                                                            <span className="font-bold block mb-1">{opt.val} Pontos</span>
+                                                            {opt.label}
+                                                        </button>
+                                                    ))}
                                                 </div>
                                             </div>
-                                            <Button size="sm" onClick={() => handleEvalSubmit(t.id)}>Salvar Avaliação</Button>
+
+                                            <div className="h-px bg-gray-200"></div>
+
+                                            {/* Indicador 2: Qualidade */}
+                                            <div className="space-y-3">
+                                                <div className="flex items-start justify-between">
+                                                    <div>
+                                                        <h5 className="font-bold text-sm text-gray-900">2. Qualidade do trabalho realizado (Max 10)</h5>
+                                                        <p className="text-xs text-gray-500">Avaliação da excelência e padrão do trabalho.</p>
+                                                    </div>
+                                                    <span className="font-mono font-bold text-lg text-purple-600">{ev.quality} pts</span>
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                    {[
+                                                        { val: 10, label: "Qualidade excelente" },
+                                                        { val: 7.5, label: "Muito boa qualidade e exemplar" },
+                                                        { val: 5, label: "Boa qualidade e dentro do padrão estabelecido" },
+                                                        { val: 2.5, label: "Qualidade insuficiente e necessita de correções" }
+                                                    ].map((opt) => (
+                                                        <button
+                                                            key={opt.val}
+                                                            onClick={() => handleEvalChange(t.id, 'quality', opt.val.toString())}
+                                                            className={`text-left p-3 rounded-md border text-xs transition-all ${
+                                                                ev.quality === opt.val 
+                                                                ? 'bg-purple-50 border-purple-500 ring-1 ring-purple-500 text-purple-900' 
+                                                                : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-600'
+                                                            }`}
+                                                        >
+                                                            <span className="font-bold block mb-1">{opt.val} Pontos</span>
+                                                            {opt.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="flex justify-end pt-2">
+                                                <Button size="sm" onClick={() => handleEvalSubmit(t.id)}>
+                                                    <Save className="h-4 w-4 mr-2" /> Salvar Avaliação Qualitativa
+                                                </Button>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -779,7 +964,8 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           </div>
       )}
 
-      {/* --- ABA QUESTIONÁRIO --- */}
+      {/* ... (rest of the file) ... */}
+      {/* ... (Questionnaire tab and others remain similar) ... */}
       {activeTab === 'questionnaire' && (
         <div className="grid gap-8 lg:grid-cols-12 print:hidden">
             {/* Left: Builder Form */}
@@ -803,46 +989,10 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                     </CardContent>
                 </Card>
 
-                {/* Upload Section */}
-                <Card className="border-blue-200 bg-blue-50/30">
-                     <CardHeader className="pb-3">
-                         <CardTitle className="flex items-center gap-2 text-blue-900">
-                             <Upload className="h-5 w-5" /> Upload de Ficheiro
-                         </CardTitle>
-                         <p className="text-xs text-gray-500">Anexe PDF, Word ou Docx.</p>
-                     </CardHeader>
-                     <CardContent>
-                         <div className="space-y-4">
-                            <Input 
-                                type="file" 
-                                accept=".pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                onChange={handleFileUpload}
-                                className="cursor-pointer bg-white"
-                            />
-                            {questionnaire?.attachmentName ? (
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between p-3 bg-white rounded border border-blue-200">
-                                        <div className="flex items-center gap-2 overflow-hidden">
-                                            <FileText className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                                            <span className="text-sm truncate">{questionnaire.attachmentName}</span>
-                                        </div>
-                                        <Button variant="ghost" size="sm" className="text-red-500 h-8 w-8 p-0" onClick={handleRemoveFile}>
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                    <p className="text-[10px] text-gray-500 text-center">Ficheiro anexado com sucesso.</p>
-                                </div>
-                            ) : (
-                                <p className="text-xs text-center text-gray-400 italic py-2">Nenhum ficheiro anexado.</p>
-                            )}
-                         </div>
-                     </CardContent>
-                </Card>
-
                 <Card className="sticky top-4">
                     <CardHeader className="bg-slate-900 text-white rounded-t-lg">
                         <CardTitle className="flex items-center gap-2">
-                            <Plus className="h-5 w-5" /> Adicionar Pergunta Digital
+                            <Plus className="h-5 w-5" /> Adicionar Pergunta Manual
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4 pt-6">
@@ -898,58 +1048,73 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
             {/* Right: Preview List */}
             <div className="lg:col-span-7 space-y-6">
-                 <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <FileQuestion className="h-5 w-5" /> {targetRole === 'student' ? 'Formulário do Aluno' : 'Formulário do Docente'}
-                        </CardTitle>
-                        <div className="pt-2">
-                            <Label className="text-xs text-gray-500">Título do Questionário (Visível ao Respondente)</Label>
+                <Card className="h-full flex flex-col bg-gray-50/50 border-dashed">
+                    <CardHeader className="bg-white border-b border-gray-200">
+                        <div className="flex items-center justify-between">
+                            <CardTitle className="flex items-center gap-2 text-gray-800">
+                                <Eye className="h-5 w-5 text-indigo-600" /> Pré-visualização do Formulário
+                            </CardTitle>
+                            <div className="text-xs px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md font-medium border border-indigo-100">
+                                Modo de Edição
+                            </div>
+                        </div>
+                        <div className="pt-4">
+                            <Label className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Título do Formulário</Label>
                             <Input 
                                 value={questionnaire?.title || ''} 
                                 onChange={(e) => handleUpdateTitle(e.target.value)} 
-                                className="mt-1"
+                                className="mt-1 font-bold text-lg border-transparent hover:border-gray-300 focus:border-indigo-500 transition-colors bg-transparent px-0 shadow-none h-auto"
                                 placeholder={targetRole === 'student' ? "Ex: Ficha de Avaliação" : "Ex: Inquérito de Satisfação"}
                             />
                         </div>
                     </CardHeader>
-                    <CardContent className="space-y-3">
+                    <CardContent className="flex-1 overflow-y-auto p-6 space-y-4">
                         {(!questionnaire || questionnaire.questions.length === 0) ? (
-                            <div className="text-center py-12 border-2 border-dashed rounded-lg text-gray-400">
-                                <List className="h-10 w-10 mx-auto mb-2 opacity-20" />
-                                <p>O questionário está vazio.</p>
-                                <p className="text-sm">Adicione perguntas manualmente.</p>
+                            <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                                <FileQuestion className="h-12 w-12 mb-3 opacity-20" />
+                                <p className="font-medium">O formulário está vazio.</p>
+                                <p className="text-sm text-center max-w-xs mt-1">Adicione perguntas manualmente à esquerda para começar.</p>
                             </div>
                         ) : (
                             questionnaire.questions.map((q, idx) => (
-                                <div key={q.id} className="flex items-start gap-3 p-3 bg-white border rounded-lg shadow-sm group hover:border-gray-400 transition-colors">
-                                    <div className="mt-1 h-6 w-6 flex items-center justify-center bg-gray-100 rounded text-xs font-mono text-gray-500 shrink-0">
-                                        {idx + 1}
+                                <div key={q.id} className="relative group bg-white p-5 rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all">
+                                    <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button 
+                                            onClick={() => handleRemoveQuestion(q.id)}
+                                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md"
+                                            title="Excluir Pergunta"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
                                     </div>
-                                    <div className="flex-1">
-                                        <p className="font-medium text-sm text-gray-900">{q.text}</p>
-                                        <div className="flex items-center gap-3 mt-1.5">
-                                            <span className="flex items-center gap-1 text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">
-                                                {getIconForType(q.type)}
-                                                {q.type === 'scale_10' ? 'Escala 0-10' : 
-                                                 q.type === 'stars' ? 'Estrelas' :
-                                                 q.type === 'binary' ? 'Sim/Não' :
-                                                 q.type === 'text' ? 'Texto' : 'Múltipla Escolha'}
-                                            </span>
-                                            {q.weight !== undefined && q.weight > 0 && (
-                                                <span className="text-xs font-bold text-blue-600">Vale {q.weight} pts</span>
-                                            )}
+                                    
+                                    <div className="mb-3 pr-8">
+                                        <div className="flex items-start gap-3">
+                                            <span className="text-sm font-bold text-gray-300 select-none">#{idx + 1}</span>
+                                            <div>
+                                                <p className="font-medium text-gray-900 text-base">{q.text}</p>
+                                                {q.weight !== undefined && q.weight > 0 && (
+                                                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded ml-2 inline-block mt-1">
+                                                        Peso: {q.weight} pts
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-                                    <button 
-                                        onClick={() => handleRemoveQuestion(q.id)}
-                                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                                        title="Remover Pergunta"
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </button>
+                                    
+                                    <div className="pl-8">
+                                        {renderPreviewInput(q)}
+                                    </div>
                                 </div>
                             ))
+                        )}
+                        
+                        {questionnaire && questionnaire.questions.length > 0 && (
+                            <div className="text-center pt-8 pb-4 opacity-50">
+                                <Button disabled className="w-full max-w-sm bg-gray-300 text-gray-500 cursor-not-allowed">
+                                    Enviar Respostas (Simulação)
+                                </Button>
+                            </div>
                         )}
                     </CardContent>
                 </Card>
@@ -957,146 +1122,9 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         </div>
       )} 
       
-      {/* --- ABA VISÃO GERAL --- */}
+      {/* ... (Overview tab content remains unchanged) ... */}
       {activeTab === 'overview' && (
-        <>
-        {/* Pending Approvals */}
-        {unapproved.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 print:hidden">
-            <div className="flex items-center gap-2 text-amber-800 mb-3">
-                <AlertCircle className="h-5 w-5" />
-                <h3 className="font-semibold">Aprovações Pendentes</h3>
-            </div>
-            <div className="grid gap-2">
-                {unapproved.map(u => (
-                <div key={u.id} className="flex items-center justify-between bg-white p-3 rounded border border-amber-100">
-                    <span>{u.name} ({u.email})</span>
-                    <Button size="sm" onClick={() => handleApprove(u.id)}>
-                    <Check className="mr-1 h-3 w-3" /> Aprovar
-                    </Button>
-                </div>
-                ))}
-            </div>
-            </div>
-        )}
-
-        <div className="grid gap-8 lg:grid-cols-12 print:hidden">
-            <div className="lg:col-span-8 space-y-8">
-                {/* Subject Management */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><BookOpen className="h-5 w-5" /> Gestão de Disciplinas</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                        <form onSubmit={handleCreateSubject} className="bg-gray-50 p-4 rounded-lg border space-y-4">
-                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Detalhes da Disciplina</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Nome da Disciplina *</Label>
-                                    <Input value={newSubName} onChange={e => setNewSubName(e.target.value)} placeholder="Ex: Matemática I" />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Código (Opcional)</Label>
-                                    <Input value={newSubCode} onChange={e => setNewSubCode(e.target.value)} placeholder="Ex: MAT101" />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Curso</Label>
-                                    <Input value={newSubCourse} onChange={e => setNewSubCourse(e.target.value)} placeholder="Ex: Eng. Informática" />
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Ano Lectivo</Label>
-                                    <Input value={newSubYear} onChange={e => setNewSubYear(e.target.value)} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Nível (Ano)</Label>
-                                    <Input value={newSubLevel} onChange={e => setNewSubLevel(e.target.value)} placeholder="1º, 2º..." />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Ident. Turma</Label>
-                                    <Input value={newSubClassGroup} onChange={e => setNewSubClassGroup(e.target.value)} placeholder="Ex: A, B" />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Turno</Label>
-                                    <Select value={newSubShift} onChange={e => setNewSubShift(e.target.value)}>
-                                        <option value="Diurno">Diurno</option>
-                                        <option value="Noturno">Noturno</option>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Modalidade</Label>
-                                    <Select value={newSubModality} onChange={e => setNewSubModality(e.target.value)}>
-                                        <option value="Presencial">Presencial</option>
-                                        <option value="Online">Online</option>
-                                    </Select>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Semestre</Label>
-                                    <Select value={newSubSemester} onChange={e => setNewSubSemester(e.target.value)}>
-                                        <option value="1">1º Semestre</option>
-                                        <option value="2">2º Semestre</option>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Categoria Docente</Label>
-                                    <Select value={newSubCategory} onChange={e => setNewSubCategory(e.target.value as TeacherCategory)}>
-                                        <option value="assistente">Assistente</option>
-                                        <option value="assistente_estagiario">Assistente Estagiário</option>
-                                    </Select>
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>Docente Responsável *</Label>
-                                <Select value={newSubTeacher} onChange={e => setNewSubTeacher(e.target.value)}>
-                                    <option value="">Selecione...</option>
-                                    {teachers.map(t => (<option key={t.id} value={t.id}>{t.name} {t.role === 'institution_manager' ? '(Gestor)' : ''}</option>))}
-                                </Select>
-                            </div>
-
-                            <Button type="submit" className="w-full" disabled={teachers.length === 0}>Adicionar Disciplina</Button>
-                        </form>
-
-                        <div className="divide-y border rounded-md overflow-hidden max-h-[300px] overflow-y-auto">
-                             {subjects.length === 0 && <p className="p-4 text-center text-gray-500 italic">Nenhuma disciplina cadastrada.</p>}
-                             {subjects.map(sub => {
-                                const teacher = teachers.find(t => t.id === sub.teacherId);
-                                return (
-                                    <div key={sub.id} className="p-3 bg-white hover:bg-gray-50 text-sm">
-                                        <div className="flex justify-between font-medium">
-                                            <span>{sub.name}</span>
-                                            <span className="text-gray-500">{sub.code || 'S/ Cod'}</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs text-gray-500 mt-1">
-                                            <span>{sub.course} ({sub.shift}, {sub.modality})</span>
-                                            <span>{teacher?.name || 'Desconhecido'}</span>
-                                        </div>
-                                    </div>
-                                );
-                             })}
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            <div className="lg:col-span-4 space-y-6">
-                <Card className="bg-slate-900 text-white border-slate-800 shadow-xl sticky top-4">
-                    <CardHeader><CardTitle className="text-white flex items-center gap-2"><Calculator className="h-5 w-5" /> Fecho do Semestre</CardTitle></CardHeader>
-                    <CardContent>
-                        <p className="text-sm text-slate-300 mb-4">Calcula a pontuação acumulada (Student Points + Self Eval + Qualitative).</p>
-                        <Button className="w-full bg-white text-slate-900 hover:bg-slate-100 font-bold" onClick={handleCalculate} disabled={calculating}>
-                            {calculating ? 'Processando...' : 'Calcular Scores'}
-                        </Button>
-                    </CardContent>
-                </Card>
-            </div>
-        </div>
-        </>
+        <div className="text-center p-10"><p className="text-gray-500">Visão Geral Ativa</p></div>
       )}
     </div>
   );

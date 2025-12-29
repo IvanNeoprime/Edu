@@ -160,8 +160,8 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
   // Pie Chart Data
   const pieData = stats ? [
       { name: 'Auto-Avaliação', value: stats.selfEvalScore, fill: '#8b5cf6' },
-      { name: 'Alunos', value: stats.studentScore, fill: '#3b82f6' },
-      { name: 'Gestor', value: stats.institutionalScore, fill: '#10b981' }
+      { name: 'Aval. Estudante', value: stats.studentScore, fill: '#3b82f6' },
+      { name: 'Aval. Qualitativa', value: stats.institutionalScore, fill: '#10b981' }
   ] : [];
 
   return (
@@ -208,12 +208,12 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Alunos (Ponderada)</CardTitle>
+                    <CardTitle className="text-sm font-medium">Aval. Estudante</CardTitle>
                     <div className="h-4 w-4 text-blue-600">🎓</div>
                     </CardHeader>
                     <CardContent>
                     <div className="text-2xl font-bold">{stats.studentScore}</div>
-                    <p className="text-xs text-gray-500">Baseado em questionários</p>
+                    <p className="text-xs text-gray-500">Ponderada (Coeficiente aplicado)</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -228,12 +228,12 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Institucional</CardTitle>
+                    <CardTitle className="text-sm font-medium">Aval. Qualitativa</CardTitle>
                     <div className="h-4 w-4 text-green-600">🏛️</div>
                     </CardHeader>
                     <CardContent>
                     <div className="text-2xl font-bold">{stats.institutionalScore}</div>
-                    <p className="text-xs text-gray-500">Avaliação do Gestor</p>
+                    <p className="text-xs text-gray-500">Ponderada (Coeficiente aplicado)</p>
                     </CardContent>
                 </Card>
                 </div>
@@ -246,9 +246,9 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                         <CardContent className="h-[300px]">
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={[
-                                    { name: 'Alunos', value: stats.studentScore },
+                                    { name: 'Estudante', value: stats.studentScore },
                                     { name: 'Auto-Aval.', value: stats.selfEvalScore },
-                                    { name: 'Institucional', value: stats.institutionalScore },
+                                    { name: 'Qualitativa', value: stats.institutionalScore },
                                 ]}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                     <XAxis dataKey="name" />
@@ -438,14 +438,6 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                           </div>
                       </CardHeader>
                       <CardContent className="space-y-6">
-                           {availableSurvey.questionnaire.attachmentUrl && (
-                                <div className="p-4 bg-gray-50 border rounded-lg flex items-center justify-between">
-                                    <span className="text-sm font-medium">{availableSurvey.questionnaire.attachmentName}</span>
-                                    <Button variant="outline" size="sm" onClick={() => window.open(availableSurvey.questionnaire.attachmentUrl)}>
-                                        <Download className="mr-2 h-4 w-4" /> Baixar Anexo
-                                    </Button>
-                                </div>
-                           )}
 
                            {availableSurvey.questionnaire.questions.map((q, idx) => (
                                <div key={q.id} className="space-y-2">

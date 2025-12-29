@@ -64,9 +64,6 @@ export interface Questionnaire {
   title: string;
   questions: Question[];
   active: boolean;
-  // Novos campos para upload
-  attachmentUrl?: string; // Base64 ou Link
-  attachmentName?: string;
   // Novo campo para definir público alvo
   targetRole?: 'student' | 'teacher'; 
 }

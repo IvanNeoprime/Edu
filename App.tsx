@@ -7,12 +7,13 @@ import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { ManagerDashboard } from './components/ManagerDashboard';
 import { TeacherDashboard } from './components/TeacherDashboard';
 import { StudentDashboard } from './components/StudentDashboard';
-import { GraduationCap, ShieldCheck, ArrowRight, UserPlus, LogIn, User as UserIcon } from 'lucide-react';
+import { GraduationCap, ShieldCheck, ArrowRight, UserPlus, LogIn, User as UserIcon, Database, HardDrive } from 'lucide-react';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [appLoading, setAppLoading] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [systemMode, setSystemMode] = useState<string>('local');
   
   // Auth State
   const [email, setEmail] = useState(''); 
@@ -22,7 +23,8 @@ export default function App() {
       const init = async () => {
           try {
             // 1. Lightweight Health Check (Safe to fail)
-            await BackendService.checkHealth();
+            const health = await BackendService.checkHealth();
+            setSystemMode(health.mode);
           
             // 2. Load Session (from LocalStorage/Cache)
             try {
@@ -81,7 +83,16 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4 animate-fade-in">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4 animate-fade-in relative">
+        {/* Storage Indicator */}
+        <div className="absolute top-4 right-4 text-xs font-mono text-gray-400 flex items-center gap-1.5 bg-white px-3 py-1 rounded-full border shadow-sm">
+            {systemMode === 'supabase' ? (
+                <><Database size={12} className="text-green-500" /> Online (DB)</>
+            ) : (
+                <><HardDrive size={12} className="text-orange-500" /> Modo Local (Offline)</>
+            )}
+        </div>
+
         <div className="mb-8 text-center">
             <div className="mx-auto h-16 w-16 bg-black text-white rounded-2xl flex items-center justify-center mb-4 shadow-xl">
                 <GraduationCap size={32} />
@@ -146,6 +157,15 @@ export default function App() {
                       <span className="font-bold text-lg hidden sm:block tracking-tight">AvaliaDocente MZ</span>
                   </div>
                   <div className="flex items-center gap-4">
+                      {/* Storage Badge in Navbar */}
+                      <div className="hidden md:flex items-center gap-1.5 px-3 py-1 bg-gray-100 rounded-full text-xs font-medium text-gray-500 border">
+                          {systemMode === 'supabase' ? (
+                              <><Database size={12} className="text-green-600" /> Conectado</>
+                          ) : (
+                              <><HardDrive size={12} className="text-orange-500" /> Armazenamento Local</>
+                          )}
+                      </div>
+
                       <div className="flex items-center gap-3">
                           <div className="h-9 w-9 rounded-full bg-gray-200 overflow-hidden border border-gray-300">
                               {user.avatar ? <img src={user.avatar} className="h-full w-full object-cover" /> : <UserIcon className="h-5 w-5 m-2 text-gray-500" />}

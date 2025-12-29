@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { User, Questionnaire, Question } from '../types';
 import { BackendService, SubjectWithTeacher } from '../services/backend';
 import { Card, CardContent, CardHeader, CardTitle, Button, Select, Label, Input } from './ui';
-import { Lock, Send, CheckCircle2, AlertCircle, Star, Download, FileText, User as UserIcon, BookOpen, PieChart as PieChartIcon, Check } from 'lucide-react';
+import { Lock, Send, CheckCircle2, AlertCircle, Star, User as UserIcon, BookOpen, PieChart as PieChartIcon, Check } from 'lucide-react';
 import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface Props {
@@ -340,30 +340,6 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                     {selectedSubjectId && (
                         <div className="space-y-6 animate-in slide-in-from-bottom-4 fade-in duration-500">
                             
-                            {/* Attachment Download Section */}
-                            {data.questionnaire.attachmentUrl && (
-                                <Card className="border-blue-200 bg-blue-50/20">
-                                    <CardContent className="flex items-center justify-between p-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="bg-blue-100 p-2 rounded-lg">
-                                                <FileText className="h-6 w-6 text-blue-700" />
-                                            </div>
-                                            <div>
-                                                <p className="font-semibold text-gray-900">Ficha de Avaliação (Anexo)</p>
-                                                <p className="text-xs text-gray-500">{data.questionnaire.attachmentName}</p>
-                                            </div>
-                                        </div>
-                                        <Button 
-                                            onClick={() => window.open(data.questionnaire.attachmentUrl)}
-                                            variant="outline"
-                                            className="border-blue-300 text-blue-700 hover:bg-blue-50"
-                                        >
-                                            <Download className="mr-2 h-4 w-4" /> Baixar Documento
-                                        </Button>
-                                    </CardContent>
-                                </Card>
-                            )}
-
                             {data.questionnaire.questions.map((q, idx) => (
                                 <Card key={q.id} className="overflow-visible">
                                     <CardContent className="pt-6">

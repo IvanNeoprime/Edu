@@ -1,153 +1,75 @@
 
 # 📘 Documentação Técnica: AvaliaDocente MZ
 
-## 1. Visão Geral do Sistema
+## 1. Arquitetura do Sistema
 
-O **AvaliaDocente MZ** é uma plataforma web progressiva (PWA) desenvolvida para gerir a avaliação de desempenho docente em universidades de Moçambique. O sistema foi desenhado para ser resiliente, funcionando tanto em modo offline (Local) quanto conectado à nuvem (Firebase).
+O **AvaliaDocente MZ** adota uma arquitetura de **Camada de Serviço Abstrata** (`BackendService`) que permite ao frontend operar independentemente da fonte de dados.
 
-### Arquitetura
-*   **Frontend:** React 18 + TypeScript + Vite.
-*   **UI Framework:** Tailwind CSS + Shadcn/UI (Conceito) + Lucide Icons.
-*   **Backend (Híbrido):**
-    *   **Modo Local (Padrão):** Utiliza `LocalStorage` para simular um banco de dados completo. Ideal para testes, demonstrações e ambientes sem internet.
-    *   **Modo Nuvem (Produção):** Integração nativa com **Google Firebase** (Firestore + Authentication).
+### 1.1 Camada de Serviço (`services/backend.ts`)
+O sistema decide dinamicamente qual implementação de backend utilizar no momento da inicialização:
 
----
-
-## 2. Configuração do Ambiente de Desenvolvimento (Local)
-
-Para rodar o projeto no seu computador:
-
-### Pré-requisitos
-*   Node.js (Versão 18 ou superior).
-*   NPM (Gerenciador de pacotes).
-
-### Passo a Passo
-1.  **Baixar o Código:**
-    Extraia os arquivos do projeto para uma pasta.
-
-2.  **Instalar Dependências:**
-    Abra o terminal na pasta do projeto e execute:
-    ```bash
-    npm install
-    ```
-
-3.  **Rodar o Servidor:**
-    Inicie o ambiente de desenvolvimento:
-    ```bash
-    npm run dev
-    ```
-    O site estará disponível em `http://localhost:5173`.
+1.  **SupabaseBackend (Produção/Online):**
+    *   Utiliza a SDK `@supabase/supabase-js`.
+    *   Conecta-se a um banco PostgreSQL hospedado.
+    *   Implementa estratégias de **Selective Fetching** e **Batch Processing** para performance.
+    
+2.  **MockBackend (Desenvolvimento/Offline):**
+    *   Utiliza `LocalStorage` do navegador.
+    *   Simula latência de rede.
+    *   Ideal para testes rápidos e demonstrações sem infraestrutura.
 
 ---
 
-## 3. Setup do Backend (Configurando o Firebase)
+## 2. Robustez e Escalabilidade
 
-Por padrão, o sistema roda no modo "Local". Para ativar a sincronização em nuvem real, siga este guia para configurar o Firebase.
+O sistema foi refatorado para garantir alta disponibilidade e integridade de dados. As seguintes decisões técnicas foram tomadas:
 
-### Passo 1: Criar Projeto no Firebase
-1.  Acesse [console.firebase.google.com](https://console.firebase.google.com).
-2.  Clique em **"Adicionar projeto"**.
-3.  Nomeie como `AvaliaDocente` e continue (pode desativar o Google Analytics).
+### 2.1 Otimização de Consultas (Performance)
+*   **Problema:** Em sistemas universitários, tabelas de `users` (alunos) e `responses` (avaliações) crescem exponencialmente.
+*   **Solução:**
+    *   **Evitamos `SELECT *`:** O backend busca apenas colunas necessárias (ex: `select('id, name')`) ao listar docentes para os alunos.
+    *   **Filtros no Banco:** Toda filtragem é feita via SQL (`.eq()`, `.in()`) e não no JavaScript do cliente, economizando memória e banda.
+    *   **Batch Fetching:** Ao calcular notas, buscamos dados apenas dos IDs relevantes daquela instituição, usando cláusulas `.in('id', [ids])`, limitando o escopo de busca.
 
-### Passo 2: Ativar Autenticação
-1.  No menu lateral, clique em **Criação** > **Authentication**.
-2.  Clique em **"Vamos começar"**.
-3.  Na aba "Sign-in method", selecione **Email/Senha**.
-4.  Ative a opção **"Ativar"** e clique em **Salvar**.
+### 2.2 Tratamento de Erros (Confiabilidade)
+*   Todas as chamadas externas são encapsuladas em blocos `try/catch`.
+*   O cliente Supabase verifica a conexão (`checkHealth`) antes de tentar operações complexas.
+*   Falhas na inicialização do Supabase degradam graciosamente para o Modo Local ou exibem alertas claros, impedindo a "Tela Branca da Morte".
 
-### Passo 3: Criar Banco de Dados (Firestore)
-1.  No menu lateral, clique em **Criação** > **Firestore Database**.
-2.  Clique em **"Criar banco de dados"**.
-3.  Escolha a localização (pode manter a padrão).
-4.  **Importante:** Escolha **"Iniciar no modo de teste"** (permite leitura/escrita inicial sem bloqueios complexos de segurança).
-5.  Clique em **Criar**.
+### 2.3 Integridade de Dados
+*   O sistema utiliza UUIDs para chaves primárias, prevenindo colisões em sistemas distribuídos.
+*   O cálculo de notas (`calculateScores`) é realizado em batch e utiliza `upsert` (inserir ou atualizar) para garantir que re-cálculos não dupliquem registros.
 
-### Passo 4: Obter as Chaves de Acesso
-1.  No painel do Firebase, clique na **Engrenagem** (Configurações do Projeto) no topo esquerdo.
-2.  Role a página até o final, na seção **"Seus aplicativos"**.
-3.  Clique no ícone **Web (</>)**.
-4.  Dê um nome (ex: "Web App") e clique em "Registrar app".
-5.  O Firebase mostrará um código chamado `firebaseConfig`. Copie o objeto que se parece com isso:
-    ```javascript
-    const firebaseConfig = {
-      apiKey: "AIzaSy...",
-      authDomain: "...",
-      projectId: "...",
-      // ... outros campos
-    };
-    ```
+---
 
-### Passo 5: Conectar o Código
-1.  Abra o arquivo do projeto: `services/backend.ts`.
-2.  Localize a constante `YOUR_FIREBASE_CONFIG` (nas primeiras linhas).
-3.  Cole o objeto copiado do Firebase ali.
+## 3. Variáveis de Ambiente
 
-**Exemplo:**
-```typescript
-const YOUR_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDsf...",
-  authDomain: "avaliadocente.firebaseapp.com",
-  projectId: "avaliadocente",
-  storageBucket: "avaliadocente.appspot.com",
-  messagingSenderId: "832...",
-  appId: "1:832...",
-  measurementId: "G-..."
-};
+Para ativar o modo de produção (Supabase), configure as seguintes variáveis no seu ambiente de hospedagem (Vercel/Netlify) ou arquivo `.env`:
+
+| Variável | Descrição | Obrigatório? |
+| :--- | :--- | :--- |
+| `SUPABASE_URL` | URL do projeto (ex: `https://xyz.supabase.co`) | Sim (Prod) |
+| `SUPABASE_ANON_KEY` | Chave pública anônima do Supabase | Sim (Prod) |
+
+Se `SUPABASE_URL` não for fornecida, o sistema iniciará automaticamente em modo **Mock (Local)**.
+
+---
+
+## 4. Estrutura de Pastas
+
+*   `src/components/`: Componentes React (Dashboards por perfil).
+*   `src/components/ui.tsx`: Biblioteca de componentes reutilizáveis (Design System minimalista).
+*   `src/services/backend.ts`: Lógica de negócios e abstração do banco de dados.
+*   `src/types.ts`: Definições de tipagem TypeScript compartilhadas.
+
+---
+
+## 5. Deploy
+
+O projeto é compatível com qualquer host de arquivos estáticos (Vercel, Netlify, Cloudflare Pages).
+
+**Comando de Build:**
+```bash
+npm run build
 ```
-4.  Salve o arquivo. O sistema detectará a configuração e passará a usar a nuvem automaticamente.
-
----
-
-## 4. Regras de Negócio e Algoritmo de Cálculo
-
-O sistema implementa rigorosamente o Regulamento Acadêmico fornecido (PDF).
-
-### Fórmula de Score Combinado
-A nota final do docente (0 a 100) é composta por três pilares:
-
-1.  **Auto-Avaliação (Peso 80%)**
-    *   Preenchida pelo próprio docente na aba "Auto-Avaliação".
-    *   Soma de indicadores: Volume de Docência (35) + Supervisão (30) + Investigação (30) + Extensão (10) + Gestão (10).
-    *   Valor máximo: 100 pontos (limitado matematicamente).
-
-2.  **Avaliação dos Estudantes (Peso 12%)**
-    *   Questionário preenchido pelos alunos.
-    *   Perguntas do tipo "Binário" (Sim/Não), "Estrelas" ou "Escala".
-    *   Perguntas de Texto ou Múltipla Escolha **não** somam pontos (são apenas feedback).
-    *   Cálculo: `(Soma dos Pontos Obtidos / Soma dos Pesos Possíveis) * 100`.
-
-3.  **Avaliação Qualitativa / Institucional (Peso 8%)**
-    *   Preenchida pelo Gestor Institucional.
-    *   Critérios: Cumprimento de Prazos (0-10) + Qualidade do Trabalho (0-10).
-    *   Cálculo: `(Soma / 20) * 100`.
-
-**Fórmula Final no Código (`calculateScores`):**
-```typescript
-FinalScore = (AutoEval * 0.80) + (StudentEval * 0.12) + (QualitativeEval * 0.08)
-```
-
----
-
-## 5. Guia de Deploy (Publicação)
-
-Recomendamos o uso do **Vercel** pela facilidade e compatibilidade com Vite.
-
-1.  Crie uma conta em [vercel.com](https://vercel.com).
-2.  Instale a CLI do Vercel ou conecte seu GitHub.
-3.  Se usar GitHub:
-    *   Suba este código para um repositório.
-    *   No Vercel, clique em "New Project" e importe o repositório.
-    *   O Vercel detectará `Vite` automaticamente.
-    *   Clique em **Deploy**.
-4.  Se usar CLI:
-    *   No terminal, rode `npm install -g vercel`.
-    *   Rode `vercel`.
-    *   Responda "Yes" para as configurações padrão.
-
-**Nota sobre Deploy:** Certifique-se de que a configuração do Firebase (`YOUR_FIREBASE_CONFIG`) está preenchida no arquivo `backend.ts` antes de fazer o deploy, caso queira usar o banco de dados online em produção.
-
-## 🔑 Credenciais de Acesso (Super Admin)
-
-*   **Email:** `ivandromaoze138@gmail.com`
-*   **Senha:** `24191978a`
+O resultado será gerado na pasta `dist/`.

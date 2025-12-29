@@ -1,100 +1,135 @@
 
-# 🚀 Guia de Configuração: Appwrite Backend
+# 🐘 Guia de Banco de Dados: Supabase
 
-Para que o sistema funcione em modo Cloud com Appwrite, siga estes passos no console oficial.
+> **Nota:** Este arquivo substitui a antiga documentação do Appwrite. Recomendamos renomear este arquivo para `DOCUMENTACAO_SUPABASE.md`.
 
-## 1. Criar Projeto
-1. Acesse [cloud.appwrite.io](https://cloud.appwrite.io).
-2. Clique em **Create Project**.
-3. Nome: `AvaliaDocente`.
-4. Copie o **Project ID** (ex: `65d4...`). Você vai precisar dele.
+O **AvaliaDocente MZ** utiliza o Supabase (PostgreSQL) para persistência de dados em produção. Abaixo está o esquema completo necessário para o funcionamento do sistema.
 
-## 2. Criar Banco de Dados
-1. No menu lateral, vá em **Databases**.
-2. Clique em **Create Database**.
-3. Name: `AvaliaDocente DB`.
-4. ID: `avaliadocente_db`.
+## 1. Configuração Inicial
 
-## 3. Criar Coleções (Tabelas)
-Dentro do banco `avaliadocente_db`, crie as seguintes Collections. Para cada uma, você deve definir os **Attributes** (Colunas).
+1.  Crie um projeto em [supabase.com](https://supabase.com).
+2.  Obtenha a `Project URL` e a `anon public key`.
+3.  Configure-as no código ou variáveis de ambiente.
 
-### A. Users (`users`)
-*   `email` (Email, required)
-*   `name` (String, 128, required)
-*   `role` (String, 32, required)
-*   `institutionId` (String, 64, required)
-*   `approved` (Boolean, required)
+## 2. Schema SQL (Criação de Tabelas)
 
-### B. Institutions (`institutions`)
-*   `name` (String, 128, required)
-*   `code` (String, 32, required)
-*   `managerEmails` (String, Array, required)
-*   `inviteCode` (String, 32, required)
-*   `createdAt` (String, 64, required)
+Copie e cole o seguinte código no **SQL Editor** do seu painel Supabase para criar toda a estrutura:
 
-### C. Subjects (`subjects`)
-*   `name` (String, 128, required)
-*   `code` (String, 32, required)
-*   `institutionId` (String, 64, required)
-*   `teacherId` (String, 64, required)
+```sql
+-- 1. Extensão para gerar IDs únicos
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-### D. Questionnaires (`questionnaires`)
-*   `institutionId` (String, 64, required)
-*   `title` (String, 128, required)
-*   `active` (Boolean, required)
-*   `questions` (String, 10000, required) -> *Guardará JSON*
+-- 2. Tabela de Usuários (Metadados)
+-- Nota: Em produção, recomenda-se sincronizar esta tabela com auth.users via Triggers
+CREATE TABLE users (
+    id TEXT PRIMARY KEY, -- Pode ser UUID ou String customizada
+    email TEXT NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('super_admin', 'institution_manager', 'teacher', 'student')),
+    "institutionId" TEXT,
+    approved BOOLEAN DEFAULT FALSE,
+    password TEXT, -- ⚠️ Hashing deve ser tratado na aplicação ou usar Supabase Auth
+    avatar TEXT,
+    course TEXT,
+    level TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
 
-### E. Responses (`responses`)
-*   `questionnaireId` (String, 64, required)
-*   `teacherId` (String, 64, required)
-*   `subjectId` (String, 64, required)
-*   `answers` (String, 10000, required) -> *Guardará JSON*
-*   `timestamp` (String, 64, required)
+-- 3. Tabela de Instituições
+CREATE TABLE institutions (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    code TEXT NOT NULL,
+    "managerEmails" TEXT[], -- Array de strings
+    "inviteCode" TEXT,
+    logo TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
 
-### F. Self Evaluations (`self_evals`)
-*   `teacherId` (String, 64, required)
-*   `indicators` (String, 5000, required) -> *Guardará JSON*
+-- 4. Tabela de Disciplinas
+CREATE TABLE subjects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    code TEXT,
+    "institutionId" TEXT NOT NULL,
+    "teacherId" TEXT NOT NULL,
+    "teacherCategory" TEXT,
+    "academicYear" TEXT,
+    level TEXT,
+    semester TEXT,
+    course TEXT,
+    "classGroup" TEXT,
+    shift TEXT,
+    modality TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
 
-### G. Qualitative Evals (`qualitative_evals`)
-*   `teacherId` (String, 64, required)
-*   `institutionId` (String, 64, required)
-*   `deadlineCompliance` (Integer, min 0, max 10)
-*   `workQuality` (Integer, min 0, max 10)
+-- 5. Tabela de Questionários
+CREATE TABLE questionnaires (
+    id TEXT PRIMARY KEY,
+    "institutionId" TEXT NOT NULL,
+    title TEXT NOT NULL,
+    active BOOLEAN DEFAULT TRUE,
+    questions JSONB, -- Armazena a estrutura das perguntas
+    "targetRole" TEXT DEFAULT 'student',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
 
-### H. Scores (`scores`)
-*   `teacherId` (String, 64, required)
-*   `studentScore` (Float, required)
-*   `institutionalScore` (Float, required)
-*   `finalScore` (Float, required)
-*   `lastCalculated` (String, 64, required)
+-- 6. Tabela de Respostas (Estudantes)
+CREATE TABLE responses (
+    id TEXT PRIMARY KEY,
+    "questionnaireId" TEXT NOT NULL,
+    "teacherId" TEXT,
+    "subjectId" TEXT,
+    answers JSONB, -- Armazena array de {questionId, value}
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
 
----
+-- 7. Tabela de Auto-Avaliação (Docentes)
+CREATE TABLE self_evals (
+    "teacherId" TEXT PRIMARY KEY,
+    header JSONB,
+    answers JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
 
-## 4. Índices (Indexes)
-Para permitir filtros (Queries), vá na aba **Indexes** de cada coleção e crie:
+-- 8. Tabela de Avaliação Qualitativa (Gestores)
+CREATE TABLE qualitative_evals (
+    "teacherId" TEXT PRIMARY KEY,
+    "institutionId" TEXT,
+    "deadlineCompliance" INTEGER,
+    "workQuality" INTEGER,
+    score FLOAT,
+    "evaluatedAt" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
 
-1.  **Collection `users`:**
-    *   Key: `email_idx` | Type: `Key` | Attribute: `email`
-    *   Key: `role_idx` | Type: `Key` | Attribute: `role`
-    *   Key: `inst_idx` | Type: `Key` | Attribute: `institutionId`
+-- 9. Tabela de Scores Finais (Relatórios)
+CREATE TABLE scores (
+    "teacherId" TEXT PRIMARY KEY,
+    "studentScore" FLOAT,
+    "institutionalScore" FLOAT,
+    "selfEvalScore" FLOAT,
+    "finalScore" FLOAT,
+    "lastCalculated" TIMESTAMP WITH TIME ZONE
+);
+```
 
-2.  **Collection `subjects`:**
-    *   Key: `inst_idx` | Type: `Key` | Attribute: `institutionId`
+## 3. Segurança (Row Level Security - RLS)
 
-3.  **Collection `questionnaires`:**
-    *   Key: `inst_idx` | Type: `Key` | Attribute: `institutionId`
+Para proteger os dados em produção, você deve habilitar o RLS. Abaixo estão exemplos de políticas sugeridas:
 
-4.  **Collection `responses`:**
-    *   Key: `teacher_idx` | Type: `Key` | Attribute: `teacherId`
+1.  **Habilitar RLS:**
+    Execute `ALTER TABLE users ENABLE ROW LEVEL SECURITY;` (e para todas as outras tabelas).
 
----
+2.  **Políticas Básicas (Exemplos):**
 
-## 5. Permissões (Settings)
-Para testes rápidos (Modo Desenvolvimento):
-1. Em cada Coleção, vá em **Settings**.
-2. Em **Permissions**, adicione o Role `Any`.
-3. Marque: `Create`, `Read`, `Update`, `Delete`.
-4. *Nota: Em produção real, você deve restringir isso.*
+    *   *Leitura Pública de Instituições:*
+        `CREATE POLICY "Instituições são públicas" ON institutions FOR SELECT USING (true);`
 
-## 6. Atualizar Código
-Vá no arquivo `services/backend.ts` e preencha o objeto `YOUR_APPWRITE_CONFIG` com seu Project ID e Database ID.
+    *   *Docentes veem apenas seus próprios dados:*
+        `CREATE POLICY "Docente vê seus dados" ON self_evals FOR ALL USING (auth.uid()::text = "teacherId");`
+
+    *   *Gestores veem tudo da sua instituição:*
+        `CREATE POLICY "Gestor vê dados da inst" ON users FOR SELECT USING ("institutionId" IN (SELECT "institutionId" FROM users WHERE id = auth.uid()::text AND role = 'institution_manager'));`
+
+> **Aviso:** O código atual utiliza uma tabela `users` personalizada para facilitar a migração do sistema legado. Em uma implementação definitiva, recomenda-se integrar a tabela `auth.users` nativa do Supabase com a tabela `public.users` através de Triggers PostgreSQL.
