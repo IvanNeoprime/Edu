@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { User, Questionnaire, Question } from '../types';
 import { BackendService, SubjectWithTeacher } from '../services/backend';
 import { Card, CardContent, CardHeader, CardTitle, Button, Select, Label, Input } from './ui';
-import { Lock, Send, CheckCircle2, AlertCircle, Star, User as UserIcon, BookOpen, PieChart as PieChartIcon, Check } from 'lucide-react';
+import { Lock, Send, CheckCircle2, AlertCircle, Star, User as UserIcon, BookOpen, PieChart as PieChartIcon, Check, CalendarClock } from 'lucide-react';
 import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface Props {
@@ -39,26 +39,45 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
     }
   }, [user.institutionId, user.id]);
 
-  // Extrair lista única de docentes disponíveis
-  const uniqueTeachers = useMemo(() => {
+  // Filtrar disciplinas disponíveis para o aluno com base nos Turnos e Turmas
+  const mySubjects = useMemo(() => {
       if (!data) return [];
+      return data.subjects.filter(s => {
+          // 1. Verificação de Turno: O turno da disciplina deve estar na lista de turnos do aluno
+          const shiftMatch = s.shift && user.shifts ? user.shifts.includes(s.shift) : true;
+          
+          // 2. Verificação de Turma: Se a disciplina tem turma (ex: A), o aluno deve pertencer a essa turma.
+          // Se a disciplina não tem turma definida, é visível para todos do turno.
+          const classMatch = s.classGroup && user.classGroups 
+                ? user.classGroups.includes(s.classGroup) 
+                : true;
+
+          // 3. Verificação de Curso
+          const courseMatch = user.course && s.course ? s.course.toLowerCase().includes(user.course.toLowerCase()) || user.course.toLowerCase().includes(s.course.toLowerCase()) : true;
+          
+          return shiftMatch && classMatch && courseMatch;
+      });
+  }, [data, user.shifts, user.classGroups, user.course]);
+
+  // Extrair lista única de docentes disponíveis baseada nas disciplinas FILTRADAS
+  const uniqueTeachers = useMemo(() => {
       const seen = new Set();
       const teachers: { id: string, name: string }[] = [];
       
-      data.subjects.forEach(s => {
+      mySubjects.forEach(s => {
           if (!seen.has(s.teacherId)) {
               seen.add(s.teacherId);
               teachers.push({ id: s.teacherId, name: s.teacherName });
           }
       });
       return teachers;
-  }, [data]);
+  }, [mySubjects]);
 
-  // Filtrar disciplinas baseadas no docente selecionado
-  const availableSubjects = useMemo(() => {
-      if (!data || !selectedTeacherId) return [];
-      return data.subjects.filter(s => s.teacherId === selectedTeacherId);
-  }, [data, selectedTeacherId]);
+  // Filtrar disciplinas do docente selecionado (dentro do subset já filtrado)
+  const availableSubjectsForTeacher = useMemo(() => {
+      if (!selectedTeacherId) return [];
+      return mySubjects.filter(s => s.teacherId === selectedTeacherId);
+  }, [mySubjects, selectedTeacherId]);
 
   const handleTeacherChange = (teacherId: string) => {
       setSelectedTeacherId(teacherId);
@@ -217,7 +236,19 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
       <header className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
             <h1 className="text-3xl font-bold text-gray-900">{data.questionnaire.title}</h1>
-            <p className="text-gray-500 mt-1">Avaliação anónima de desempenho docente</p>
+            <p className="text-gray-500 mt-1 flex items-center gap-2">
+                Avaliação anónima
+                {user.shifts && user.shifts.length > 0 && (
+                    <span className="text-xs bg-black text-white px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <CalendarClock size={12}/> {user.shifts.join(' + ')}
+                    </span>
+                )}
+                {user.classGroups && user.classGroups.length > 0 && (
+                    <span className="text-xs border px-2 py-0.5 rounded-full bg-white">
+                        Turmas: {user.classGroups.join(', ')}
+                    </span>
+                )}
+            </p>
         </div>
         <div className="flex bg-gray-100 p-1 rounded-lg">
             <button onClick={() => setActiveTab('survey')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'survey' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Avaliar</button>
@@ -293,6 +324,12 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                     <Card>
                         <CardHeader className="bg-gray-50 border-b pb-4">
                             <CardTitle className="text-base text-gray-700">Seleção de Avaliação</CardTitle>
+                            {uniqueTeachers.length === 0 && (
+                                <p className="text-xs text-orange-500 mt-1 flex items-center gap-1">
+                                    <AlertCircle size={12} />
+                                    Nenhuma disciplina encontrada compatível com seus turnos ({user.shifts?.join(', ') || 'N/A'}).
+                                </p>
+                            )}
                         </CardHeader>
                         <CardContent className="pt-6 space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -304,6 +341,7 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                                         value={selectedTeacherId} 
                                         onChange={e => handleTeacherChange(e.target.value)} 
                                         className="bg-white"
+                                        disabled={uniqueTeachers.length === 0}
                                     >
                                         <option value="">Escolha o docente...</option>
                                         {uniqueTeachers.map(t => (
@@ -323,12 +361,12 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                                         disabled={!selectedTeacherId}
                                     >
                                         <option value="">Escolha a disciplina...</option>
-                                        {availableSubjects.length === 0 && selectedTeacherId && (
-                                            <option disabled>Nenhuma disciplina encontrada</option>
+                                        {availableSubjectsForTeacher.length === 0 && selectedTeacherId && (
+                                            <option disabled>Sem disciplinas compatíveis</option>
                                         )}
-                                        {availableSubjects.map(s => (
+                                        {availableSubjectsForTeacher.map(s => (
                                             <option key={s.id} value={s.id}>
-                                                {s.name} ({s.code || 'S/C'}) - {s.course} - {s.shift} ({s.modality}) {s.classGroup ? `(Turma ${s.classGroup})` : ''}
+                                                {s.name} ({s.code || 'S/C'}) - {s.shift} {s.classGroup ? `(Turma ${s.classGroup})` : ''}
                                             </option>
                                         ))}
                                     </Select>

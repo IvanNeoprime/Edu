@@ -49,7 +49,7 @@ if (YOUR_SUPABASE_CONFIG.url && YOUR_SUPABASE_CONFIG.key) {
     console.warn("⚠️ Credenciais do Supabase não encontradas. O sistema rodará em modo LOCAL (LocalStorage).");
 }
 
-// --- PDF STANDARD QUESTIONNAIRE ---
+// --- PDF STANDARD QUESTIONNAIRE (STUDENTS) ---
 const PDF_STANDARD_QUESTIONS: Question[] = [
     { id: "651", text: "O docente apresentou o programa temático ou analítico da disciplina?", type: "binary", weight: 4 },
     { id: "652", text: "O docente apresentou os objetivos da disciplina?", type: "binary", weight: 3 },
@@ -61,6 +61,15 @@ const PDF_STANDARD_QUESTIONS: Question[] = [
     { id: "751", text: "O docente avaliou os estudantes dentro dos prazos?", type: "binary", weight: 4 },
     { id: "752", text: "O estudante teve oportunidade de ver seus resultados depois de corrigidos?", type: "binary", weight: 2 },
     { id: "753", text: "O docente publicou os resultados da avaliação dentro dos prazos estabelecidos?", type: "binary", weight: 2 }
+];
+
+// --- STANDARD SURVEY (TEACHERS - INSTITUTIONAL) ---
+const TEACHER_STANDARD_QUESTIONS: Question[] = [
+    { id: "inst_01", text: "As condições das salas de aula (iluminação, ventilação, mobiliário) são adequadas?", type: "scale_10", weight: 0 },
+    { id: "inst_02", text: "Os recursos didáticos e tecnológicos disponíveis atendem às necessidades de ensino?", type: "scale_10", weight: 0 },
+    { id: "inst_03", text: "A comunicação com a direção pedagógica/administrativa é eficiente?", type: "stars", weight: 0 },
+    { id: "inst_04", text: "Existe apoio institucional para atividades de investigação e extensão?", type: "binary", weight: 0 },
+    { id: "inst_05", text: "O calendário académico foi cumprido rigorosamente pela instituição?", type: "binary", weight: 0 }
 ];
 
 // --- CONSTANTS & HELPERS ---
@@ -106,8 +115,8 @@ const initializeSeedData = () => {
         const demoUsers: User[] = [
             { id: 'u_super_ivan', email: SUPER_ADMIN_EMAIL, name: 'Super Admin Ivan', role: UserRole.SUPER_ADMIN, approved: true },
             { id: 'u_mgr_demo', email: 'gestor@demo.ac.mz', name: 'Gestor Modelo', role: UserRole.INSTITUTION_MANAGER, institutionId: demoInstId, approved: true },
-            { id: 'u_tchr_demo', email: 'docente@demo.ac.mz', name: 'Prof. Carlos Teste', role: UserRole.TEACHER, institutionId: demoInstId, approved: true },
-            { id: 'u_std_demo', email: 'aluno@demo.ac.mz', name: 'Aluno Exemplo', role: UserRole.STUDENT, institutionId: demoInstId, approved: true, course: 'Eng. Informática', level: '1' }
+            { id: 'u_tchr_demo', email: 'docente@demo.ac.mz', name: 'Prof. Carlos Teste', role: UserRole.TEACHER, institutionId: demoInstId, approved: true, category: 'assistente' },
+            { id: 'u_std_demo', email: 'aluno@demo.ac.mz', name: 'Aluno Exemplo', role: UserRole.STUDENT, institutionId: demoInstId, approved: true, course: 'Eng. Informática', level: '1', shifts: ['Diurno', 'Noturno'], classGroups: ['A', 'B'] }
         ];
         (demoUsers[1] as any).password = '123456';
         (demoUsers[2] as any).password = '123456';
@@ -171,7 +180,7 @@ const MockBackend = {
       if (!sessionStr) return null;
       try { return JSON.parse(sessionStr).user; } catch { return null; }
   },
-  async addTeacher(institutionId: string, name: string, email: string, password?: string, avatar?: string): Promise<User> {
+  async addTeacher(institutionId: string, name: string, email: string, password?: string, avatar?: string, category?: TeacherCategory): Promise<User> {
       const users = getTable<User>(DB_KEYS.USERS);
       const existingUser = users.find(u => u.email === email);
       
@@ -192,7 +201,8 @@ const MockBackend = {
           role: UserRole.TEACHER, 
           institutionId, 
           approved: true,
-          avatar
+          avatar,
+          category
       };
       (newUser as any).password = password || '123456';
       
@@ -201,7 +211,7 @@ const MockBackend = {
       
       return newUser;
   },
-  async addStudent(institutionId: string, name: string, email: string, password?: string, course?: string, level?: string, avatar?: string): Promise<User> {
+  async addStudent(institutionId: string, name: string, email: string, password?: string, course?: string, level?: string, avatar?: string, shifts?: string[], classGroups?: string[]): Promise<User> {
       const users = getTable<User>(DB_KEYS.USERS);
       const existingUser = users.find(u => u.email === email);
       if (existingUser) throw new Error("Email já cadastrado.");
@@ -215,7 +225,9 @@ const MockBackend = {
           approved: true,
           course: course || '',
           level: level || '',
-          avatar
+          avatar,
+          shifts: shifts as ('Diurno'|'Noturno')[] || [],
+          classGroups: classGroups || []
       };
       (newUser as any).password = password || '123456';
       
@@ -285,15 +297,24 @@ const MockBackend = {
       
       if (found) return found;
 
-      // Se não encontrar e o papel for estudante, retorna o padrão para que o gestor possa ver/editar
+      // Se não encontrar:
       if (role === 'student') {
           return {
-              id: `default_${institutionId}`,
+              id: `default_std_${institutionId}`,
               institutionId,
               title: 'Ficha de Avaliação de Desempenho (Padrão)',
               active: true,
               questions: PDF_STANDARD_QUESTIONS,
               targetRole: 'student'
+          };
+      } else if (role === 'teacher') {
+          return {
+              id: `default_tchr_${institutionId}`,
+              institutionId,
+              title: 'Inquérito Institucional ao Docente (Padrão)',
+              active: true,
+              questions: TEACHER_STANDARD_QUESTIONS,
+              targetRole: 'teacher'
           };
       }
       return null;
@@ -311,11 +332,12 @@ const MockBackend = {
     
     // Default se não existir para aluno
     if (!activeQ && target === 'student') { 
-        activeQ = { id: `q_${institutionId}`, institutionId, title: 'Ficha de Avaliação de Desempenho (Padrão)', active: true, questions: PDF_STANDARD_QUESTIONS, targetRole: 'student' }; 
+        activeQ = { id: `q_def_std_${institutionId}`, institutionId, title: 'Ficha de Avaliação de Desempenho (Padrão)', active: true, questions: PDF_STANDARD_QUESTIONS, targetRole: 'student' }; 
     }
-    
-    // Se não existir para professor, retorna null (não há default survey institucional para professor além da auto-avaliação)
-    if (!activeQ && target === 'teacher') return null;
+    // Default se não existir para docente
+    if (!activeQ && target === 'teacher') {
+        activeQ = { id: `q_def_tchr_${institutionId}`, institutionId, title: 'Inquérito Institucional ao Docente (Padrão)', active: true, questions: TEACHER_STANDARD_QUESTIONS, targetRole: 'teacher' };
+    }
 
     if (!activeQ) return null;
 
@@ -408,9 +430,13 @@ const MockBackend = {
               selfPoints += (a.theoryHours || 0) * 16;
               selfPoints += (a.practicalHours || 0) * 14;
               selfPoints += (a.consultationHours || 0) * 5;
-              selfPoints += (a.gradSupervision || 0) * 6;
-              selfPoints += (a.postGradSupervision || 0) * 6;
-              selfPoints += (a.regencySubjects || 0) * 8;
+              
+              // CRITICAL: Only calculate Supervision and Regency if Full Assistant (Pleno)
+              if (category === 'assistente') {
+                  selfPoints += (a.gradSupervision || 0) * 6;
+                  selfPoints += (a.postGradSupervision || 0) * 6;
+                  selfPoints += (a.regencySubjects || 0) * 8;
+              }
           }
 
           // 3. QUALITATIVE / INSTITUTIONAL
@@ -493,7 +519,10 @@ const SupabaseBackend = {
             approved: data.approved,
             avatar: data.avatar,
             course: data.course,
-            level: data.level
+            level: data.level,
+            category: data.category,
+            shifts: data.shifts || (data.shift ? [data.shift] : []),
+            classGroups: data.classGroups || (data.classGroup ? [data.classGroup] : [])
         };
 
         const sessionData = { user, token: 'supa_jwt_' + Date.now(), expiry: Date.now() + 86400000 };
@@ -509,7 +538,7 @@ const SupabaseBackend = {
         if (!sessionStr) return null;
         try { return JSON.parse(sessionStr).user; } catch { return null; }
     },
-    async addTeacher(institutionId: string, name: string, email: string, password?: string, avatar?: string): Promise<User> {
+    async addTeacher(institutionId: string, name: string, email: string, password?: string, avatar?: string, category?: TeacherCategory): Promise<User> {
         if (!supabase) throw new Error("Supabase não iniciado");
         
         const newUser = {
@@ -520,14 +549,15 @@ const SupabaseBackend = {
             institutionId,
             approved: true,
             avatar,
-            password: password || '123456'
+            password: password || '123456',
+            category
         };
 
         const { data, error } = await supabase.from('users').insert([newUser]).select().single();
         if (error) throw new Error(`Erro ao adicionar docente: ${error.message}`);
         return data as User;
     },
-    async addStudent(institutionId: string, name: string, email: string, password?: string, course?: string, level?: string, avatar?: string): Promise<User> {
+    async addStudent(institutionId: string, name: string, email: string, password?: string, course?: string, level?: string, avatar?: string, shifts?: string[], classGroups?: string[]): Promise<User> {
         if (!supabase) throw new Error("Supabase não iniciado");
 
         const newUser = {
@@ -540,7 +570,9 @@ const SupabaseBackend = {
             course,
             level,
             avatar,
-            password: password || '123456'
+            password: password || '123456',
+            shifts,
+            classGroups
         };
 
         const { data, error } = await supabase.from('users').insert([newUser]).select().single();
@@ -641,15 +673,24 @@ const SupabaseBackend = {
         
         if (data) return data as Questionnaire;
 
-        // Se não encontrar e for estudante, retorna padrão para o gestor ver
+        // Preview Padrão se não existir
         if (role === 'student') {
              return {
-                id: `default_${institutionId}`,
+                id: `default_std_${institutionId}`,
                 institutionId,
                 title: 'Ficha de Avaliação de Desempenho (Padrão)',
                 active: true,
                 questions: PDF_STANDARD_QUESTIONS,
                 targetRole: 'student'
+            };
+        } else if (role === 'teacher') {
+            return {
+                id: `default_tchr_${institutionId}`,
+                institutionId,
+                title: 'Inquérito Institucional ao Docente (Padrão)',
+                active: true,
+                questions: TEACHER_STANDARD_QUESTIONS,
+                targetRole: 'teacher'
             };
         }
         return null;
@@ -672,8 +713,12 @@ const SupabaseBackend = {
             .single();
 
         if (!activeQ && target === 'student') {
-             activeQ = { id: `q_${institutionId}`, institutionId, title: 'Ficha Padrão', active: true, questions: PDF_STANDARD_QUESTIONS, targetRole: 'student' };
+             activeQ = { id: `q_def_std_${institutionId}`, institutionId, title: 'Ficha Padrão', active: true, questions: PDF_STANDARD_QUESTIONS, targetRole: 'student' };
         }
+        if (!activeQ && target === 'teacher') {
+            activeQ = { id: `q_def_tchr_${institutionId}`, institutionId, title: 'Inquérito Padrão', active: true, questions: TEACHER_STANDARD_QUESTIONS, targetRole: 'teacher' };
+        }
+
         if (!activeQ) return null;
 
         // 1. Buscar disciplinas da instituição
@@ -818,9 +863,13 @@ const SupabaseBackend = {
                 selfPoints += (a.theoryHours || 0) * 16;
                 selfPoints += (a.practicalHours || 0) * 14;
                 selfPoints += (a.consultationHours || 0) * 5;
-                selfPoints += (a.gradSupervision || 0) * 6;
-                selfPoints += (a.postGradSupervision || 0) * 6;
-                selfPoints += (a.regencySubjects || 0) * 8;
+                
+                // CRITICAL: Only calculate Supervision and Regency if Full Assistant (Pleno)
+                if (category === 'assistente') {
+                    selfPoints += (a.gradSupervision || 0) * 6;
+                    selfPoints += (a.postGradSupervision || 0) * 6;
+                    selfPoints += (a.regencySubjects || 0) * 8;
+                }
             }
 
             // C. Institutional

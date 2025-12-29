@@ -6,6 +6,8 @@ export enum UserRole {
   STUDENT = 'student'
 }
 
+export type TeacherCategory = 'assistente' | 'assistente_estagiario';
+
 export interface User {
   id: string;
   email: string;
@@ -17,6 +19,10 @@ export interface User {
   // Novos campos para alunos
   course?: string;
   level?: string; // Ano curricular (ex: 1, 2, 3)
+  shifts?: ('Diurno' | 'Noturno')[]; // Lista de turnos do aluno
+  classGroups?: string[]; // Lista de turmas do aluno (ex: ['A', 'B'])
+  // Novo campo para docentes
+  category?: TeacherCategory;
 }
 
 export interface Institution {
@@ -28,8 +34,6 @@ export interface Institution {
   managerEmails: string[];
   inviteCode?: string;
 }
-
-export type TeacherCategory = 'assistente' | 'assistente_estagiario';
 
 export interface Subject {
   id: string;

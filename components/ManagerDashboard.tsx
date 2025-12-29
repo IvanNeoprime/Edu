@@ -1,14 +1,23 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { BackendService } from '../services/backend';
 // import { AIService } from '../services/ai'; // Removed AI Service
 import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select } from './ui';
-import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, GraduationCap, PieChart as PieIcon, Download, Printer, Image as ImageIcon, Sparkles, RefreshCw, ScanText, Eye, Settings, Building2, Save, FileText } from 'lucide-react';
+import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, GraduationCap, PieChart as PieIcon, Download, Printer, Image as ImageIcon, Sparkles, RefreshCw, ScanText, Eye, Settings, Building2, Save, FileText, X, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
 
 interface Props {
   institutionId: string;
+}
+
+interface NewSubjectItem {
+    name: string;
+    code: string;
+    course: string;
+    level: string;
+    classGroup: string;
+    shift: 'Diurno' | 'Noturno';
 }
 
 export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
@@ -36,25 +45,13 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [newQWeight, setNewQWeight] = useState(1);
   const [newQOptions, setNewQOptions] = useState(''); // Comma separated
 
-  // Form State for New Subject
-  const [newSubName, setNewSubName] = useState('');
-  const [newSubCode, setNewSubCode] = useState('');
-  const [newSubTeacher, setNewSubTeacher] = useState('');
-  // New Fields
-  const [newSubYear, setNewSubYear] = useState(new Date().getFullYear().toString());
-  const [newSubLevel, setNewSubLevel] = useState('');
-  const [newSubSemester, setNewSubSemester] = useState('1');
-  const [newSubCourse, setNewSubCourse] = useState('');
-  const [newSubClassGroup, setNewSubClassGroup] = useState(''); // Turma
-  const [newSubShift, setNewSubShift] = useState('Diurno');
-  const [newSubModality, setNewSubModality] = useState('Presencial');
-  const [newSubCategory, setNewSubCategory] = useState<TeacherCategory>('assistente');
-
   // Form State for New Teacher
   const [newTeacherName, setNewTeacherName] = useState('');
   const [newTeacherEmail, setNewTeacherEmail] = useState('');
   const [newTeacherPwd, setNewTeacherPwd] = useState('');
   const [newTeacherAvatar, setNewTeacherAvatar] = useState('');
+  const [newTeacherCategory, setNewTeacherCategory] = useState<TeacherCategory>('assistente');
+  const [newTeacherSubjects, setNewTeacherSubjects] = useState<NewSubjectItem[]>([]);
 
   // Form State for New Student
   const [newStudentName, setNewStudentName] = useState('');
@@ -63,6 +60,20 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [newStudentCourse, setNewStudentCourse] = useState('');
   const [newStudentLevel, setNewStudentLevel] = useState('');
   const [newStudentAvatar, setNewStudentAvatar] = useState('');
+  // Multi-selection states
+  const [newStudentShifts, setNewStudentShifts] = useState<string[]>([]);
+  const [newStudentClassGroups, setNewStudentClassGroups] = useState('');
+
+  // Calculate unique courses available in the institution
+  const uniqueCourses = useMemo(() => {
+      const courses = new Set<string>();
+      subjects.forEach(s => {
+          if (s.course && s.course.trim() !== '') {
+              courses.add(s.course.trim());
+          }
+      });
+      return Array.from(courses).sort();
+  }, [subjects]);
 
   useEffect(() => {
     loadData();
@@ -74,7 +85,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   }, [targetRole, institutionId]);
 
   useEffect(() => {
-    if (activeTab === 'stats') {
+    if (activeTab === 'stats' || activeTab === 'overview') {
         BackendService.getAllScores(institutionId).then(setAllScores);
     }
   }, [activeTab, institutionId]);
@@ -124,9 +135,18 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     }
   };
 
-  const handleApprove = async (id: string) => {
-    await BackendService.approveTeacher(id);
-    loadData();
+  const handleCalculateScores = async () => {
+    setCalculating(true);
+    try {
+        await BackendService.calculateScores(institutionId);
+        const scores = await BackendService.getAllScores(institutionId);
+        setAllScores(scores);
+        alert("Cálculo de notas realizado com sucesso!");
+    } catch (e) {
+        alert("Erro ao calcular: " + e);
+    } finally {
+        setCalculating(false);
+    }
   };
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: React.Dispatch<React.SetStateAction<string>>) => {
@@ -139,10 +159,29 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       }
   };
 
+  // --- TEACHER & SUBJECT MANAGEMENT ---
+
+  const handleAddSubjectToTeacherList = () => {
+      setNewTeacherSubjects([
+          ...newTeacherSubjects,
+          { name: '', code: '', course: '', level: '1', classGroup: '', shift: 'Diurno' }
+      ]);
+  };
+
+  const handleRemoveSubjectFromList = (index: number) => {
+      setNewTeacherSubjects(newTeacherSubjects.filter((_, i) => i !== index));
+  };
+
+  const handleSubjectListChange = (index: number, field: keyof NewSubjectItem, value: string) => {
+      const updated = [...newTeacherSubjects];
+      // @ts-ignore
+      updated[index][field] = value;
+      setNewTeacherSubjects(updated);
+  };
+
   const handleAddTeacher = async (e: React.FormEvent) => {
       e.preventDefault();
       
-      // Validação básica
       if (!newTeacherName.trim() || !newTeacherEmail.trim() || !newTeacherPwd.trim()) {
           alert("Por favor, preencha Nome, Email e Senha.");
           return;
@@ -150,20 +189,58 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
       try {
           console.log("Adicionando docente:", newTeacherName, newTeacherEmail);
-          await BackendService.addTeacher(institutionId, newTeacherName, newTeacherEmail, newTeacherPwd, newTeacherAvatar);
+          const newUser = await BackendService.addTeacher(
+              institutionId, 
+              newTeacherName, 
+              newTeacherEmail, 
+              newTeacherPwd, 
+              newTeacherAvatar,
+              newTeacherCategory
+          );
+          
+          // Bulk create subjects
+          if (newTeacherSubjects.length > 0) {
+              for (const sub of newTeacherSubjects) {
+                  if (sub.name) {
+                      await BackendService.assignSubject({
+                          name: sub.name,
+                          code: sub.code,
+                          teacherId: newUser.id,
+                          institutionId: institutionId,
+                          academicYear: new Date().getFullYear().toString(),
+                          level: sub.level,
+                          semester: '1', // Default
+                          course: sub.course,
+                          classGroup: sub.classGroup,
+                          shift: sub.shift,
+                          modality: 'Presencial',
+                          teacherCategory: newTeacherCategory
+                      });
+                  }
+              }
+          }
           
           // Limpar campos
           setNewTeacherName('');
           setNewTeacherEmail('');
           setNewTeacherPwd('');
           setNewTeacherAvatar('');
+          setNewTeacherCategory('assistente');
+          setNewTeacherSubjects([]);
           
-          // Recarregar dados
           await loadData();
-          alert(`Docente cadastrado com sucesso!`);
+          alert(`Docente e ${newTeacherSubjects.length} disciplinas cadastrados com sucesso!`);
       } catch (error: any) {
           console.error("Erro ao adicionar docente:", error);
           alert("Erro ao cadastrar docente: " + error.message);
+      }
+  };
+
+  const handleToggleShift = (shift: string) => {
+      if (newStudentShifts.includes(shift)) {
+          setNewStudentShifts(newStudentShifts.filter(s => s !== shift));
+      } else {
+          setNewStudentShifts([...newStudentShifts, shift]);
       }
   };
 
@@ -175,8 +252,15 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           return;
       }
 
+      if (newStudentShifts.length === 0) {
+          alert("Selecione pelo menos um turno.");
+          return;
+      }
+
       try {
-          console.log("Adicionando estudante:", newStudentName, newStudentEmail);
+          // Parse class groups
+          const classGroups = newStudentClassGroups.split(',').map(s => s.trim()).filter(s => s.length > 0);
+
           await BackendService.addStudent(
               institutionId, 
               newStudentName, 
@@ -184,7 +268,9 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
               newStudentPwd, 
               newStudentCourse, 
               newStudentLevel,
-              newStudentAvatar
+              newStudentAvatar,
+              newStudentShifts,
+              classGroups
           );
           
           setNewStudentName('');
@@ -193,6 +279,8 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           setNewStudentCourse('');
           setNewStudentLevel('');
           setNewStudentAvatar('');
+          setNewStudentClassGroups('');
+          setNewStudentShifts([]);
           
           await loadData();
           alert(`Estudante cadastrado com sucesso!`);
@@ -221,43 +309,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     });
     setExpandedTeacher(null);
     alert("Avaliação qualitativa salva com sucesso.");
-  };
-
-  const handleCalculate = async () => {
-      setCalculating(true);
-      await BackendService.calculateScores(institutionId);
-      setCalculating(false);
-      alert("Cálculo realizado com sucesso!");
-      if (activeTab === 'stats') BackendService.getAllScores(institutionId).then(setAllScores);
-  };
-
-  const handleCreateSubject = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!newSubName || !newSubTeacher) {
-          alert("Nome da disciplina e Docente são obrigatórios.");
-          return;
-      }
-      await BackendService.assignSubject({
-          name: newSubName,
-          code: newSubCode,
-          teacherId: newSubTeacher,
-          institutionId: institutionId,
-          academicYear: newSubYear,
-          level: newSubLevel,
-          semester: newSubSemester,
-          course: newSubCourse,
-          classGroup: newSubClassGroup,
-          shift: newSubShift,
-          modality: newSubModality,
-          teacherCategory: newSubCategory
-      });
-      setNewSubName('');
-      setNewSubCode('');
-      setNewSubTeacher('');
-      setNewSubLevel('');
-      setNewSubCourse('');
-      setNewSubClassGroup('');
-      loadData();
   };
 
   // --- Form Builder Logic ---
@@ -406,16 +457,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     window.print();
   };
 
-  const getIconForType = (type: QuestionType) => {
-      switch(type) {
-          case 'stars': return <Star className="h-4 w-4 text-yellow-500" />;
-          case 'scale_10': return <BarChartHorizontal className="h-4 w-4 text-blue-500" />;
-          case 'binary': return <Check className="h-4 w-4 text-green-500" />;
-          case 'text': return <Type className="h-4 w-4 text-gray-500" />;
-          case 'choice': return <List className="h-4 w-4 text-purple-500" />;
-      }
-  };
-
   const groupedStudents = students.reduce((acc, student) => {
       const course = student.course || 'Sem Curso Atribuído';
       const level = student.level ? `${student.level}º Ano` : 'Sem Ano';
@@ -464,335 +505,87 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         </div>
       </header>
 
-      {/* --- ABA CONFIGURAÇÕES (LOGO E NOME) --- */}
-      {activeTab === 'settings' && institution && (
-          <div className="grid gap-8 lg:grid-cols-2 max-w-4xl mx-auto">
-              <Card>
-                  <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                          <Building2 className="h-5 w-5" /> Identidade da Instituição
-                      </CardTitle>
-                      <p className="text-sm text-gray-500">Atualize o nome e o logotipo que aparecem nos relatórios.</p>
-                  </CardHeader>
-                  <CardContent>
-                      <form onSubmit={handleUpdateInstitution} className="space-y-6">
-                          <div className="space-y-2">
-                              <Label>Nome da Instituição</Label>
-                              <Input 
-                                value={institution.name} 
-                                onChange={(e) => setInstitution({...institution, name: e.target.value})} 
-                              />
-                          </div>
-
-                          <div className="space-y-2">
-                              <Label>Logotipo</Label>
-                              <div className="flex items-center gap-4">
-                                  <div className="h-24 w-24 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden relative">
-                                      {institution.logo ? (
-                                          <img src={institution.logo} className="h-full w-full object-contain p-2" />
-                                      ) : (
-                                          <ImageIcon className="h-8 w-8 text-gray-300" />
-                                      )}
-                                      <input 
-                                          type="file" 
-                                          accept="image/*" 
-                                          onChange={handleInstLogoUpload}
-                                          className="absolute inset-0 opacity-0 cursor-pointer" 
-                                      />
-                                  </div>
-                                  <div className="flex-1 text-sm text-gray-500">
-                                      <p>Clique na imagem para alterar.</p>
-                                      <p className="text-xs mt-1">Recomendado: PNG ou JPG com fundo transparente. Máx 500KB.</p>
-                                  </div>
-                              </div>
-                          </div>
-                          
-                          <div className="space-y-2">
-                              <Label>Código / Sigla</Label>
-                              <Input 
-                                disabled
-                                value={institution.code} 
-                                className="bg-gray-100 text-gray-500"
-                              />
-                              <p className="text-xs text-gray-400">O código da instituição não pode ser alterado.</p>
-                          </div>
-
-                          <Button type="submit" className="w-full">
-                              <Save className="mr-2 h-4 w-4" /> Salvar Alterações
-                          </Button>
-                      </form>
-                  </CardContent>
-              </Card>
-
-              <Card className="bg-blue-50/50 border-blue-100">
-                  <CardHeader>
-                      <CardTitle className="text-blue-900">Sobre sua conta</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                      <div className="p-4 bg-white rounded-lg border shadow-sm">
-                          <p className="text-sm font-medium text-gray-500">Código de Convite</p>
-                          <div className="flex items-center gap-2 mt-1">
-                              <Key className="h-4 w-4 text-gray-400" />
-                              <span className="font-mono text-lg font-bold">{institution.inviteCode || 'N/A'}</span>
-                          </div>
-                          <p className="text-xs text-gray-400 mt-2">Use este código se precisar convidar outros gestores (Funcionalidade futura).</p>
-                      </div>
-                  </CardContent>
-              </Card>
-          </div>
-      )}
-
-      {/* --- ABA ESTATÍSTICAS --- */}
-      {activeTab === 'stats' && (
-        <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
-             {/* Report Header for Print */}
-             <div className="hidden print:block text-center mb-8 border-b pb-4">
-                 {institution?.logo && <img src={institution.logo} className="h-16 mx-auto mb-2" />}
-                 <h1 className="text-2xl font-bold">{institution?.name || 'Relatório Institucional'}</h1>
-                 <p className="text-gray-500">Relatório de Avaliação de Desempenho Docente</p>
-                 <p className="text-xs text-gray-400 mt-1">Gerado em {new Date().toLocaleDateString()}</p>
-             </div>
-
-             {/* KPIs */}
-             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 print:grid-cols-4">
-                 <Card>
-                     <CardContent className="pt-6">
-                         <div className="text-2xl font-bold">{teachers.length}</div>
-                         <p className="text-xs text-gray-500">Docentes Cadastrados</p>
-                     </CardContent>
-                 </Card>
-                 <Card>
-                     <CardContent className="pt-6">
-                         <div className="text-2xl font-bold">{students.length}</div>
-                         <p className="text-xs text-gray-500">Alunos Ativos</p>
-                     </CardContent>
-                 </Card>
-                 <Card>
-                     <CardContent className="pt-6">
-                         <div className="text-2xl font-bold text-blue-600">{avgScore}</div>
-                         <p className="text-xs text-gray-500">Média Geral da Instituição</p>
-                     </CardContent>
-                 </Card>
-                 <Card>
-                     <CardContent className="pt-6">
-                         <div className="text-2xl font-bold text-green-600">{allScores.length}</div>
-                         <p className="text-xs text-gray-500">Docentes Avaliados</p>
-                     </CardContent>
-                 </Card>
-             </div>
-
-             {/* Charts */}
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 print:block print:space-y-8">
-                 <Card className="print:shadow-none print:border-none">
-                     <CardHeader>
-                         <CardTitle className="text-base">Distribuição de Resultados</CardTitle>
-                     </CardHeader>
-                     <CardContent className="h-[300px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie 
-                                    data={scoreDistribution} 
-                                    dataKey="value" 
-                                    nameKey="name" 
-                                    cx="50%" 
-                                    cy="50%" 
-                                    outerRadius={80} 
-                                    label 
-                                >
-                                    {scoreDistribution.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.color} />
-                                    ))}
-                                </Pie>
-                                <Tooltip />
-                                <Legend />
-                            </PieChart>
-                        </ResponsiveContainer>
-                     </CardContent>
-                 </Card>
-
-                 <Card className="print:shadow-none print:border-none">
-                     <CardHeader>
-                         <CardTitle className="text-base">Médias por Componente</CardTitle>
-                     </CardHeader>
-                     <CardContent className="h-[300px]">
-                        {allScores.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={[
-                                    { name: 'Auto-Avaliação', score: (allScores.reduce((a,b)=>a+b.selfEvalScore,0)/allScores.length).toFixed(1) },
-                                    { name: 'Aval. Estudante', score: (allScores.reduce((a,b)=>a+b.studentScore,0)/allScores.length).toFixed(1) },
-                                    { name: 'Aval. Qualitativa', score: (allScores.reduce((a,b)=>a+b.institutionalScore,0)/allScores.length).toFixed(1) },
-                                ]}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                    <XAxis dataKey="name" />
-                                    <YAxis />
-                                    <Tooltip />
-                                    <Bar dataKey="score" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={60} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        ) : <p className="text-center py-10 text-gray-400">Sem dados.</p>}
-                     </CardContent>
-                 </Card>
-             </div>
-
-             {/* Table */}
-             <Card>
-                 <CardHeader>
-                     <CardTitle>Detalhes por Docente</CardTitle>
-                 </CardHeader>
-                 <CardContent>
-                     <div className="overflow-x-auto">
-                         <table className="w-full text-sm text-left">
-                             <thead className="bg-gray-50 text-gray-600 font-medium">
-                                 <tr>
-                                     <th className="p-3">Docente</th>
-                                     <th className="p-3">Auto-Aval.</th>
-                                     <th className="p-3">Aval. Estudante</th>
-                                     <th className="p-3">Aval. Qualitativa</th>
-                                     <th className="p-3 font-bold">Total</th>
-                                 </tr>
-                             </thead>
-                             <tbody className="divide-y">
-                                 {allScores.map(s => {
-                                     const t = teachers.find(u => u.id === s.teacherId);
-                                     return (
-                                         <tr key={s.teacherId}>
-                                             <td className="p-3 flex items-center gap-2">
-                                                 {t?.avatar && <img src={t.avatar} className="h-6 w-6 rounded-full object-cover" />}
-                                                 {t?.name || 'Desconhecido'}
-                                             </td>
-                                             <td className="p-3">{s.selfEvalScore}</td>
-                                             <td className="p-3">{s.studentScore}</td>
-                                             <td className="p-3">{s.institutionalScore}</td>
-                                             <td className="p-3 font-bold">{s.finalScore}</td>
-                                         </tr>
-                                     )
-                                 })}
-                             </tbody>
-                         </table>
-                     </div>
-                 </CardContent>
-             </Card>
-
-             {/* Actions */}
-             <div className="flex justify-end gap-4 print:hidden">
-                 <Button variant="outline" onClick={handlePrintPDF}>
-                     <Printer className="mr-2 h-4 w-4" /> Imprimir Relatório (PDF)
-                 </Button>
-                 <Button onClick={handleExportCSV}>
-                     <Download className="mr-2 h-4 w-4" /> Exportar Dados (CSV)
-                 </Button>
-             </div>
-        </div>
-      )}
-
-      {/* --- ABA ALUNOS --- */}
-      {activeTab === 'students' && (
-          <div className="grid gap-8 lg:grid-cols-12 print:hidden">
-              <div className="lg:col-span-4 space-y-6">
-                  <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <GraduationCap className="h-5 w-5" /> Cadastrar Aluno
-                        </CardTitle>
+      {/* --- ABA VISÃO GERAL (OVERVIEW) --- */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Total de Docentes</CardTitle>
+                        <Users className="h-4 w-4 text-gray-500" />
                     </CardHeader>
                     <CardContent>
-                        <form onSubmit={handleAddStudent} className="bg-gray-50 p-4 rounded-lg border space-y-4">
-                             <div className="flex gap-4">
-                                <div className="flex-1 space-y-2">
-                                    <Label>Nome</Label>
-                                    <Input value={newStudentName} onChange={e => setNewStudentName(e.target.value)} placeholder="Nome completo" required />
-                                </div>
-                                <div className="w-16 space-y-2">
-                                    <Label>Foto</Label>
-                                    <div className="relative h-10 w-full">
-                                        <input type="file" accept="image/*" onChange={(e) => handleAvatarUpload(e, setNewStudentAvatar)} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
-                                        <div className="h-full w-full border rounded flex items-center justify-center bg-white hover:bg-gray-50">
-                                            {newStudentAvatar ? <img src={newStudentAvatar} className="h-full w-full object-cover rounded" /> : <ImageIcon className="h-4 w-4 text-gray-400" />}
-                                        </div>
-                                    </div>
-                                </div>
-                             </div>
-                            <div className="space-y-2">
-                                <Label>Email</Label>
-                                <Input type="email" value={newStudentEmail} onChange={e => setNewStudentEmail(e.target.value)} placeholder="email@instituicao.ac.mz" required />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Curso</Label>
-                                    <Input value={newStudentCourse} onChange={e => setNewStudentCourse(e.target.value)} placeholder="Ex: Informática" />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Ano/Nível</Label>
-                                    <Input value={newStudentLevel} onChange={e => setNewStudentLevel(e.target.value)} placeholder="Ex: 1, 2" />
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Senha de Acesso</Label>
-                                <div className="relative">
-                                    <Key className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                                    <Input 
-                                        type="text" 
-                                        value={newStudentPwd} 
-                                        onChange={e => setNewStudentPwd(e.target.value)} 
-                                        placeholder="Atribua uma senha" 
-                                        className="pl-9"
-                                        required 
-                                    />
-                                </div>
-                            </div>
-                            <Button type="submit" className="w-full"><Plus className="mr-2 h-4 w-4" /> Adicionar Estudante</Button>
-                        </form>
+                        <div className="text-2xl font-bold">{teachers.length}</div>
+                        <p className="text-xs text-gray-500">
+                            {unapproved.length > 0 ? `${unapproved.length} pendentes de aprovação` : 'Todos ativos'}
+                        </p>
                     </CardContent>
-                  </Card>
-              </div>
-              <div className="lg:col-span-8">
-                  <Card>
-                      <CardHeader>
-                          <CardTitle className="flex items-center gap-2">Lista de Estudantes ({students.length})</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                           {students.length === 0 && <p className="p-8 text-center text-gray-500 italic">Nenhum estudante cadastrado.</p>}
-                           
-                           <div className="space-y-6">
-                               {Object.entries(groupedStudents).map(([course, levels]) => (
-                                   <div key={course} className="border rounded-md overflow-hidden">
-                                       <div className="bg-gray-100 px-4 py-2 font-semibold text-gray-800 border-b">
-                                           {course}
-                                       </div>
-                                       <div className="divide-y">
-                                           {Object.entries(levels).map(([level, users]) => (
-                                               <div key={level}>
-                                                   <div className="bg-gray-50 px-4 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
-                                                       {level}
-                                                   </div>
-                                                   <div>
-                                                       {users.map(std => (
-                                                           <div key={std.id} className="p-4 bg-white hover:bg-gray-50 flex justify-between items-center border-b last:border-0">
-                                                               <div className="flex items-center gap-3">
-                                                                   <div className="h-8 w-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
-                                                                       {std.avatar ? <img src={std.avatar} className="h-full w-full object-cover" /> : <Users className="h-4 w-4 m-2 text-gray-400" />}
-                                                                   </div>
-                                                                   <div>
-                                                                       <p className="font-medium text-gray-900">{std.name}</p>
-                                                                       <p className="text-sm text-gray-500">{std.email}</p>
-                                                                   </div>
-                                                               </div>
-                                                               <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full font-medium">
-                                                                   Ativo
-                                                               </div>
-                                                           </div>
-                                                       ))}
-                                                   </div>
-                                               </div>
-                                           ))}
-                                       </div>
-                                   </div>
-                               ))}
-                           </div>
-                      </CardContent>
-                  </Card>
-              </div>
-          </div>
+                </Card>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Total de Alunos</CardTitle>
+                        <GraduationCap className="h-4 w-4 text-gray-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{students.length}</div>
+                        <p className="text-xs text-gray-500">Matriculados na instituição</p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Média Institucional</CardTitle>
+                        <TrendingUp className="h-4 w-4 text-green-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{avgScore}</div>
+                        <p className="text-xs text-gray-500">Score médio (0-100)</p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Disciplinas</CardTitle>
+                        <BookOpen className="h-4 w-4 text-blue-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{subjects.length}</div>
+                        <p className="text-xs text-gray-500">Ofertadas neste semestre</p>
+                    </CardContent>
+                </Card>
+             </div>
+
+             {unapproved.length > 0 && (
+                 <Card className="border-yellow-200 bg-yellow-50">
+                     <CardHeader>
+                         <CardTitle className="text-yellow-800 flex items-center gap-2">
+                             <AlertCircle className="h-5 w-5" /> Aprovação Pendente
+                         </CardTitle>
+                     </CardHeader>
+                     <CardContent>
+                         <p className="text-sm text-yellow-700 mb-4">
+                             Existem {unapproved.length} docentes que se registraram e aguardam sua aprovação para acessar o sistema.
+                         </p>
+                         <div className="space-y-2">
+                             {unapproved.map(u => (
+                                 <div key={u.id} className="flex items-center justify-between bg-white p-3 rounded border border-yellow-200">
+                                     <div className="flex items-center gap-3">
+                                        <div className="h-8 w-8 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden">
+                                            {u.avatar ? <img src={u.avatar} className="h-full w-full object-cover"/> : <Users className="h-4 w-4 text-gray-500"/>}
+                                        </div>
+                                        <div>
+                                            <div className="font-semibold text-sm">{u.name}</div>
+                                            <div className="text-xs text-gray-500">{u.email}</div>
+                                        </div>
+                                     </div>
+                                     <Button size="sm" onClick={() => BackendService.approveTeacher(u.id).then(loadData)} className="bg-yellow-600 hover:bg-yellow-700 text-white border-0">
+                                         Aprovar Acesso
+                                     </Button>
+                                 </div>
+                             ))}
+                         </div>
+                     </CardContent>
+                 </Card>
+             )}
+        </div>
       )}
 
       {/* --- ABA DOCENTES --- */}
@@ -800,51 +593,144 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           <div className="grid gap-8 lg:grid-cols-12 print:hidden">
             <div className="lg:col-span-5 space-y-6">
                  {/* Teacher Management Form */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
+                <Card className="border-indigo-100 shadow-md">
+                    <CardHeader className="bg-indigo-50/50 pb-4">
+                        <CardTitle className="flex items-center gap-2 text-indigo-900">
                             <UserPlus className="h-5 w-5" /> Cadastrar Novo Docente
                         </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                        <form onSubmit={handleAddTeacher} className="bg-gray-50 p-4 rounded-lg border space-y-4">
-                                <div className="flex gap-4">
-                                    <div className="flex-1 space-y-2">
-                                        <Label>Nome</Label>
-                                        <Input value={newTeacherName} onChange={e => setNewTeacherName(e.target.value)} placeholder="Nome completo" required />
-                                    </div>
-                                    <div className="w-16 space-y-2">
-                                        <Label>Foto</Label>
-                                        <div className="relative h-10 w-full">
-                                            <input type="file" accept="image/*" onChange={(e) => handleAvatarUpload(e, setNewTeacherAvatar)} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
-                                            <div className="h-full w-full border rounded flex items-center justify-center bg-white hover:bg-gray-50">
-                                                {newTeacherAvatar ? <img src={newTeacherAvatar} className="h-full w-full object-cover rounded" /> : <ImageIcon className="h-4 w-4 text-gray-400" />}
+                    <CardContent className="pt-4">
+                        <form onSubmit={handleAddTeacher} className="space-y-5">
+                                <div className="space-y-4">
+                                    <div className="flex gap-4">
+                                        <div className="flex-1 space-y-2">
+                                            <Label>Nome Completo</Label>
+                                            <Input value={newTeacherName} onChange={e => setNewTeacherName(e.target.value)} placeholder="Ex: Dr. Carlos Silva" required />
+                                        </div>
+                                        <div className="w-16 space-y-2">
+                                            <Label>Foto</Label>
+                                            <div className="relative h-10 w-full">
+                                                <input type="file" accept="image/*" onChange={(e) => handleAvatarUpload(e, setNewTeacherAvatar)} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                                                <div className="h-full w-full border rounded flex items-center justify-center bg-white hover:bg-gray-50">
+                                                    {newTeacherAvatar ? <img src={newTeacherAvatar} className="h-full w-full object-cover rounded" /> : <ImageIcon className="h-4 w-4 text-gray-400" />}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Email</Label>
-                                    <Input type="email" value={newTeacherEmail} onChange={e => setNewTeacherEmail(e.target.value)} placeholder="email@instituicao.ac.mz" required />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Senha de Acesso</Label>
-                                    <div className="relative">
-                                        <Key className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                                        <Input 
-                                            type="text" 
-                                            value={newTeacherPwd} 
-                                            onChange={e => setNewTeacherPwd(e.target.value)} 
-                                            placeholder="Atribua uma senha" 
-                                            className="pl-9"
-                                            required 
-                                        />
+                                    
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label>Email Institucional</Label>
+                                            <Input type="email" value={newTeacherEmail} onChange={e => setNewTeacherEmail(e.target.value)} placeholder="email@uni.ac.mz" required />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Senha Inicial</Label>
+                                            <div className="relative">
+                                                <Key className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                                                <Input 
+                                                    type="text" 
+                                                    value={newTeacherPwd} 
+                                                    onChange={e => setNewTeacherPwd(e.target.value)} 
+                                                    placeholder="Senha" 
+                                                    className="pl-9"
+                                                    required 
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>Categoria do Docente</Label>
+                                        <Select value={newTeacherCategory} onChange={(e) => setNewTeacherCategory(e.target.value as TeacherCategory)}>
+                                            <option value="assistente">Assistente (Pleno)</option>
+                                            <option value="assistente_estagiario">Assistente Estagiário</option>
+                                        </Select>
+                                        <p className="text-[10px] text-gray-500">* Estagiários não pontuam em supervisão de teses.</p>
                                     </div>
                                 </div>
-                            <div className="flex justify-between items-center pt-2">
-                                <p className="text-[10px] text-gray-500 w-1/2">* Dirigentes também podem ser cadastrados como docentes.</p>
-                                <Button type="submit"><Plus className="mr-2 h-4 w-4" /> Salvar</Button>
-                            </div>
+                                
+                                <div className="border-t pt-4 space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-gray-700 font-semibold">Atribuir Disciplinas/Turmas</Label>
+                                        <Button type="button" size="sm" variant="outline" onClick={handleAddSubjectToTeacherList} className="text-xs h-7">
+                                            <Plus className="h-3 w-3 mr-1" /> Adicionar Disciplina
+                                        </Button>
+                                    </div>
+
+                                    {/* Datalist for Suggesting existing courses */}
+                                    <datalist id="available-courses-list">
+                                        {uniqueCourses.map(course => (
+                                            <option key={course} value={course} />
+                                        ))}
+                                    </datalist>
+
+                                    {newTeacherSubjects.length === 0 ? (
+                                        <div className="text-center p-4 border border-dashed rounded bg-gray-50 text-xs text-gray-400">
+                                            Nenhuma disciplina adicionada. Clique acima para adicionar.
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                                            {newTeacherSubjects.map((sub, idx) => (
+                                                <div key={idx} className="p-3 bg-white border rounded shadow-sm space-y-2 relative group">
+                                                    <button type="button" onClick={() => handleRemoveSubjectFromList(idx)} className="absolute top-2 right-2 text-gray-300 hover:text-red-500">
+                                                        <X className="h-4 w-4" />
+                                                    </button>
+                                                    
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <Input 
+                                                            placeholder="Nome da Disciplina" 
+                                                            value={sub.name} 
+                                                            onChange={e => handleSubjectListChange(idx, 'name', e.target.value)}
+                                                            className="h-8 text-xs"
+                                                        />
+                                                        <Input 
+                                                            placeholder="Código (Ex: INF101)" 
+                                                            value={sub.code} 
+                                                            onChange={e => handleSubjectListChange(idx, 'code', e.target.value)}
+                                                            className="h-8 text-xs"
+                                                        />
+                                                    </div>
+                                                    <div className="grid grid-cols-4 gap-2"> {/* Increased cols for Year */}
+                                                        <Input 
+                                                            placeholder="Curso (Ex: LEI)" 
+                                                            value={sub.course} 
+                                                            onChange={e => handleSubjectListChange(idx, 'course', e.target.value)}
+                                                            className="h-8 text-xs"
+                                                            list="available-courses-list" // Add suggestion capability
+                                                        />
+                                                        <Select
+                                                            className="h-8 text-xs border rounded px-1 bg-white"
+                                                            value={sub.level}
+                                                            // @ts-ignore
+                                                            onChange={e => handleSubjectListChange(idx, 'level', e.target.value)}
+                                                        >
+                                                            {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n}º Ano</option>)}
+                                                        </Select>
+                                                        <Input 
+                                                            placeholder="Turma" 
+                                                            value={sub.classGroup} 
+                                                            onChange={e => handleSubjectListChange(idx, 'classGroup', e.target.value)}
+                                                            className="h-8 text-xs"
+                                                        />
+                                                        <select 
+                                                            className="h-8 text-xs border rounded px-1 bg-white"
+                                                            value={sub.shift}
+                                                            // @ts-ignore
+                                                            onChange={e => handleSubjectListChange(idx, 'shift', e.target.value)}
+                                                        >
+                                                            <option value="Diurno">Diurno</option>
+                                                            <option value="Noturno">Noturno</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                            <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">
+                                <Check className="mr-2 h-4 w-4" /> Confirmar Cadastro
+                            </Button>
                         </form>
                     </CardContent>
                 </Card>
@@ -870,7 +756,12 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                                 {t.avatar ? <img src={t.avatar} className="h-full w-full object-cover" /> : <Users className="h-5 w-5 m-2.5 text-gray-400" />}
                                             </div>
                                             <div className="flex flex-col">
-                                                <span className="font-medium text-sm">{t.name}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-medium text-sm">{t.name}</span>
+                                                    {t.category === 'assistente_estagiario' && (
+                                                        <span className="text-[10px] px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-200">Estagiário</span>
+                                                    )}
+                                                </div>
                                                 <span className="text-xs text-gray-400">{t.email}</span>
                                             </div>
                                         </div>
@@ -964,10 +855,167 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           </div>
       )}
 
-      {/* ... (rest of the file) ... */}
-      {/* ... (Questionnaire tab and others remain similar) ... */}
+      {/* --- ABA ALUNOS --- */}
+      {activeTab === 'students' && (
+          <div className="grid gap-8 lg:grid-cols-12 print:hidden animate-in fade-in">
+              <div className="lg:col-span-4 space-y-6">
+                  <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <GraduationCap className="h-5 w-5" /> Cadastrar Aluno
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <form onSubmit={handleAddStudent} className="bg-gray-50 p-4 rounded-lg border space-y-4">
+                             <div className="flex gap-4">
+                                <div className="flex-1 space-y-2">
+                                    <Label>Nome</Label>
+                                    <Input value={newStudentName} onChange={e => setNewStudentName(e.target.value)} placeholder="Nome completo" required />
+                                </div>
+                                <div className="w-16 space-y-2">
+                                    <Label>Foto</Label>
+                                    <div className="relative h-10 w-full">
+                                        <input type="file" accept="image/*" onChange={(e) => handleAvatarUpload(e, setNewStudentAvatar)} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                                        <div className="h-full w-full border rounded flex items-center justify-center bg-white hover:bg-gray-50">
+                                            {newStudentAvatar ? <img src={newStudentAvatar} className="h-full w-full object-cover rounded" /> : <ImageIcon className="h-4 w-4 text-gray-400" />}
+                                        </div>
+                                    </div>
+                                </div>
+                             </div>
+                            <div className="space-y-2">
+                                <Label>Email</Label>
+                                <Input type="email" value={newStudentEmail} onChange={e => setNewStudentEmail(e.target.value)} placeholder="email@instituicao.ac.mz" required />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Curso</Label>
+                                    <Select 
+                                        value={newStudentCourse} 
+                                        onChange={e => setNewStudentCourse(e.target.value)} 
+                                        disabled={uniqueCourses.length === 0}
+                                    >
+                                        <option value="">Selecione o Curso...</option>
+                                        {uniqueCourses.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </Select>
+                                    {uniqueCourses.length === 0 && <span className="text-[10px] text-red-500">Adicione disciplinas aos docentes primeiro.</span>}
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Ano/Nível</Label>
+                                    <Input value={newStudentLevel} onChange={e => setNewStudentLevel(e.target.value)} placeholder="Ex: 1, 2" />
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-2">
+                                <Label>Turnos (Multi-seleção)</Label>
+                                <div className="flex gap-4">
+                                    <label className="flex items-center gap-2 text-sm border p-2 rounded w-full bg-white cursor-pointer hover:bg-gray-50">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={newStudentShifts.includes('Diurno')} 
+                                            onChange={() => handleToggleShift('Diurno')}
+                                            className="rounded text-indigo-600 focus:ring-indigo-500"
+                                        />
+                                        Diurno
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm border p-2 rounded w-full bg-white cursor-pointer hover:bg-gray-50">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={newStudentShifts.includes('Noturno')} 
+                                            onChange={() => handleToggleShift('Noturno')}
+                                            className="rounded text-indigo-600 focus:ring-indigo-500"
+                                        />
+                                        Noturno
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Turmas (Separadas por vírgula)</Label>
+                                <Input 
+                                    value={newStudentClassGroups} 
+                                    onChange={e => setNewStudentClassGroups(e.target.value)} 
+                                    placeholder="Ex: A, B, PL1" 
+                                />
+                                <p className="text-[10px] text-gray-500">O aluno terá acesso às disciplinas destas turmas.</p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Senha de Acesso</Label>
+                                <div className="relative">
+                                    <Key className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                                    <Input 
+                                        type="text" 
+                                        value={newStudentPwd} 
+                                        onChange={e => setNewStudentPwd(e.target.value)} 
+                                        placeholder="Atribua uma senha" 
+                                        className="pl-9"
+                                        required 
+                                    />
+                                </div>
+                            </div>
+                            <Button type="submit" className="w-full"><Plus className="mr-2 h-4 w-4" /> Adicionar Estudante</Button>
+                        </form>
+                    </CardContent>
+                  </Card>
+              </div>
+              <div className="lg:col-span-8">
+                  <Card>
+                      <CardHeader>
+                          <CardTitle className="flex items-center gap-2">Lista de Estudantes ({students.length})</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                           {students.length === 0 && <p className="p-8 text-center text-gray-500 italic">Nenhum estudante cadastrado.</p>}
+                           
+                           <div className="space-y-6">
+                               {Object.entries(groupedStudents).map(([course, levels]) => (
+                                   <div key={course} className="border rounded-md overflow-hidden">
+                                       <div className="bg-gray-100 px-4 py-2 font-semibold text-gray-800 border-b">
+                                           {course}
+                                       </div>
+                                       <div className="divide-y">
+                                           {Object.entries(levels).map(([level, users]) => (
+                                               <div key={level}>
+                                                   <div className="bg-gray-50 px-4 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
+                                                       {level}
+                                                   </div>
+                                                   <div>
+                                                       {users.map(std => (
+                                                           <div key={std.id} className="p-4 bg-white hover:bg-gray-50 flex justify-between items-center border-b last:border-0">
+                                                               <div className="flex items-center gap-3">
+                                                                   <div className="h-8 w-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+                                                                       {std.avatar ? <img src={std.avatar} className="h-full w-full object-cover" /> : <Users className="h-4 w-4 m-2 text-gray-400" />}
+                                                                   </div>
+                                                                   <div>
+                                                                       <p className="font-medium text-gray-900">{std.name}</p>
+                                                                       <p className="text-sm text-gray-500">{std.email}</p>
+                                                                   </div>
+                                                               </div>
+                                                               <div className="text-right">
+                                                                    <div className="text-xs font-semibold text-gray-700">
+                                                                        {std.shifts?.join(', ') || 'S/T'}
+                                                                    </div>
+                                                                    <div className="text-xs text-gray-500 mt-0.5">
+                                                                        Turmas: {std.classGroups?.join(', ') || 'N/A'}
+                                                                    </div>
+                                                               </div>
+                                                           </div>
+                                                       ))}
+                                                   </div>
+                                               </div>
+                                           ))}
+                                       </div>
+                                   </div>
+                               ))}
+                           </div>
+                      </CardContent>
+                  </Card>
+              </div>
+          </div>
+      )}
+
+      {/* --- ABA QUESTIONÁRIOS --- */}
       {activeTab === 'questionnaire' && (
-        <div className="grid gap-8 lg:grid-cols-12 print:hidden">
+        <div className="grid gap-8 lg:grid-cols-12 print:hidden animate-in fade-in">
             {/* Left: Builder Form */}
             <div className="lg:col-span-5 space-y-6">
                 
@@ -1122,9 +1170,207 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         </div>
       )} 
       
-      {/* ... (Overview tab content remains unchanged) ... */}
-      {activeTab === 'overview' && (
-        <div className="text-center p-10"><p className="text-gray-500">Visão Geral Ativa</p></div>
+      {/* --- ABA RELATÓRIOS & STATS --- */}
+      {activeTab === 'stats' && (
+        <div className="space-y-6 animate-in fade-in">
+             <div className="flex justify-between items-center bg-gray-900 text-white p-6 rounded-lg shadow-lg">
+                 <div>
+                     <h2 className="text-xl font-bold">Fecho do Semestre</h2>
+                     <p className="text-gray-400 text-sm mt-1">Gere os scores finais combinando Auto-Avaliação + Estudantes + Institucional.</p>
+                 </div>
+                 <Button onClick={handleCalculateScores} disabled={calculating} className="bg-white text-black hover:bg-gray-200 h-12 px-6">
+                     {calculating ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin"/> Calculando...</> : <><Calculator className="mr-2 h-4 w-4"/> Calcular Scores</>}
+                 </Button>
+             </div>
+
+             {allScores.length > 0 && (
+                 <>
+                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                        <Card>
+                            <CardHeader><CardTitle className="text-sm">Média Global</CardTitle></CardHeader>
+                            <CardContent>
+                                <div className="text-3xl font-bold text-indigo-600">{avgScore}</div>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardHeader><CardTitle className="text-sm">Total Avaliados</CardTitle></CardHeader>
+                            <CardContent>
+                                <div className="text-3xl font-bold">{allScores.length}</div>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardHeader><CardTitle className="text-sm">Melhor Desempenho</CardTitle></CardHeader>
+                            <CardContent>
+                                <div className="text-3xl font-bold text-green-600">{Math.max(...allScores.map(s => s.finalScore)).toFixed(1)}</div>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardHeader><CardTitle className="text-sm">Pior Desempenho</CardTitle></CardHeader>
+                            <CardContent>
+                                <div className="text-3xl font-bold text-red-600">{Math.min(...allScores.map(s => s.finalScore)).toFixed(1)}</div>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    <div className="grid gap-6 md:grid-cols-2">
+                        <Card>
+                            <CardHeader><CardTitle>Distribuição de Classificação</CardTitle></CardHeader>
+                            <CardContent className="h-[300px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie data={scoreDistribution} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5}>
+                                            {scoreDistribution.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                                        </Pie>
+                                        <Tooltip />
+                                        <Legend />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardHeader><CardTitle>Scores Finais por Docente</CardTitle></CardHeader>
+                            <CardContent className="h-[300px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={allScores.map(s => {
+                                        const t = teachers.find(u => u.id === s.teacherId);
+                                        return { name: t?.name?.split(' ')[0] || 'Doc', score: s.finalScore };
+                                    })}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                        <XAxis dataKey="name" />
+                                        <YAxis />
+                                        <Tooltip />
+                                        <Bar dataKey="score" fill="#4f46e5" radius={[4, 4, 0, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                        <table className="w-full text-sm">
+                            <thead className="bg-gray-50 border-b">
+                                <tr>
+                                    <th className="px-6 py-3 text-left font-medium text-gray-500">Docente</th>
+                                    <th className="px-6 py-3 text-right font-medium text-gray-500">Auto-Aval.</th>
+                                    <th className="px-6 py-3 text-right font-medium text-gray-500">Estudantes</th>
+                                    <th className="px-6 py-3 text-right font-medium text-gray-500">Qualitativa</th>
+                                    <th className="px-6 py-3 text-right font-medium text-gray-900">FINAL</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                {allScores.map(s => {
+                                    const t = teachers.find(u => u.id === s.teacherId);
+                                    return (
+                                        <tr key={s.teacherId} className="hover:bg-gray-50">
+                                            <td className="px-6 py-4 font-medium">{t?.name || 'Desconhecido'}</td>
+                                            <td className="px-6 py-4 text-right text-gray-500">{s.selfEvalScore}</td>
+                                            <td className="px-6 py-4 text-right text-gray-500">{s.studentScore}</td>
+                                            <td className="px-6 py-4 text-right text-gray-500">{s.institutionalScore}</td>
+                                            <td className="px-6 py-4 text-right font-bold text-indigo-600">{s.finalScore}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="flex justify-end gap-2 mt-4 print:hidden">
+                        <Button variant="outline" onClick={handlePrintPDF}>
+                            <Printer className="mr-2 h-4 w-4" /> Imprimir
+                        </Button>
+                        <Button onClick={handleExportCSV}>
+                            <Download className="mr-2 h-4 w-4" /> Exportar CSV
+                        </Button>
+                    </div>
+                 </>
+             )}
+             
+             {allScores.length === 0 && !calculating && (
+                 <div className="text-center py-12 text-gray-500 border-2 border-dashed rounded-lg">
+                     <Calculator className="h-10 w-10 mx-auto text-gray-300 mb-2" />
+                     <p>Nenhum cálculo realizado ainda.</p>
+                     <p className="text-xs">Clique em "Calcular Scores" acima para processar as avaliações.</p>
+                 </div>
+             )}
+        </div>
+      )}
+
+      {/* --- SETTINGS (LOGO UPDATE) --- */}
+      {activeTab === 'settings' && institution && (
+          <div className="grid gap-8 lg:grid-cols-2 max-w-4xl mx-auto">
+              <Card>
+                  <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                          <Building2 className="h-5 w-5" /> Identidade da Instituição
+                      </CardTitle>
+                      <p className="text-sm text-gray-500">Atualize o nome e o logotipo que aparecem nos relatórios.</p>
+                  </CardHeader>
+                  <CardContent>
+                      <form onSubmit={handleUpdateInstitution} className="space-y-6">
+                          <div className="space-y-2">
+                              <Label>Nome da Instituição</Label>
+                              <Input 
+                                value={institution.name} 
+                                onChange={(e) => setInstitution({...institution, name: e.target.value})} 
+                              />
+                          </div>
+
+                          <div className="space-y-2">
+                              <Label>Logotipo</Label>
+                              <div className="flex items-center gap-4">
+                                  <div className="h-24 w-24 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden relative">
+                                      {institution.logo ? (
+                                          <img src={institution.logo} className="h-full w-full object-contain p-2" />
+                                      ) : (
+                                          <ImageIcon className="h-8 w-8 text-gray-300" />
+                                      )}
+                                      <input 
+                                          type="file" 
+                                          accept="image/*" 
+                                          onChange={handleInstLogoUpload}
+                                          className="absolute inset-0 opacity-0 cursor-pointer" 
+                                      />
+                                  </div>
+                                  <div className="flex-1 text-sm text-gray-500">
+                                      <p>Clique na imagem para alterar.</p>
+                                      <p className="text-xs mt-1">Recomendado: PNG ou JPG com fundo transparente. Máx 500KB.</p>
+                                  </div>
+                              </div>
+                          </div>
+                          
+                          <div className="space-y-2">
+                              <Label>Código / Sigla</Label>
+                              <Input 
+                                disabled
+                                value={institution.code} 
+                                className="bg-gray-100 text-gray-500"
+                              />
+                              <p className="text-xs text-gray-400">O código da instituição não pode ser alterado.</p>
+                          </div>
+
+                          <Button type="submit" className="w-full">
+                              <Save className="mr-2 h-4 w-4" /> Salvar Alterações
+                          </Button>
+                      </form>
+                  </CardContent>
+              </Card>
+
+              <Card className="bg-blue-50/50 border-blue-100">
+                  <CardHeader>
+                      <CardTitle className="text-blue-900">Sobre sua conta</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                      <div className="p-4 bg-white rounded-lg border shadow-sm">
+                          <p className="text-sm font-medium text-gray-500">Código de Convite</p>
+                          <div className="flex items-center gap-2 mt-1">
+                              <Key className="h-4 w-4 text-gray-400" />
+                              <span className="font-mono text-lg font-bold">{institution.inviteCode || 'N/A'}</span>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-2">Use este código se precisar convidar outros gestores (Funcionalidade futura).</p>
+                      </div>
+                  </CardContent>
+              </Card>
+          </div>
       )}
     </div>
   );
