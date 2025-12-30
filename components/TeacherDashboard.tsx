@@ -221,139 +221,163 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
   const isFormLocked = !!lastSaved;
 
   // --- HELPERS PARA O RELATÓRIO OFICIAL ---
-  const getRatingLabel = (score: number) => {
-      if (!score) return '-';
-      if (score < 50) return 'Mau';
-      if (score < 70) return 'Suficiente';
-      if (score < 85) return 'Bom';
-      return 'Muito Bom'; // ou Excelente
-  };
-
   const formatScore = (val: number | undefined) => {
       if (val === undefined) return '0.0';
       return val.toFixed(1);
   }
 
+  // Verifica em qual balde cai a nota (para destacar na tabela)
+  const isScoreInBucket = (score: number | undefined, bucket: number) => {
+      if (score === undefined) return false;
+      // Lógica de "baldes" baseada nos parâmetros da imagem
+      if (bucket === 10) return score >= 9;
+      if (bucket === 7.5) return score >= 6.5 && score < 9;
+      if (bucket === 5) return score >= 4 && score < 6.5;
+      if (bucket === 2.5) return score < 4;
+      return false;
+  }
+
   return (
     <div className="space-y-8 p-4 md:p-8 max-w-6xl mx-auto animate-in fade-in duration-500">
       
-      {/* --- RELATÓRIO PDF CORPORATIVO MINIMALISTA --- */}
-      <div className="hidden print:block bg-white text-gray-900 max-w-[210mm] mx-auto p-12 h-screen">
+      {/* --- RELATÓRIO PDF: FICHA DE INDICADORES (MODELO ISCAM) --- */}
+      <div className="hidden print:block bg-white text-black font-serif max-w-[210mm] mx-auto p-2 h-screen text-[10pt] leading-snug">
           
-          {/* HEADER: Minimalist & Clean */}
-          <div className="flex justify-between items-start mb-12 border-b border-gray-900 pb-6">
-               <div className="flex flex-col justify-between h-full">
-                   {institution?.logo && <img src={institution.logo} className="h-16 w-auto object-contain mb-4" alt="Logo" />}
-                   <div>
-                       <h1 className="text-2xl font-bold uppercase tracking-tight text-gray-900 leading-none">{institution?.name || "Universidade"}</h1>
-                       <p className="text-sm text-gray-500 mt-1 uppercase tracking-widest font-medium">Relatório de Desempenho Docente</p>
+          {/* 1. Header com Logo e Título */}
+          <div className="flex flex-col items-center mb-4">
+               <div className="w-full flex justify-between items-start mb-2 px-4">
+                   <div className="w-1/4">
+                       {institution?.logo ? (
+                           <img src={institution.logo} className="h-16 w-auto object-contain" alt="Logo" />
+                       ) : (
+                           <div className="h-16 w-24 border flex items-center justify-center text-xs">LOGO</div>
+                       )}
+                   </div>
+                   <div className="w-3/4 text-center pr-24 pt-4">
+                       <h2 className="font-bold text-base">Divisão Pedagógica</h2>
                    </div>
                </div>
-               <div className="text-right">
-                   <div className="mb-4">
-                       <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Ano Lectivo</p>
-                       <p className="text-lg font-medium">{header.academicYear}</p>
-                   </div>
-                   <div>
-                       <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Data de Emissão</p>
-                       <p className="text-sm font-medium">{new Date().toLocaleDateString()}</p>
-                   </div>
-               </div>
+               <h1 className="font-bold text-lg uppercase border-b-2 border-transparent">FICHA DE INDICADORES E PARÂMETROS DE AVALIAÇÃO QUALITATIVA</h1>
           </div>
 
-          {/* TEACHER PROFILE: Grid Layout, No Boxes */}
-          <div className="grid grid-cols-2 gap-x-16 gap-y-6 mb-12">
-              <div>
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold mb-1">Docente</p>
-                  <p className="text-lg font-semibold border-b border-gray-200 pb-1">{user.name}</p>
+          {/* 2. Formulário de Dados */}
+          <div className="mb-4 space-y-1.5 px-2">
+              <div className="flex">
+                  <span className="font-bold mr-2">Sector:</span>
+                  <div className="flex-1 border-b border-black">Divisão Pedagógica</div>
               </div>
-              <div>
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold mb-1">Categoria</p>
-                  <p className="text-lg font-medium capitalize border-b border-gray-200 pb-1">{header.category.replace('_', ' ')}</p>
+              <div className="flex">
+                  <span className="font-bold mr-2">Nome do docente:</span>
+                  <div className="flex-1 border-b border-black">{user.name}</div>
               </div>
-              <div>
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold mb-1">Regime Laboral</p>
-                  <p className="text-base font-medium border-b border-gray-200 pb-1">{header.contractRegime}</p>
+              <div className="flex">
+                  <span className="font-bold mr-2">Categoria:</span>
+                  <div className="flex-1 border-b border-black capitalize">{header.category.replace('_', ' ')}</div>
               </div>
-              <div>
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold mb-1">Unidade Orgânica</p>
-                  <p className="text-base font-medium border-b border-gray-200 pb-1">Divisão Pedagógica</p>
+              <div className="flex">
+                  <span className="font-bold mr-2">Função:</span>
+                  <div className="flex-1 border-b border-black">{header.function}</div>
               </div>
-          </div>
-
-          {/* EXECUTIVE SUMMARY: Big Numbers, Clean Look */}
-          <div className="bg-gray-50 rounded-lg p-8 mb-12 flex justify-between items-center border border-gray-100">
-              <div>
-                  <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold mb-1">Pontuação Final</p>
-                  <div className="flex items-baseline gap-2">
-                      <span className="text-5xl font-bold text-gray-900 tracking-tighter">{formatScore(stats?.finalScore)}</span>
-                      <span className="text-sm text-gray-400 font-medium">/ 100 pts</span>
+              <div className="flex">
+                  <span className="font-bold mr-2">Regime laboral (Tempo inteiro/Parcial):</span>
+                  <div className="flex-1 border-b border-black">{header.contractRegime}</div>
+              </div>
+              <div className="flex">
+                  <span className="font-bold mr-2">Disciplina:</span>
+                  <div className="flex-1 border-b border-black">Geral / Várias</div>
+              </div>
+              <div className="flex gap-4">
+                  <div className="flex flex-1">
+                      <span className="font-bold mr-2">Ano Lectivo:</span>
+                      <div className="flex-1 border-b border-black">{header.academicYear}</div>
+                  </div>
+                  <div className="flex flex-1">
+                      <span className="font-bold mr-1">; Semestre:</span>
+                      <div className="flex-1 border-b border-black">1º / 2º</div>
                   </div>
               </div>
-              <div className="h-12 w-px bg-gray-300 mx-8"></div>
-              <div className="text-right">
-                  <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold mb-1">Classificação Qualitativa</p>
-                  <span className="text-2xl font-medium text-gray-900">{getRatingLabel(stats?.finalScore || 0)}</span>
-              </div>
           </div>
 
-          {/* METRICS TABLE: Minimalist, Horizontal Lines Only */}
-          <div className="mb-12">
-              <h3 className="text-xs uppercase tracking-widest text-gray-900 font-bold mb-6">Detalhamento da Avaliação</h3>
-              <table className="w-full text-left border-collapse">
+          {/* 3. Tabela Matriz de Indicadores */}
+          <div className="mb-2">
+              <table className="w-full border-collapse border border-black text-[9pt]">
                   <thead>
-                      <tr>
-                          <th className="py-3 border-b-2 border-gray-900 text-xs font-bold uppercase tracking-wider text-gray-500 w-1/2">Indicador</th>
-                          <th className="py-3 border-b-2 border-gray-900 text-xs font-bold uppercase tracking-wider text-gray-500 text-right">Peso</th>
-                          <th className="py-3 border-b-2 border-gray-900 text-xs font-bold uppercase tracking-wider text-gray-500 text-right">Pontuação Obtida</th>
+                      <tr className="bg-gray-100">
+                          <th className="border border-black p-2 text-left w-[20%] font-bold uppercase">INDICADORES</th>
+                          <th className="border border-black p-2 text-center w-[80%] font-bold uppercase" colSpan={4}>PARÂMETROS</th>
                       </tr>
                   </thead>
                   <tbody>
+                      {/* LINHA 1: CUMPRIMENTO DE PRAZOS */}
                       <tr>
-                          <td className="py-4 border-b border-gray-100 font-medium text-gray-900">Auto-Avaliação do Docente</td>
-                          <td className="py-4 border-b border-gray-100 text-right text-gray-500 text-sm">80%</td>
-                          <td className="py-4 border-b border-gray-100 text-right font-mono font-medium text-gray-900">{formatScore(stats?.selfEvalScore)}</td>
+                          <td className="border border-black p-2 align-middle font-bold bg-gray-50">
+                              Cumprimento de tarefas e prazos por semestre/ano (10)
+                          </td>
+                          <td className={`border border-black p-2 align-top w-[20%] ${isScoreInBucket(qualEval?.deadlineCompliance, 10) ? 'bg-gray-300 font-bold' : ''}`}>
+                              Realiza as tarefas em prazos mais curtos do que os normalmente necessários (10)
+                          </td>
+                          <td className={`border border-black p-2 align-top w-[20%] ${isScoreInBucket(qualEval?.deadlineCompliance, 7.5) ? 'bg-gray-300 font-bold' : ''}`}>
+                              Executa as tarefas com rapidez e oportunidade e de qualidade aceitável (7.5)
+                          </td>
+                          <td className={`border border-black p-2 align-top w-[20%] ${isScoreInBucket(qualEval?.deadlineCompliance, 5) ? 'bg-gray-300 font-bold' : ''}`}>
+                              Realiza em regra, as tarefas dentro dos prazos estabelecidos (5)
+                          </td>
+                          <td className={`border border-black p-2 align-top w-[20%] ${isScoreInBucket(qualEval?.deadlineCompliance, 2.5) ? 'bg-gray-300 font-bold' : ''}`}>
+                              Demasiado lento, atrasos no funcionamento do serviço. Não entrega o trabalho realizado antes que seja exigido pelo seu chefe. Não cumpre com os prazos estabelecidos (2.5)
+                          </td>
                       </tr>
+
+                      {/* LINHA 2: QUALIDADE DO TRABALHO */}
                       <tr>
-                          <td className="py-4 border-b border-gray-100 font-medium text-gray-900">Avaliação pelos Estudantes</td>
-                          <td className="py-4 border-b border-gray-100 text-right text-gray-500 text-sm">12%</td>
-                          <td className="py-4 border-b border-gray-100 text-right font-mono font-medium text-gray-900">{formatScore(stats?.studentScore)}</td>
+                          <td className="border border-black p-2 align-middle font-bold bg-gray-50">
+                              Qualidade do trabalho realizado (10)
+                          </td>
+                          <td className={`border border-black p-2 align-top ${isScoreInBucket(qualEval?.workQuality, 10) ? 'bg-gray-300 font-bold' : ''}`}>
+                              Qualidade excelente (10)
+                          </td>
+                          <td className={`border border-black p-2 align-top ${isScoreInBucket(qualEval?.workQuality, 7.5) ? 'bg-gray-300 font-bold' : ''}`}>
+                              Muito boa qualidade e exemplar (7.5)
+                          </td>
+                          <td className={`border border-black p-2 align-top ${isScoreInBucket(qualEval?.workQuality, 5) ? 'bg-gray-300 font-bold' : ''}`}>
+                              Boa qualidade e está dentro do padrão estabelecido (5)
+                          </td>
+                          <td className={`border border-black p-2 align-top ${isScoreInBucket(qualEval?.workQuality, 2.5) ? 'bg-gray-300 font-bold' : ''}`}>
+                              Qualidade insuficiente e necessita de correcções (2.5)
+                          </td>
                       </tr>
-                      <tr>
-                          <td className="py-4 border-b border-gray-100 font-medium text-gray-900">Avaliação Institucional (Gestor)</td>
-                          <td className="py-4 border-b border-gray-100 text-right text-gray-500 text-sm">8%</td>
-                          <td className="py-4 border-b border-gray-100 text-right font-mono font-medium text-gray-900">{formatScore(stats?.institutionalScore)}</td>
-                      </tr>
-                      <tr className="bg-gray-50">
-                          <td className="py-4 pl-4 font-bold text-gray-900">TOTAL GERAL</td>
-                          <td className="py-4 text-right text-gray-500 text-sm">100%</td>
-                          <td className="py-4 pr-4 text-right font-mono font-bold text-xl text-gray-900">{formatScore(stats?.finalScore)}</td>
+
+                      {/* LINHA TOTAL */}
+                      <tr className="bg-gray-100 font-bold">
+                          <td className="border border-black p-2 uppercase" colSpan={3}>TOTAL DE PONTOS OBTIDOS:</td>
+                          <td className="border border-black p-2 text-center text-lg" colSpan={2}>
+                              {((qualEval?.deadlineCompliance || 0) + (qualEval?.workQuality || 0)).toFixed(1)}
+                          </td>
                       </tr>
                   </tbody>
               </table>
           </div>
 
-          {/* SIGNATURES: Clean Lines */}
-          <div className="mt-auto pt-20">
-              <div className="grid grid-cols-2 gap-24">
-                  <div>
-                      <div className="border-t border-gray-300 pt-4">
-                          <p className="text-sm font-bold text-gray-900 uppercase">O Docente</p>
-                          <p className="text-xs text-gray-500 mt-1">{user.name}</p>
-                      </div>
-                  </div>
-                  <div>
-                      <div className="border-t border-gray-300 pt-4">
-                          <p className="text-sm font-bold text-gray-900 uppercase">O Director Pedagógico</p>
-                          <p className="text-xs text-gray-500 mt-1">Homologação Institucional</p>
-                      </div>
-                  </div>
-              </div>
+          {/* 4. Notas de Cálculo */}
+          <div className="text-justify mb-6 px-1">
+              <p>
+                  <span className="font-bold">Pontuação máxima de ficha: 20 pontos.</span> Para obter a pontuação final multiplique o total de pontos obtidos por <span className="font-bold">0.46</span> se o avaliado for <em>Assistente Estagiário</em>, e por <span className="font-bold">0.88</span> se o avaliado for <em>Assistente</em>.
+              </p>
           </div>
-          
-          {/* FOOTER */}
-          <div className="fixed bottom-8 left-0 w-full text-center">
-               <p className="text-[10px] text-gray-400 uppercase tracking-widest">Documento processado eletronicamente por AvaliaDocente MZ</p>
+
+          {/* 5. Comentários */}
+          <div className="mb-10 px-1">
+              <p className="font-bold mb-2">Comentários</p>
+              <div className="border-b border-black h-8 w-full mb-2"></div>
+              <div className="border-b border-black h-8 w-full mb-2"></div>
+              <div className="border-b border-black h-8 w-full mb-2"></div>
+              <div className="border-b border-black h-8 w-full mb-2"></div>
+          </div>
+
+          {/* 6. Footer com Endereço */}
+          <div className="fixed bottom-6 left-0 right-0 text-center text-[8pt] text-gray-700">
+               <p className="font-bold uppercase mb-1">{institution?.name || "Instituto Superior de Contabilidade e Auditoria de Moçambique"}</p>
+               <p>Rua John Issa, nº 93, Tel: +258 21328657, Fax: +258 21328657, Cel.: +258 823053873</p>
+               <p>www.iscam.ac.mz; E-mail: divisao.pedagogica@iscam.ac.mz. <span className="font-bold uppercase">O FUTURO COM EXCELÊNCIA</span></p>
           </div>
 
       </div>
