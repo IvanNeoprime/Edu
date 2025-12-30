@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, CombinedScore, SelfEvaluation, TeacherCategory, Questionnaire, UserRole, Question, QualitativeEval } from '../types';
+import { User, CombinedScore, SelfEvaluation, TeacherCategory, Questionnaire, UserRole, Question, QualitativeEval, Institution } from '../types';
 import { BackendService } from '../services/backend';
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label, Select } from './ui';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
@@ -14,6 +14,7 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
   const [activeTab, setActiveTab] = useState<'stats' | 'self-eval' | 'surveys'>('stats');
   const [stats, setStats] = useState<CombinedScore | undefined>(undefined);
   const [qualEval, setQualEval] = useState<QualitativeEval | undefined>(undefined);
+  const [institution, setInstitution] = useState<Institution | null>(null);
   
   // Surveys State
   const [availableSurvey, setAvailableSurvey] = useState<{questionnaire: Questionnaire} | null>(null);
@@ -67,6 +68,11 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
     const data = await BackendService.getTeacherStats(user.id);
     setStats(data);
 
+    if (user.institutionId) {
+        const inst = await BackendService.getInstitution(user.institutionId);
+        if (inst) setInstitution(inst);
+    }
+
     // Load Manager's Qualitative Eval
     const qEval = await BackendService.getQualitativeEval(user.id);
     setQualEval(qEval);
@@ -108,20 +114,29 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
     return score;
   };
 
-  // Generate breakdown for charts
-  const getScoreBreakdown = () => {
-      const data = [
-          { name: 'Graduação', value: (answers.gradSubjects || 0) * 15 },
-          { name: 'Pós-Grad', value: (answers.postGradSubjects || 0) * 5 },
-          { name: 'Teóricas', value: (answers.theoryHours || 0) * 16 },
-          { name: 'Práticas', value: (answers.practicalHours || 0) * 14 },
-          { name: 'Consultas', value: (answers.consultationHours || 0) * 5 },
+  // Generate breakdown for charts and table
+  const getDetailedBreakdown = () => {
+      const items = [
+          { name: 'Disciplinas Graduação', qty: answers.gradSubjects || 0, pts: 15, subtotal: (answers.gradSubjects || 0) * 15 },
+          { name: 'Disciplinas Pós-Grad.', qty: answers.postGradSubjects || 0, pts: 5, subtotal: (answers.postGradSubjects || 0) * 5 },
+          { name: 'Horas Teóricas', qty: answers.theoryHours || 0, pts: 16, subtotal: (answers.theoryHours || 0) * 16 },
+          { name: 'Horas Práticas', qty: answers.practicalHours || 0, pts: 14, subtotal: (answers.practicalHours || 0) * 14 },
+          { name: 'Horas Consultas', qty: answers.consultationHours || 0, pts: 5, subtotal: (answers.consultationHours || 0) * 5 },
       ];
+
       if (header.category === 'assistente') {
-          data.push({ name: 'Supervisão', value: ((answers.gradSupervision || 0) * 6) + ((answers.postGradSupervision || 0) * 6) });
-          data.push({ name: 'Regência', value: (answers.regencySubjects || 0) * 8 });
+          items.push({ name: 'Supervisão Graduação', qty: answers.gradSupervision || 0, pts: 6, subtotal: (answers.gradSupervision || 0) * 6 });
+          items.push({ name: 'Supervisão Pós-Grad.', qty: answers.postGradSupervision || 0, pts: 6, subtotal: (answers.postGradSupervision || 0) * 6 });
+          items.push({ name: 'Regência', qty: answers.regencySubjects || 0, pts: 8, subtotal: (answers.regencySubjects || 0) * 8 });
+      } else {
+           items.push({ name: 'Supervisão/Regência', qty: 0, pts: 0, subtotal: 0 }); // Placeholder for formatting
       }
-      return data.filter(d => d.value > 0);
+      return items;
+  };
+
+  const getScoreBreakdown = () => {
+      // Simplified for charts
+      return getDetailedBreakdown().map(i => ({ name: i.name, value: i.subtotal })).filter(d => d.value > 0);
   };
 
   const handleSaveSelfEval = async (e: React.FormEvent) => {
@@ -151,8 +166,6 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
   };
 
   const handleDownloadPDF = () => {
-      // Trigger browser print, which allows Save as PDF. 
-      // The CSS includes a @media print section that formats the document perfectly.
       window.print();
   };
 
@@ -205,118 +218,177 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
       }
   };
 
-  // Pie Chart Data
-  const pieData = stats ? [
-      { name: 'Auto-Avaliação', value: stats.selfEvalScore, fill: '#8b5cf6' },
-      { name: 'Aval. Estudante', value: stats.studentScore, fill: '#3b82f6' },
-      { name: 'Aval. Qualitativa', value: stats.institutionalScore, fill: '#10b981' }
-  ] : [
-      { name: 'Auto-Avaliação (Estimada)', value: calculateLiveScore(), fill: '#8b5cf6' },
-      { name: 'Outros (Pendente)', value: 10, fill: '#e5e7eb' }
-  ];
-
   const isFormLocked = !!lastSaved;
 
   return (
     <div className="space-y-8 p-4 md:p-8 max-w-6xl mx-auto animate-in fade-in duration-500">
       
-      {/* --- VISÃO DE IMPRESSÃO (REPORT VIEW - PDF) --- */}
-      {/* Este bloco fica invisível na tela normal e visível apenas na impressão/PDF */}
-      <div className="hidden print:block font-serif p-8 max-w-[210mm] mx-auto bg-white text-black">
-          <div className="text-center border-b-2 border-black pb-4 mb-6">
-              <h1 className="text-2xl font-bold uppercase">Ficha de Avaliação de Desempenho Docente</h1>
-              <p className="text-sm mt-1">{user.institutionId?.toUpperCase()} - {new Date().getFullYear()}</p>
+      {/* --- RELATÓRIO PDF OFICIAL --- */}
+      <div className="hidden print:block font-serif text-black max-w-[210mm] mx-auto bg-white p-0">
+          
+          {/* 1. Cabeçalho Institucional */}
+          <div className="flex items-center justify-between border-b-4 border-black pb-4 mb-6">
+               <div className="flex items-center gap-4">
+                   {institution?.logo && <img src={institution.logo} className="h-20 w-auto object-contain" alt="Logo" />}
+                   <div>
+                       <h1 className="text-2xl font-bold uppercase tracking-wide">{institution?.name || "Instituição de Ensino Superior"}</h1>
+                       <h2 className="text-sm font-semibold text-gray-700">Sistema Integrado de Avaliação de Desempenho Docente</h2>
+                   </div>
+               </div>
+               <div className="text-right text-xs">
+                   <p className="font-bold">Ficha: MOD-AVAL-01</p>
+                   <p>Ano Lectivo: {header.academicYear}</p>
+                   <p>{new Date().toLocaleDateString()}</p>
+               </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 mb-6 text-sm border p-4">
-              <div><strong>Nome:</strong> {user.name}</div>
-              <div><strong>Email:</strong> {user.email}</div>
-              <div><strong>Categoria:</strong> {header.category}</div>
-              <div><strong>Regime:</strong> {header.contractRegime}</div>
+          <div className="text-center mb-6">
+              <h1 className="text-xl font-bold underline decoration-2 underline-offset-4 uppercase">Ficha de Avaliação de Desempenho</h1>
           </div>
 
+          {/* 2. Dados do Docente (Tabela) */}
           <div className="mb-6">
-              <h2 className="font-bold border-b border-black mb-2 uppercase text-sm">1. Auto-Avaliação (Indicadores Quantitativos)</h2>
-              <table className="w-full text-sm border-collapse border border-gray-300">
-                  <thead>
-                      <tr className="bg-gray-100">
-                          <th className="border p-1 text-left">Indicador</th>
-                          <th className="border p-1 text-right">Qtd</th>
-                          <th className="border p-1 text-right">Pts Unit.</th>
-                          <th className="border p-1 text-right">Subtotal</th>
-                      </tr>
-                  </thead>
+              <div className="text-xs font-bold uppercase mb-1 bg-black text-white px-2 py-1 inline-block">I. Identificação do Docente</div>
+              <table className="w-full border-collapse border border-black text-sm">
                   <tbody>
-                      {getScoreBreakdown().map(item => (
-                          <tr key={item.name}>
-                              <td className="border p-1">{item.name}</td>
-                              <td className="border p-1 text-right">-</td>
-                              <td className="border p-1 text-right">-</td>
-                              <td className="border p-1 text-right">{item.value}</td>
-                          </tr>
-                      ))}
-                      <tr className="font-bold bg-gray-50">
-                          <td className="border p-1" colSpan={3}>Total Auto-Avaliação</td>
-                          <td className="border p-1 text-right">{calculateLiveScore()}</td>
+                      <tr>
+                          <td className="border border-black p-2 bg-gray-100 font-bold w-1/4">Nome Completo</td>
+                          <td className="border border-black p-2 w-3/4">{user.name}</td>
+                      </tr>
+                      <tr>
+                          <td className="border border-black p-2 bg-gray-100 font-bold">Categoria Profissional</td>
+                          <td className="border border-black p-2 uppercase">{header.category.replace('_', ' ')}</td>
+                      </tr>
+                      <tr>
+                          <td className="border border-black p-2 bg-gray-100 font-bold">Regime / Período</td>
+                          <td className="border border-black p-2">{header.contractRegime} / {header.workPeriod}</td>
+                      </tr>
+                      <tr>
+                          <td className="border border-black p-2 bg-gray-100 font-bold">Email Institucional</td>
+                          <td className="border border-black p-2">{user.email}</td>
                       </tr>
                   </tbody>
               </table>
           </div>
 
+          {/* 3. Auto-Avaliação (Tabela Detalhada) */}
           <div className="mb-6">
-              <h2 className="font-bold border-b border-black mb-2 uppercase text-sm">2. Auto-Reflexão do Docente</h2>
-              <div className="border p-4 text-sm min-h-[100px] bg-gray-50 italic">
-                  {selfComments || "Nenhuma reflexão registrada pelo docente."}
-              </div>
+              <div className="text-xs font-bold uppercase mb-1 bg-black text-white px-2 py-1 inline-block">II. Indicadores de Desempenho (Auto-Avaliação)</div>
+              <table className="w-full border-collapse border border-black text-sm">
+                  <thead>
+                      <tr className="bg-gray-100 text-xs uppercase">
+                          <th className="border border-black p-2 text-left">Indicador</th>
+                          <th className="border border-black p-2 text-center w-24">Quantidade</th>
+                          <th className="border border-black p-2 text-center w-24">Peso Unit.</th>
+                          <th className="border border-black p-2 text-right w-24">Subtotal</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+                      {getDetailedBreakdown().map((item, idx) => (
+                          <tr key={idx}>
+                              <td className="border border-black p-2">{item.name}</td>
+                              <td className="border border-black p-2 text-center">{item.qty > 0 ? item.qty : '-'}</td>
+                              <td className="border border-black p-2 text-center">{item.pts > 0 ? item.pts : '-'}</td>
+                              <td className="border border-black p-2 text-right font-medium">{item.subtotal > 0 ? item.subtotal.toFixed(1) : '-'}</td>
+                          </tr>
+                      ))}
+                      <tr className="bg-gray-50 font-bold">
+                          <td className="border border-black p-2 text-right" colSpan={3}>TOTAL AUTO-AVALIAÇÃO (Máx. 80 pts)</td>
+                          <td className="border border-black p-2 text-right">{stats?.selfEvalScore || calculateLiveScore()}</td>
+                      </tr>
+                  </tbody>
+              </table>
           </div>
 
+          {/* 4. Avaliação Qualitativa & Estudante */}
           <div className="mb-6">
-              <h2 className="font-bold border-b border-black mb-2 uppercase text-sm">3. Avaliação Qualitativa (Preenchida pelo Gestor)</h2>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div className="border p-2">
-                      <div className="font-bold text-xs uppercase text-gray-500">Cumprimento de Prazos</div>
-                      <div className="text-lg">{qualEval?.deadlineCompliance ?? '-'} / 10</div>
+               <div className="grid grid-cols-2 gap-8">
+                   {/* Qualitativa */}
+                   <div>
+                        <div className="text-xs font-bold uppercase mb-1 bg-black text-white px-2 py-1 inline-block">III. Avaliação Qualitativa (Gestor)</div>
+                        <table className="w-full border-collapse border border-black text-sm">
+                            <tbody>
+                                <tr>
+                                    <td className="border border-black p-2">Cumprimento de Prazos</td>
+                                    <td className="border border-black p-2 text-right w-16">{qualEval?.deadlineCompliance ?? '-'}</td>
+                                </tr>
+                                <tr>
+                                    <td className="border border-black p-2">Qualidade do Trabalho</td>
+                                    <td className="border border-black p-2 text-right">{qualEval?.workQuality ?? '-'}</td>
+                                </tr>
+                                <tr className="bg-gray-100 font-bold">
+                                    <td className="border border-black p-2 text-right">Total (Máx 8%)</td>
+                                    <td className="border border-black p-2 text-right">{stats?.institutionalScore ?? '-'}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                   </div>
+                   {/* Estudante */}
+                   <div>
+                        <div className="text-xs font-bold uppercase mb-1 bg-black text-white px-2 py-1 inline-block">IV. Avaliação Pedagógica (Estudantes)</div>
+                        <table className="w-full border-collapse border border-black text-sm">
+                            <tbody>
+                                <tr>
+                                    <td className="border border-black p-2 h-[66px] align-middle">
+                                        Média Ponderada das Respostas dos Estudantes nos Inquéritos
+                                    </td>
+                                </tr>
+                                <tr className="bg-gray-100 font-bold">
+                                    <td className="border border-black p-2 flex justify-between">
+                                        <span>Total (Máx 12%)</span>
+                                        <span>{stats?.studentScore ?? '-'}</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                   </div>
+               </div>
+          </div>
+
+          {/* 5. Resultado Final */}
+          <div className="mb-10">
+              <div className="text-xs font-bold uppercase mb-1 bg-black text-white px-2 py-1 inline-block">V. Classificação Final</div>
+              <table className="w-full border-collapse border border-black text-base">
+                  <tbody>
+                      <tr className="bg-black text-white font-bold">
+                          <td className="border border-black p-3 text-center w-1/3">Pontuação Total (0-100)</td>
+                          <td className="border border-black p-3 text-center w-1/3">Classificação Qualitativa</td>
+                          <td className="border border-black p-3 text-center w-1/3">Data do Fecho</td>
+                      </tr>
+                      <tr className="text-xl font-bold">
+                          <td className="border border-black p-6 text-center">{stats?.finalScore ?? 'Pendente'}</td>
+                          <td className="border border-black p-6 text-center">
+                              {!stats ? '-' : 
+                                stats.finalScore > 85 ? 'EXCELENTE' : 
+                                stats.finalScore > 70 ? 'BOM' : 
+                                stats.finalScore > 50 ? 'RAZOÁVEL' : 'INSUFICIENTE'}
+                          </td>
+                          <td className="border border-black p-6 text-center text-sm font-normal">
+                              {stats?.lastCalculated ? new Date(stats.lastCalculated).toLocaleDateString() : '-'}
+                          </td>
+                      </tr>
+                  </tbody>
+              </table>
+          </div>
+
+          {/* 6. Assinaturas */}
+          <div className="mt-auto pt-10">
+              <div className="grid grid-cols-2 gap-20">
+                  <div className="text-center">
+                      <div className="border-b border-black mb-2 mx-10"></div>
+                      <p className="font-bold text-sm uppercase">O Docente</p>
+                      <p className="text-xs">{user.name}</p>
                   </div>
-                  <div className="border p-2">
-                      <div className="font-bold text-xs uppercase text-gray-500">Qualidade do Trabalho</div>
-                      <div className="text-lg">{qualEval?.workQuality ?? '-'} / 10</div>
+                  <div className="text-center">
+                      <div className="border-b border-black mb-2 mx-10"></div>
+                      <p className="font-bold text-sm uppercase">O Chefe de Departamento / Gestor</p>
+                      <p className="text-xs">Data: ____/____/_______</p>
                   </div>
               </div>
           </div>
 
-          <div className="mb-8 border-t-2 border-black pt-4">
-              <h2 className="font-bold text-lg uppercase mb-4">Resultado Final Consolidado</h2>
-              <div className="grid grid-cols-4 gap-2 text-center text-sm">
-                  <div className="border p-2 bg-gray-50">
-                      <div className="font-bold">Auto-Aval.</div>
-                      <div>{stats?.selfEvalScore ?? calculateLiveScore()}</div>
-                  </div>
-                  <div className="border p-2 bg-gray-50">
-                      <div className="font-bold">Estudantes</div>
-                      <div>{stats?.studentScore ?? 'Pend.'}</div>
-                  </div>
-                  <div className="border p-2 bg-gray-50">
-                      <div className="font-bold">Institucional</div>
-                      <div>{stats?.institutionalScore ?? 'Pend.'}</div>
-                  </div>
-                  <div className="border p-2 bg-black text-white">
-                      <div className="font-bold">TOTAL</div>
-                      <div>{stats?.finalScore ?? 'Calculando'}</div>
-                  </div>
-              </div>
-          </div>
-
-          <div className="mt-12 grid grid-cols-2 gap-12 pt-8">
-              <div className="text-center border-t border-black pt-2">
-                  <p className="text-sm">Assinatura do Docente</p>
-              </div>
-              <div className="text-center border-t border-black pt-2">
-                  <p className="text-sm">Assinatura do Chefe de Departamento</p>
-              </div>
-          </div>
-          <div className="text-xs text-center mt-12 text-gray-500">Gerado digitalmente por AvaliaDocente MZ em {new Date().toLocaleDateString()}</div>
       </div>
-      {/* --- FIM DA VISÃO DE IMPRESSÃO --- */}
+      {/* --- FIM DO RELATÓRIO PDF --- */}
 
       <header className="border-b pb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:hidden">
         <div>
