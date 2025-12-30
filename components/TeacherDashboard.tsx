@@ -222,162 +222,138 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
 
   // --- HELPERS PARA O RELATÓRIO OFICIAL ---
   const formatScore = (val: number | undefined) => {
-      if (val === undefined) return '0.0';
-      return val.toFixed(1);
+      if (val === undefined) return '0.00';
+      return val.toFixed(2);
   }
 
-  // Verifica em qual balde cai a nota (para destacar na tabela)
-  const isScoreInBucket = (score: number | undefined, bucket: number) => {
-      if (score === undefined) return false;
-      // Lógica de "baldes" baseada nos parâmetros da imagem
-      if (bucket === 10) return score >= 9;
-      if (bucket === 7.5) return score >= 6.5 && score < 9;
-      if (bucket === 5) return score >= 4 && score < 6.5;
-      if (bucket === 2.5) return score < 4;
-      return false;
-  }
+  const getRatingLabel = (score: number) => {
+      if (!score) return 'PENDENTE';
+      if (score < 50) return 'INSUFICIENTE';
+      if (score < 70) return 'SUFICIENTE';
+      if (score < 85) return 'BOM';
+      return 'EXCELENTE';
+  };
 
   return (
     <div className="space-y-8 p-4 md:p-8 max-w-6xl mx-auto animate-in fade-in duration-500">
       
-      {/* --- RELATÓRIO PDF: FICHA DE INDICADORES (MODELO ISCAM) --- */}
-      <div className="hidden print:block bg-white text-black font-serif max-w-[210mm] mx-auto p-2 h-screen text-[10pt] leading-snug">
+      {/* --- RELATÓRIO PDF: ESTILO EXECUTIVO PREMIUM --- */}
+      <div className="hidden print:block font-sans text-gray-800 p-8 h-screen w-full bg-white">
           
-          {/* 1. Header com Logo e Título */}
-          <div className="flex flex-col items-center mb-4">
-               <div className="w-full flex justify-between items-start mb-2 px-4">
-                   <div className="w-1/4">
-                       {institution?.logo ? (
-                           <img src={institution.logo} className="h-16 w-auto object-contain" alt="Logo" />
-                       ) : (
-                           <div className="h-16 w-24 border flex items-center justify-center text-xs">LOGO</div>
-                       )}
-                   </div>
-                   <div className="w-3/4 text-center pr-24 pt-4">
-                       <h2 className="font-bold text-base">Divisão Pedagógica</h2>
+          {/* HEADER: Minimalist & Clean */}
+          <div className="flex justify-between items-end border-b-2 border-black pb-4 mb-8">
+               <div className="flex items-center gap-4">
+                   {institution?.logo ? (
+                       <img src={institution.logo} className="h-14 w-auto object-contain grayscale" alt="Logo" />
+                   ) : (
+                       <div className="text-2xl font-bold tracking-tighter uppercase">{institution?.code || "UNIV"}</div>
+                   )}
+                   <div className="border-l border-gray-400 pl-4">
+                        <h1 className="text-xl font-bold uppercase tracking-wide leading-none">{institution?.name || "Universidade"}</h1>
+                        <p className="text-xs uppercase tracking-widest text-gray-500 mt-1">Gabinete de Qualidade Académica</p>
                    </div>
                </div>
-               <h1 className="font-bold text-lg uppercase border-b-2 border-transparent">FICHA DE INDICADORES E PARÂMETROS DE AVALIAÇÃO QUALITATIVA</h1>
+               <div className="text-right">
+                   <h2 className="text-2xl font-light text-gray-900 uppercase">Relatório de Desempenho</h2>
+                   <p className="text-xs font-mono text-gray-500 mt-1">REF: {user.id.substring(0,8).toUpperCase()} / {new Date().getFullYear()}</p>
+               </div>
           </div>
 
-          {/* 2. Formulário de Dados */}
-          <div className="mb-4 space-y-1.5 px-2">
-              <div className="flex">
-                  <span className="font-bold mr-2">Sector:</span>
-                  <div className="flex-1 border-b border-black">Divisão Pedagógica</div>
-              </div>
-              <div className="flex">
-                  <span className="font-bold mr-2">Nome do docente:</span>
-                  <div className="flex-1 border-b border-black">{user.name}</div>
-              </div>
-              <div className="flex">
-                  <span className="font-bold mr-2">Categoria:</span>
-                  <div className="flex-1 border-b border-black capitalize">{header.category.replace('_', ' ')}</div>
-              </div>
-              <div className="flex">
-                  <span className="font-bold mr-2">Função:</span>
-                  <div className="flex-1 border-b border-black">{header.function}</div>
-              </div>
-              <div className="flex">
-                  <span className="font-bold mr-2">Regime laboral (Tempo inteiro/Parcial):</span>
-                  <div className="flex-1 border-b border-black">{header.contractRegime}</div>
-              </div>
-              <div className="flex">
-                  <span className="font-bold mr-2">Disciplina:</span>
-                  <div className="flex-1 border-b border-black">Geral / Várias</div>
-              </div>
-              <div className="flex gap-4">
-                  <div className="flex flex-1">
-                      <span className="font-bold mr-2">Ano Lectivo:</span>
-                      <div className="flex-1 border-b border-black">{header.academicYear}</div>
+          {/* INFO GRID */}
+          <div className="grid grid-cols-2 gap-12 mb-10">
+              <div>
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2 border-b pb-1">Identificação do Docente</h3>
+                  <div className="space-y-1">
+                      <div className="flex justify-between text-sm"><span className="text-gray-500">Nome:</span> <span className="font-semibold">{user.name}</span></div>
+                      <div className="flex justify-between text-sm"><span className="text-gray-500">Categoria:</span> <span className="font-medium capitalize">{header.category.replace('_', ' ')}</span></div>
+                      <div className="flex justify-between text-sm"><span className="text-gray-500">Regime:</span> <span className="font-medium">{header.contractRegime}</span></div>
                   </div>
-                  <div className="flex flex-1">
-                      <span className="font-bold mr-1">; Semestre:</span>
-                      <div className="flex-1 border-b border-black">1º / 2º</div>
+              </div>
+              <div>
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2 border-b pb-1">Dados do Processo</h3>
+                  <div className="space-y-1">
+                      <div className="flex justify-between text-sm"><span className="text-gray-500">Ano Lectivo:</span> <span className="font-medium">{header.academicYear}</span></div>
+                      <div className="flex justify-between text-sm"><span className="text-gray-500">Unidade:</span> <span className="font-medium">Divisão Pedagógica</span></div>
+                      <div className="flex justify-between text-sm"><span className="text-gray-500">Data Emissão:</span> <span className="font-medium">{new Date().toLocaleDateString()}</span></div>
                   </div>
               </div>
           </div>
 
-          {/* 3. Tabela Matriz de Indicadores */}
-          <div className="mb-2">
-              <table className="w-full border-collapse border border-black text-[9pt]">
+          {/* MAIN SCORE CARD */}
+          <div className="bg-gray-50 border border-gray-200 p-6 mb-10 flex items-center justify-between rounded-sm">
+               <div>
+                   <p className="text-xs uppercase font-bold text-gray-400 tracking-wider mb-1">Resultado Final</p>
+                   <div className="flex items-baseline gap-1">
+                       <span className="text-5xl font-bold text-black tracking-tighter">{formatScore(stats?.finalScore)}</span>
+                       <span className="text-lg text-gray-400 font-light">/ 100</span>
+                   </div>
+               </div>
+               <div className="text-right">
+                   <p className="text-xs uppercase font-bold text-gray-400 tracking-wider mb-1">Classificação</p>
+                   <div className="text-2xl font-bold text-black border-2 border-black px-4 py-1 inline-block uppercase">
+                       {getRatingLabel(stats?.finalScore || 0)}
+                   </div>
+               </div>
+          </div>
+
+          {/* DETAILED METRICS TABLE */}
+          <div className="mb-12">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-black mb-4">Composição da Avaliação</h3>
+              <table className="w-full text-sm border-t-2 border-black">
                   <thead>
-                      <tr className="bg-gray-100">
-                          <th className="border border-black p-2 text-left w-[20%] font-bold uppercase">INDICADORES</th>
-                          <th className="border border-black p-2 text-center w-[80%] font-bold uppercase" colSpan={4}>PARÂMETROS</th>
+                      <tr className="border-b border-gray-300">
+                          <th className="py-3 text-left font-semibold text-gray-900 w-1/2">Componente</th>
+                          <th className="py-3 text-right font-semibold text-gray-500">Peso Ponderado</th>
+                          <th className="py-3 text-right font-bold text-gray-900">Pontuação</th>
                       </tr>
                   </thead>
                   <tbody>
-                      {/* LINHA 1: CUMPRIMENTO DE PRAZOS */}
-                      <tr>
-                          <td className="border border-black p-2 align-middle font-bold bg-gray-50">
-                              Cumprimento de tarefas e prazos por semestre/ano (10)
+                      <tr className="border-b border-gray-100">
+                          <td className="py-3 text-gray-700">
+                              <span className="block font-medium text-black">Auto-Avaliação</span>
+                              <span className="text-xs text-gray-500">Indicadores quantitativos submetidos pelo docente</span>
                           </td>
-                          <td className={`border border-black p-2 align-top w-[20%] ${isScoreInBucket(qualEval?.deadlineCompliance, 10) ? 'bg-gray-300 font-bold' : ''}`}>
-                              Realiza as tarefas em prazos mais curtos do que os normalmente necessários (10)
-                          </td>
-                          <td className={`border border-black p-2 align-top w-[20%] ${isScoreInBucket(qualEval?.deadlineCompliance, 7.5) ? 'bg-gray-300 font-bold' : ''}`}>
-                              Executa as tarefas com rapidez e oportunidade e de qualidade aceitável (7.5)
-                          </td>
-                          <td className={`border border-black p-2 align-top w-[20%] ${isScoreInBucket(qualEval?.deadlineCompliance, 5) ? 'bg-gray-300 font-bold' : ''}`}>
-                              Realiza em regra, as tarefas dentro dos prazos estabelecidos (5)
-                          </td>
-                          <td className={`border border-black p-2 align-top w-[20%] ${isScoreInBucket(qualEval?.deadlineCompliance, 2.5) ? 'bg-gray-300 font-bold' : ''}`}>
-                              Demasiado lento, atrasos no funcionamento do serviço. Não entrega o trabalho realizado antes que seja exigido pelo seu chefe. Não cumpre com os prazos estabelecidos (2.5)
-                          </td>
+                          <td className="py-3 text-right text-gray-500">80%</td>
+                          <td className="py-3 text-right font-mono text-base">{formatScore(stats?.selfEvalScore)}</td>
                       </tr>
-
-                      {/* LINHA 2: QUALIDADE DO TRABALHO */}
-                      <tr>
-                          <td className="border border-black p-2 align-middle font-bold bg-gray-50">
-                              Qualidade do trabalho realizado (10)
+                      <tr className="border-b border-gray-100">
+                          <td className="py-3 text-gray-700">
+                              <span className="block font-medium text-black">Avaliação pelos Estudantes</span>
+                              <span className="text-xs text-gray-500">Média dos inquéritos pedagógicos anónimos</span>
                           </td>
-                          <td className={`border border-black p-2 align-top ${isScoreInBucket(qualEval?.workQuality, 10) ? 'bg-gray-300 font-bold' : ''}`}>
-                              Qualidade excelente (10)
-                          </td>
-                          <td className={`border border-black p-2 align-top ${isScoreInBucket(qualEval?.workQuality, 7.5) ? 'bg-gray-300 font-bold' : ''}`}>
-                              Muito boa qualidade e exemplar (7.5)
-                          </td>
-                          <td className={`border border-black p-2 align-top ${isScoreInBucket(qualEval?.workQuality, 5) ? 'bg-gray-300 font-bold' : ''}`}>
-                              Boa qualidade e está dentro do padrão estabelecido (5)
-                          </td>
-                          <td className={`border border-black p-2 align-top ${isScoreInBucket(qualEval?.workQuality, 2.5) ? 'bg-gray-300 font-bold' : ''}`}>
-                              Qualidade insuficiente e necessita de correcções (2.5)
-                          </td>
+                          <td className="py-3 text-right text-gray-500">12%</td>
+                          <td className="py-3 text-right font-mono text-base">{formatScore(stats?.studentScore)}</td>
                       </tr>
-
-                      {/* LINHA TOTAL */}
-                      <tr className="bg-gray-100 font-bold">
-                          <td className="border border-black p-2 uppercase" colSpan={3}>TOTAL DE PONTOS OBTIDOS:</td>
-                          <td className="border border-black p-2 text-center text-lg" colSpan={2}>
-                              {((qualEval?.deadlineCompliance || 0) + (qualEval?.workQuality || 0)).toFixed(1)}
+                      <tr className="border-b border-gray-100">
+                          <td className="py-3 text-gray-700">
+                              <span className="block font-medium text-black">Avaliação Qualitativa</span>
+                              <span className="text-xs text-gray-500">Atribuída pelo Gestor Institucional (Prazos/Qualidade)</span>
                           </td>
+                          <td className="py-3 text-right text-gray-500">08%</td>
+                          <td className="py-3 text-right font-mono text-base">{formatScore(stats?.institutionalScore)}</td>
                       </tr>
                   </tbody>
               </table>
           </div>
 
-          {/* 4. Notas de Cálculo */}
-          <div className="text-justify mb-6 px-1">
-              <p>
-                  <span className="font-bold">Pontuação máxima de ficha: 20 pontos.</span> Para obter a pontuação final multiplique o total de pontos obtidos por <span className="font-bold">0.46</span> se o avaliado for <em>Assistente Estagiário</em>, e por <span className="font-bold">0.88</span> se o avaliado for <em>Assistente</em>.
-              </p>
+          {/* SIGNATURES */}
+          <div className="mt-auto pt-16 grid grid-cols-2 gap-20">
+              <div className="border-t border-black pt-2">
+                  <p className="text-xs font-bold uppercase">O Docente</p>
+                  <p className="text-[10px] text-gray-400 mt-1">Confirmo que tomei conhecimento desta avaliação.</p>
+              </div>
+              <div className="border-t border-black pt-2">
+                  <p className="text-xs font-bold uppercase">Direcção Pedagógica</p>
+                  <p className="text-[10px] text-gray-400 mt-1">Homologado electronicamente.</p>
+              </div>
           </div>
 
-          {/* 5. Comentários */}
-          <div className="mb-10 px-1">
-              <p className="font-bold mb-2">Comentários</p>
-              <div className="border-b border-black h-8 w-full mb-2"></div>
-              <div className="border-b border-black h-8 w-full mb-2"></div>
-              <div className="border-b border-black h-8 w-full mb-2"></div>
-              <div className="border-b border-black h-8 w-full mb-2"></div>
-          </div>
-
-          {/* 6. Footer com Endereço */}
-          <div className="fixed bottom-6 left-0 right-0 text-center text-[8pt] text-gray-700">
-               <p className="font-bold uppercase mb-1">{institution?.name || "Instituto Superior de Contabilidade e Auditoria de Moçambique"}</p>
-               <p>Rua John Issa, nº 93, Tel: +258 21328657, Fax: +258 21328657, Cel.: +258 823053873</p>
-               <p>www.iscam.ac.mz; E-mail: divisao.pedagogica@iscam.ac.mz. <span className="font-bold uppercase">O FUTURO COM EXCELÊNCIA</span></p>
+          {/* FOOTER */}
+          <div className="fixed bottom-8 left-0 w-full text-center">
+               <div className="w-16 h-1 bg-black mx-auto mb-2"></div>
+               <p className="text-[9px] text-gray-400 uppercase tracking-widest">
+                   Documento Processado Electronicamente • {institution?.name || "Sistema de Avaliação"} • Página 1 de 1
+               </p>
           </div>
 
       </div>
@@ -395,11 +371,11 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
         </div>
       </header>
 
-      {/* --- ABA ESTATÍSTICAS / RELATÓRIOS --- */}
+      {/* --- ABA ESTATÍSTICAS / RELATÓRIOS (DISPLAY ON SCREEN) --- */}
       {activeTab === 'stats' && (
         <div className="space-y-6 animate-in slide-in-from-bottom-4 print:hidden">
             {!stats ? (
-                 // VIEW: NO OFFICIAL STATS YET (PRELIMINARY VIEW)
+                 // VIEW: NO OFFICIAL STATS YET
                  <div className="space-y-6">
                      <div className="p-6 border rounded-lg bg-blue-50 flex items-start gap-4">
                         <Info className="h-6 w-6 text-blue-600 mt-1 flex-shrink-0" />
@@ -411,7 +387,6 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                             </p>
                         </div>
                      </div>
-                     
                      <div className="grid gap-6 md:grid-cols-2">
                         <Card>
                             <CardHeader>
@@ -419,7 +394,6 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                             </CardHeader>
                             <CardContent>
                                 <div className="text-4xl font-bold text-purple-600">{calculateLiveScore()} pts</div>
-                                <p className="text-xs text-gray-500 mt-2">Baseado nos dados que você preencheu.</p>
                                 <Button variant="outline" size="sm" className="mt-4 w-full" onClick={() => setActiveTab('self-eval')}>
                                     Ver Detalhes
                                 </Button>
@@ -512,41 +486,13 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                             </ResponsiveContainer>
                         </CardContent>
                     </Card>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                Avaliação Qualitativa
-                                <span className="ml-auto inline-flex items-center gap-1 text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-500">
-                                    <Lock className="h-3 w-3" /> Gestor
-                                </span>
-                            </CardTitle>
-                            <p className="text-xs text-gray-500">Atribuída pelo Gestor Institucional</p>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {qualEval ? (
-                                <>
-                                <div className="bg-gray-50 p-3 rounded border">
-                                    <div className="text-xs font-semibold text-gray-500 uppercase">Cumprimento de Prazos</div>
-                                    <div className="text-xl font-bold text-gray-800">{qualEval.deadlineCompliance || 0} <span className="text-sm font-normal text-gray-400">/ 10</span></div>
-                                </div>
-                                <div className="bg-gray-50 p-3 rounded border">
-                                    <div className="text-xs font-semibold text-gray-500 uppercase">Qualidade do Trabalho</div>
-                                    <div className="text-xl font-bold text-gray-800">{qualEval.workQuality || 0} <span className="text-sm font-normal text-gray-400">/ 10</span></div>
-                                </div>
-                                </>
-                            ) : (
-                                <p className="text-sm text-gray-400 italic">Ainda não avaliado pelo gestor.</p>
-                            )}
-                        </CardContent>
-                    </Card>
                 </div>
                 </>
             )}
 
             <div className="flex justify-end gap-4 print:hidden pt-4 border-t">
                 <Button className="w-full sm:w-auto" size="lg" onClick={handleDownloadPDF}>
-                    <Download className="mr-2 h-4 w-4" /> Baixar Relatório (PDF)
+                    <Download className="mr-2 h-4 w-4" /> Baixar Relatório Oficial (PDF)
                 </Button>
             </div>
         </div>

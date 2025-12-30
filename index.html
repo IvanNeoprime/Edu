@@ -17,6 +17,21 @@
         font-family: 'Inter', sans-serif;
         background-color: #f9fafb;
       }
+      
+      /* Estilos Profissionais de Impressão */
+      @media print {
+        @page {
+          size: A4;
+          margin: 15mm 15mm 15mm 15mm; /* Margens limpas */
+        }
+        body {
+          background-color: white;
+          -webkit-print-color-adjust: exact !important; /* Força impressão de cores de fundo */
+          print-color-adjust: exact !important;
+        }
+        /* Oculta elementos padrão do navegador se possível */
+        #root { width: 100%; }
+      }
     </style>
   <script type="importmap">
 {

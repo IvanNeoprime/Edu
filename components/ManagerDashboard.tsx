@@ -1255,7 +1255,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       {/* --- ABA RELATÓRIOS & STATS --- */}
       {activeTab === 'stats' && (
         <div className="space-y-6 animate-in fade-in">
-             <div className="flex justify-between items-center bg-gray-900 text-white p-6 rounded-lg shadow-lg">
+             <div className="flex justify-between items-center bg-gray-900 text-white p-6 rounded-lg shadow-lg print:hidden">
                  <div>
                      <h2 className="text-xl font-bold">Fecho do Semestre</h2>
                      <p className="text-gray-400 text-sm mt-1">Gere os scores finais combinando Auto-Avaliação + Estudantes + Institucional.</p>
@@ -1267,7 +1267,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
              {allScores.length > 0 && (
                  <>
-                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 print:hidden">
                         <Card>
                             <CardHeader><CardTitle className="text-sm">Média Global</CardTitle></CardHeader>
                             <CardContent>
@@ -1294,7 +1294,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                         </Card>
                     </div>
 
-                    <div className="grid gap-6 md:grid-cols-2">
+                    <div className="grid gap-6 md:grid-cols-2 print:hidden">
                         <Card>
                             <CardHeader><CardTitle>Distribuição de Classificação</CardTitle></CardHeader>
                             <CardContent className="h-[300px]">
@@ -1328,18 +1328,22 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                         </Card>
                     </div>
 
-                    <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                    <div className="bg-white rounded-lg border shadow-sm overflow-hidden print:border-0 print:shadow-none">
+                        <div className="hidden print:block mb-4">
+                            <h2 className="text-xl font-bold uppercase">{institution?.name}</h2>
+                            <p className="text-sm text-gray-500 uppercase">Relatório Geral de Avaliação Docente - {new Date().toLocaleDateString()}</p>
+                        </div>
                         <table className="w-full text-sm">
-                            <thead className="bg-gray-50 border-b">
+                            <thead className="bg-gray-50 border-b print:bg-gray-100 print:border-black">
                                 <tr>
-                                    <th className="px-6 py-3 text-left font-medium text-gray-500">Docente</th>
-                                    <th className="px-6 py-3 text-right font-medium text-gray-500">Auto-Aval.</th>
-                                    <th className="px-6 py-3 text-right font-medium text-gray-500">Estudantes</th>
-                                    <th className="px-6 py-3 text-right font-medium text-gray-500">Qualitativa</th>
-                                    <th className="px-6 py-3 text-right font-medium text-gray-900">FINAL</th>
+                                    <th className="px-6 py-3 text-left font-medium text-gray-500 print:text-black">Docente</th>
+                                    <th className="px-6 py-3 text-right font-medium text-gray-500 print:text-black">Auto-Aval.</th>
+                                    <th className="px-6 py-3 text-right font-medium text-gray-500 print:text-black">Estudantes</th>
+                                    <th className="px-6 py-3 text-right font-medium text-gray-500 print:text-black">Qualitativa</th>
+                                    <th className="px-6 py-3 text-right font-medium text-gray-900 print:text-black">FINAL</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y">
+                            <tbody className="divide-y print:divide-gray-300">
                                 {allScores.map(s => {
                                     const t = teachers.find(u => u.id === s.teacherId);
                                     return (
@@ -1348,7 +1352,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                             <td className="px-6 py-4 text-right text-gray-500">{s.selfEvalScore}</td>
                                             <td className="px-6 py-4 text-right text-gray-500">{s.studentScore}</td>
                                             <td className="px-6 py-4 text-right text-gray-500">{s.institutionalScore}</td>
-                                            <td className="px-6 py-4 text-right font-bold text-indigo-600">{s.finalScore}</td>
+                                            <td className="px-6 py-4 text-right font-bold text-indigo-600 print:text-black">{s.finalScore}</td>
                                         </tr>
                                     );
                                 })}
@@ -1379,7 +1383,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
       {/* --- SETTINGS (LOGO UPDATE) --- */}
       {activeTab === 'settings' && institution && (
-          <div className="grid gap-8 lg:grid-cols-2 max-w-4xl mx-auto">
+          <div className="grid gap-8 lg:grid-cols-2 max-w-4xl mx-auto print:hidden">
               <Card>
                   <CardHeader>
                       <CardTitle className="flex items-center gap-2">
