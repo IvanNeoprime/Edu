@@ -229,157 +229,131 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
       return 'Muito Bom'; // ou Excelente
   };
 
-  // Converte escala 0-100 para 0-20
-  const convertTo20Scale = (val: number | undefined) => {
-      if (val === undefined) return 0;
-      return (val / 5).toFixed(1).replace('.', ',');
-  }
-  
   const formatScore = (val: number | undefined) => {
-      if (val === undefined) return '0,0';
-      return val.toFixed(1).replace('.', ',');
+      if (val === undefined) return '0.0';
+      return val.toFixed(1);
   }
 
   return (
     <div className="space-y-8 p-4 md:p-8 max-w-6xl mx-auto animate-in fade-in duration-500">
       
-      {/* --- RELATÓRIO PDF OFICIAL (REESTRUTURADO) --- */}
-      <div className="hidden print:block font-serif text-black max-w-[210mm] mx-auto bg-white p-0 text-[11pt] leading-tight">
+      {/* --- RELATÓRIO PDF CORPORATIVO MINIMALISTA --- */}
+      <div className="hidden print:block bg-white text-gray-900 max-w-[210mm] mx-auto p-12 h-screen">
           
-          {/* 1. CABEÇALHO COMPLEXO (3 Colunas: Logo | Texto | Caixa Homologação) */}
-          <div className="flex justify-between items-start mb-6 border-b-2 border-black pb-2">
-               {/* Coluna 1: Logo */}
-               <div className="w-[15%] pt-2">
-                   {institution?.logo && <img src={institution.logo} className="w-full h-auto object-contain" alt="Logo" />}
-               </div>
-
-               {/* Coluna 2: Dados Instituição */}
-               <div className="w-[55%] text-center px-4 pt-4">
-                   <h1 className="font-bold text-lg uppercase leading-tight">{institution?.name || "INSTITUTO SUPERIOR"}</h1>
-                   <div className="text-xs space-y-0.5 mt-1">
-                       <p>Direcção Pedagógica / Divisão Pedagógica</p>
-                       <p>Moçambique</p>
-                   </div>
-                   <h2 className="font-bold text-sm uppercase mt-4">FOLHA DE CLASSIFICAÇÃO ANUAL DE DOCENTES E INVESTIGADORES</h2>
-                   <div className="text-sm mt-2 text-left ml-4">
-                       <p><span className="font-bold">Unidade orgânica (UO):</span> Divisão Pedagógica</p>
-                       <p><span className="font-bold">Departamento:</span> Graduação</p>
+          {/* HEADER: Minimalist & Clean */}
+          <div className="flex justify-between items-start mb-12 border-b border-gray-900 pb-6">
+               <div className="flex flex-col justify-between h-full">
+                   {institution?.logo && <img src={institution.logo} className="h-16 w-auto object-contain mb-4" alt="Logo" />}
+                   <div>
+                       <h1 className="text-2xl font-bold uppercase tracking-tight text-gray-900 leading-none">{institution?.name || "Universidade"}</h1>
+                       <p className="text-sm text-gray-500 mt-1 uppercase tracking-widest font-medium">Relatório de Desempenho Docente</p>
                    </div>
                </div>
-
-               {/* Coluna 3: Despacho (Caixa) */}
-               <div className="w-[30%] border border-black p-2 text-xs">
-                   <p className="font-bold text-center mb-4">Despacho de homologação</p>
-                   <div className="border-b border-black mb-1 w-full h-4"></div>
-                   <div className="border-b border-black mb-1 w-full h-4"></div>
-                   <p className="text-center mt-2 mb-4">O Director Geral</p>
-                   <div className="border-b border-black mb-1 w-full h-4"></div>
-                   <p className="mt-2">Data: ____/____/20____</p>
+               <div className="text-right">
+                   <div className="mb-4">
+                       <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Ano Lectivo</p>
+                       <p className="text-lg font-medium">{header.academicYear}</p>
+                   </div>
+                   <div>
+                       <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Data de Emissão</p>
+                       <p className="text-sm font-medium">{new Date().toLocaleDateString()}</p>
+                   </div>
                </div>
           </div>
 
-          {/* LISTA NUMERADA - DADOS PESSOAIS */}
-          <div className="mb-4 pl-2">
-              <div className="font-bold mb-1">1. Dados pessoais</div>
-              <div className="font-bold mb-1">2. Nome completo: <span className="font-normal uppercase ml-2">{user.name}</span></div>
-              <div className="mb-1"><span className="font-bold">3. Categoria:</span> <span className="capitalize">{header.category.replace('_', ' ')}</span></div>
-              <div className="mb-1"><span className="font-bold">4. Função de direcção ou de chefia:</span> {header.function || 'Docente'}</div>
-              <div className="mb-1"><span className="font-bold">5. Regime laboral:</span> {header.contractRegime}</div>
-              <div className="mb-1"><span className="font-bold">6. Período a que se refere a avaliação:</span> Ano Lectivo {header.academicYear}</div>
+          {/* TEACHER PROFILE: Grid Layout, No Boxes */}
+          <div className="grid grid-cols-2 gap-x-16 gap-y-6 mb-12">
+              <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold mb-1">Docente</p>
+                  <p className="text-lg font-semibold border-b border-gray-200 pb-1">{user.name}</p>
+              </div>
+              <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold mb-1">Categoria</p>
+                  <p className="text-lg font-medium capitalize border-b border-gray-200 pb-1">{header.category.replace('_', ' ')}</p>
+              </div>
+              <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold mb-1">Regime Laboral</p>
+                  <p className="text-base font-medium border-b border-gray-200 pb-1">{header.contractRegime}</p>
+              </div>
+              <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold mb-1">Unidade Orgânica</p>
+                  <p className="text-base font-medium border-b border-gray-200 pb-1">Divisão Pedagógica</p>
+              </div>
           </div>
 
-          {/* TABELA DE INDICADORES (SECÇÃO 7) */}
-          <div className="mb-6 pl-2">
-              <div className="font-bold mb-2">7. Tabela de indicadores do desempenho</div>
-              <table className="w-full border-collapse border border-black text-sm">
+          {/* EXECUTIVE SUMMARY: Big Numbers, Clean Look */}
+          <div className="bg-gray-50 rounded-lg p-8 mb-12 flex justify-between items-center border border-gray-100">
+              <div>
+                  <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold mb-1">Pontuação Final</p>
+                  <div className="flex items-baseline gap-2">
+                      <span className="text-5xl font-bold text-gray-900 tracking-tighter">{formatScore(stats?.finalScore)}</span>
+                      <span className="text-sm text-gray-400 font-medium">/ 100 pts</span>
+                  </div>
+              </div>
+              <div className="h-12 w-px bg-gray-300 mx-8"></div>
+              <div className="text-right">
+                  <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold mb-1">Classificação Qualitativa</p>
+                  <span className="text-2xl font-medium text-gray-900">{getRatingLabel(stats?.finalScore || 0)}</span>
+              </div>
+          </div>
+
+          {/* METRICS TABLE: Minimalist, Horizontal Lines Only */}
+          <div className="mb-12">
+              <h3 className="text-xs uppercase tracking-widest text-gray-900 font-bold mb-6">Detalhamento da Avaliação</h3>
+              <table className="w-full text-left border-collapse">
                   <thead>
-                      <tr className="bg-gray-100">
-                          <th className="border border-black p-1 text-left w-[50%]">Grupos de indicadores (por ficha)</th>
-                          <th className="border border-black p-1 text-center w-[15%]">Pontos obtidos</th>
-                          <th className="border border-black p-1 text-center w-[15%]">%</th>
-                          <th className="border border-black p-1 text-center w-[20%]">Pontos bonificados</th>
+                      <tr>
+                          <th className="py-3 border-b-2 border-gray-900 text-xs font-bold uppercase tracking-wider text-gray-500 w-1/2">Indicador</th>
+                          <th className="py-3 border-b-2 border-gray-900 text-xs font-bold uppercase tracking-wider text-gray-500 text-right">Peso</th>
+                          <th className="py-3 border-b-2 border-gray-900 text-xs font-bold uppercase tracking-wider text-gray-500 text-right">Pontuação Obtida</th>
                       </tr>
                   </thead>
                   <tbody>
-                      {/* Auto-Avaliação */}
                       <tr>
-                          <td className="border border-black p-1 pl-2">Auto-avaliação (1)</td>
-                          <td className="border border-black p-1 text-center text-red-600 font-medium">
-                              {formatScore(stats?.selfEvalScore)}
-                          </td>
-                          <td className="border border-black p-1 text-center bg-gray-50">80%</td>
-                          <td className="border border-black p-1 text-center"></td>
+                          <td className="py-4 border-b border-gray-100 font-medium text-gray-900">Auto-Avaliação do Docente</td>
+                          <td className="py-4 border-b border-gray-100 text-right text-gray-500 text-sm">80%</td>
+                          <td className="py-4 border-b border-gray-100 text-right font-mono font-medium text-gray-900">{formatScore(stats?.selfEvalScore)}</td>
                       </tr>
-                      {/* Estudante */}
                       <tr>
-                          <td className="border border-black p-1 pl-2">Avaliação do docente pelo estudante (2) a)</td>
-                          <td className="border border-black p-1 text-center text-red-600 font-medium">
-                              {formatScore(stats?.studentScore)}
-                          </td>
-                          <td className="border border-black p-1 text-center bg-gray-50">12%</td>
-                          <td className="border border-black p-1 text-center"></td>
+                          <td className="py-4 border-b border-gray-100 font-medium text-gray-900">Avaliação pelos Estudantes</td>
+                          <td className="py-4 border-b border-gray-100 text-right text-gray-500 text-sm">12%</td>
+                          <td className="py-4 border-b border-gray-100 text-right font-mono font-medium text-gray-900">{formatScore(stats?.studentScore)}</td>
                       </tr>
-                      {/* Qualitativa */}
                       <tr>
-                          <td className="border border-black p-1 pl-2">Avaliação qualitativa (3)</td>
-                          <td className="border border-black p-1 text-center text-red-600 font-medium">
-                              {formatScore(stats?.institutionalScore)}
-                          </td>
-                          <td className="border border-black p-1 text-center bg-gray-50">8%</td>
-                          <td className="border border-black p-1 text-center"></td>
+                          <td className="py-4 border-b border-gray-100 font-medium text-gray-900">Avaliação Institucional (Gestor)</td>
+                          <td className="py-4 border-b border-gray-100 text-right text-gray-500 text-sm">8%</td>
+                          <td className="py-4 border-b border-gray-100 text-right font-mono font-medium text-gray-900">{formatScore(stats?.institutionalScore)}</td>
                       </tr>
-                      {/* TOTAL */}
-                      <tr className="font-bold bg-gray-50">
-                          <td className="border border-black p-1 text-right pr-4">Total de pontos (1+2+3)</td>
-                          <td className="border border-black p-1 text-center text-red-600">
-                              {formatScore(stats?.finalScore)}
-                          </td>
-                          <td className="border border-black p-1 text-center">100%</td>
-                          <td className="border border-black p-1 text-center"></td>
+                      <tr className="bg-gray-50">
+                          <td className="py-4 pl-4 font-bold text-gray-900">TOTAL GERAL</td>
+                          <td className="py-4 text-right text-gray-500 text-sm">100%</td>
+                          <td className="py-4 pr-4 text-right font-mono font-bold text-xl text-gray-900">{formatScore(stats?.finalScore)}</td>
                       </tr>
                   </tbody>
               </table>
-              <p className="text-[10px] mt-1 italic">a) Para os Investigadores científicos é dispensável.</p>
           </div>
 
-          {/* CLASSIFICAÇÃO OBTIDA (SECÇÃO 8) */}
-          <div className="mb-6 pl-2">
-              <div className="font-bold mb-2">8. Classificação obtida:</div>
-              <div className="pl-4 space-y-1">
-                  <p>a) Pontuação total final obtida: <span className="font-bold text-red-600">{formatScore(stats?.finalScore)}</span> pontos;</p>
-                  <p>b) Classificação final: <span className="font-bold text-red-600">{convertTo20Scale(stats?.finalScore)}</span> valores;</p>
-                  <p>c) Percentagem: <span className="font-bold text-red-600">{formatScore(stats?.finalScore)}%</span>;</p>
-                  <p>d) Apreciação final obtida: <span className="font-bold text-red-600 uppercase">{getRatingLabel(stats?.finalScore || 0)}</span>;</p>
-                  <p>e) Pontuação bonificada total obtida: 0 pontos.</p>
+          {/* SIGNATURES: Clean Lines */}
+          <div className="mt-auto pt-20">
+              <div className="grid grid-cols-2 gap-24">
+                  <div>
+                      <div className="border-t border-gray-300 pt-4">
+                          <p className="text-sm font-bold text-gray-900 uppercase">O Docente</p>
+                          <p className="text-xs text-gray-500 mt-1">{user.name}</p>
+                      </div>
+                  </div>
+                  <div>
+                      <div className="border-t border-gray-300 pt-4">
+                          <p className="text-sm font-bold text-gray-900 uppercase">O Director Pedagógico</p>
+                          <p className="text-xs text-gray-500 mt-1">Homologação Institucional</p>
+                      </div>
+                  </div>
               </div>
           </div>
-
-          {/* DISTINÇÕES (SECÇÃO 9) */}
-          <div className="mb-10 pl-2">
-              <div className="font-bold mb-1">9. Distinções, louvores, bónus ou prémios obtidos na última avaliação do desempenho:</div>
-              <div className="pl-2 border-b border-black min-h-[20px] text-sm">- Nada Consta.</div>
-              <div className="border-b border-black h-6 w-full"></div>
-              <div className="border-b border-black h-6 w-full"></div>
-          </div>
-
-          {/* ASSINATURAS */}
-          <div className="mt-8 flex justify-between items-end px-4">
-              <div className="text-center w-[40%]">
-                  <p className="mb-6">Tomei conhecimento<br/>O Docente Avaliado</p>
-                  <div className="border-b border-black w-full mb-1"></div>
-                  <p className="text-xs">Data: ____/____/20____</p>
-              </div>
-              <div className="text-center w-[40%]">
-                  <p className="mb-6">O Avaliador<br/>O Director da Divisão Pedagógica</p>
-                  <div className="border-b border-black w-full mb-1"></div>
-                  <p className="text-xs">Data: ____/____/20____</p>
-              </div>
-          </div>
-
-          {/* FOOTER FIXO */}
-          <div className="fixed bottom-0 left-0 right-0 text-center text-[8px] text-gray-500 pb-4 bg-white print:block hidden">
-                <p className="font-bold text-black uppercase">{institution?.name || "Instituto Superior"}</p>
-                <p>Sistema de Avaliação Docente - Processado por Computador</p>
+          
+          {/* FOOTER */}
+          <div className="fixed bottom-8 left-0 w-full text-center">
+               <p className="text-[10px] text-gray-400 uppercase tracking-widest">Documento processado eletronicamente por AvaliaDocente MZ</p>
           </div>
 
       </div>
