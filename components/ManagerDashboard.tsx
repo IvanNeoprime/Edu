@@ -4,7 +4,7 @@ import { BackendService } from '../services/backend';
 // import { AIService } from '../services/ai'; // Removed AI Service
 import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select } from './ui';
-import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, GraduationCap, PieChart as PieIcon, Download, Printer, Image as ImageIcon, Sparkles, RefreshCw, ScanText, Eye, Settings, Building2, Save, FileText, X, TrendingUp } from 'lucide-react';
+import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, GraduationCap, PieChart as PieIcon, Download, Printer, Image as ImageIcon, Sparkles, RefreshCw, ScanText, Eye, Settings, Building2, Save, FileText, X, TrendingUp, ClipboardList, CheckCircle2, Lock, Shield } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
 
 interface Props {
@@ -21,7 +21,7 @@ interface NewSubjectItem {
 }
 
 export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'teachers' | 'students' | 'questionnaire' | 'stats' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'teachers' | 'students' | 'qualitative' | 'questionnaire' | 'stats' | 'settings'>('overview');
   const [institution, setInstitution] = useState<Institution | null>(null);
   const [teachers, setTeachers] = useState<User[]>([]);
   const [students, setStudents] = useState<User[]>([]);
@@ -102,7 +102,9 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         if (inst) setInstitution(inst);
 
         const allUsers = await BackendService.getUsers();
-        const potentialTeachers = allUsers.filter(u => (u.role === UserRole.TEACHER || u.role === UserRole.INSTITUTION_MANAGER) && u.institutionId === institutionId);
+        
+        // Strict Filter: Only get actual teachers, excluding managers from the list
+        const potentialTeachers = allUsers.filter(u => u.role === UserRole.TEACHER && u.institutionId === institutionId);
         setTeachers(potentialTeachers);
         
         const instStudents = allUsers.filter(u => u.role === UserRole.STUDENT && u.institutionId === institutionId);
@@ -497,10 +499,15 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'overview' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Visão Geral</button>
             <button onClick={() => setActiveTab('teachers')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'teachers' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Docentes</button>
             <button onClick={() => setActiveTab('students')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'students' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Alunos</button>
-            <button onClick={() => setActiveTab('questionnaire')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'questionnaire' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Questionários</button>
+            <button onClick={() => setActiveTab('qualitative')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-1 ${activeTab === 'qualitative' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>
+                <ClipboardList className="h-4 w-4" /> Avaliação Qualitativa
+            </button>
+            <button onClick={() => setActiveTab('questionnaire')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-1 ${activeTab === 'questionnaire' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>
+                <Shield className="h-3 w-3" /> Questionários
+            </button>
             <button onClick={() => setActiveTab('stats')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'stats' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Relatórios & Estatísticas</button>
             <button onClick={() => setActiveTab('settings')} className={`px-3 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-1 ${activeTab === 'settings' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>
-                <Settings className="h-4 w-4" /> Configurações
+                <Settings className="h-4 w-4" /> Config
             </button>
         </div>
       </header>
@@ -737,121 +744,182 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             </div>
 
             <div className="lg:col-span-7 space-y-6">
-                {/* Qualitative Eval & List */}
+                {/* JUST LIST, NO EVAL */}
                 <Card>
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" /> Avaliação Qualitativa (Ficha de Indicadores)</CardTitle>
-                        <p className="text-xs text-gray-500">Avalie os parâmetros abaixo. O sistema calculará o coeficiente automaticamente (0.46 ou 0.88).</p>
+                        <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" /> Corpo Docente ({teachers.length})</CardTitle>
+                        <p className="text-xs text-gray-500">Listagem de docentes cadastrados. Para realizar avaliações, acesse a aba "Avaliação Qualitativa".</p>
                     </CardHeader>
                     <CardContent className="space-y-2">
                         {teachers.length === 0 && <p className="text-center py-8 text-gray-500">Nenhum docente cadastrado.</p>}
-                        {teachers.map(t => {
-                            const isExpanded = expandedTeacher === t.id;
-                            const ev = qualEvals[t.id] || { deadlines: 0, quality: 0 };
-                            return (
-                                <div key={t.id} className="border rounded-lg bg-white shadow-sm overflow-hidden">
-                                    <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50" onClick={() => setExpandedTeacher(isExpanded ? null : t.id)}>
-                                        <div className="flex items-center gap-3">
-                                            <div className="h-10 w-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
-                                                {t.avatar ? <img src={t.avatar} className="h-full w-full object-cover" /> : <Users className="h-5 w-5 m-2.5 text-gray-400" />}
-                                            </div>
-                                            <div className="flex flex-col">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-medium text-sm">{t.name}</span>
-                                                    {t.category === 'assistente_estagiario' && (
-                                                        <span className="text-[10px] px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-200">Estagiário</span>
-                                                    )}
-                                                </div>
-                                                <span className="text-xs text-gray-400">{t.email}</span>
-                                            </div>
+                        {teachers.map(t => (
+                            <div key={t.id} className="border rounded-lg bg-white shadow-sm overflow-hidden flex items-center justify-between p-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="h-10 w-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+                                        {t.avatar ? <img src={t.avatar} className="h-full w-full object-cover" /> : <Users className="h-5 w-5 m-2.5 text-gray-400" />}
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-medium text-sm">{t.name}</span>
+                                            {t.category === 'assistente_estagiario' && (
+                                                <span className="text-[10px] px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-200">Estagiário</span>
+                                            )}
                                         </div>
-                                        <div className="flex items-center gap-4">
-                                            {(ev.deadlines > 0 || ev.quality > 0) && <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">Avaliado</span>}
-                                            {isExpanded ? <ChevronUp className="h-4 w-4"/> : <ChevronDown className="h-4 w-4"/>}
+                                        <span className="text-xs text-gray-400">{t.email}</span>
+                                    </div>
+                                </div>
+                                <div className="text-xs text-gray-400">
+                                    Cadastrado em {new Date().toLocaleDateString()}
+                                </div>
+                            </div>
+                        ))}
+                    </CardContent>
+                </Card>
+            </div>
+          </div>
+      )}
+
+      {/* --- ABA AVALIAR QUALITATIVA (NOVA E DEDICADA) --- */}
+      {activeTab === 'qualitative' && (
+          <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-right-4">
+               <Card className="border-l-4 border-l-blue-600 shadow-md mb-6">
+                   <CardHeader>
+                       <CardTitle className="flex items-center gap-2 text-blue-900">
+                           <FileText className="h-6 w-6" /> Avaliação Institucional (Exclusivo para Docentes)
+                       </CardTitle>
+                       <p className="text-sm text-gray-500">
+                           Avalie o desempenho qualitativo dos docentes. Esta pontuação corresponde a <strong>8%</strong> da nota final e é calculada com base no cumprimento de prazos e qualidade do trabalho.
+                       </p>
+                   </CardHeader>
+               </Card>
+
+               <div className="space-y-4">
+                    {teachers.length === 0 && (
+                        <div className="text-center py-12 text-gray-500 border-2 border-dashed rounded-lg bg-gray-50">
+                             <Users className="h-12 w-12 mx-auto text-gray-300 mb-3" />
+                             <p>Nenhum docente disponível para avaliação.</p>
+                        </div>
+                    )}
+
+                    {teachers.map(t => {
+                        const isExpanded = expandedTeacher === t.id;
+                        const ev = qualEvals[t.id] || { deadlines: 0, quality: 0 };
+                        const isEvaluated = ev.deadlines > 0 || ev.quality > 0;
+
+                        return (
+                            <Card key={t.id} className={`transition-all duration-300 ${isExpanded ? 'ring-2 ring-blue-100 shadow-lg' : 'hover:shadow-md'}`}>
+                                <div className="flex items-center justify-between p-5 cursor-pointer" onClick={() => setExpandedTeacher(isExpanded ? null : t.id)}>
+                                    <div className="flex items-center gap-4">
+                                        <div className="h-12 w-12 rounded-full bg-gray-100 border flex items-center justify-center overflow-hidden">
+                                            {t.avatar ? <img src={t.avatar} className="h-full w-full object-cover" /> : <Users className="h-6 w-6 text-gray-400" />}
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-gray-900">{t.name}</h4>
+                                            <div className="flex items-center gap-2 text-sm text-gray-500">
+                                                <span>{t.email}</span>
+                                                <span className="text-gray-300">•</span>
+                                                <span className="capitalize">{t.category?.replace('_', ' ')}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                    {isExpanded && (
-                                        <div className="p-4 bg-gray-50 border-t space-y-6 animate-in slide-in-from-top-2">
-                                            
+                                    <div className="flex items-center gap-6">
+                                        <div className="text-right hidden sm:block">
+                                            <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-1">Status</div>
+                                            {isEvaluated ? (
+                                                <span className="inline-flex items-center gap-1 text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
+                                                    <CheckCircle2 className="h-3 w-3" /> Avaliado ({ev.deadlines + ev.quality} pts)
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded-full">
+                                                    Pendente
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
+                                            <ChevronDown className="h-5 w-5 text-gray-400" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {isExpanded && (
+                                    <div className="px-5 pb-6 pt-2 border-t bg-gray-50/50 space-y-6 animate-in slide-in-from-top-2">
+                                        <div className="grid md:grid-cols-2 gap-8">
                                             {/* Indicador 1: Prazos */}
                                             <div className="space-y-3">
-                                                <div className="flex items-start justify-between">
-                                                    <div>
-                                                        <h5 className="font-bold text-sm text-gray-900">1. Cumprimento de tarefas e prazos (Max 10)</h5>
-                                                        <p className="text-xs text-gray-500">Refere-se a prazos semestrais ou anuais.</p>
-                                                    </div>
-                                                    <span className="font-mono font-bold text-lg text-blue-600">{ev.deadlines} pts</span>
+                                                <div className="flex items-center justify-between">
+                                                    <h5 className="font-bold text-sm text-gray-900 flex items-center gap-2">
+                                                        <ClipboardList className="h-4 w-4 text-blue-600" /> 1. Cumprimento de Prazos (0-10)
+                                                    </h5>
+                                                    <span className="font-mono font-bold text-lg text-blue-600 bg-white border px-2 rounded shadow-sm">{ev.deadlines}</span>
                                                 </div>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                <p className="text-xs text-gray-500">Refere-se a entrega de pautas, relatórios e cumprimento do calendário.</p>
+                                                <div className="grid grid-cols-1 gap-2">
                                                     {[
-                                                        { val: 10, label: "Realiza tarefas em prazos mais curtos que o necessário" },
-                                                        { val: 7.5, label: "Executa com rapidez, oportunidade e qualidade aceitável" },
-                                                        { val: 5, label: "Realiza em regra dentro dos prazos estabelecidos" },
-                                                        { val: 2.5, label: "Demasiado lento, atrasos no serviço" }
+                                                        { val: 10, label: "Excelente (Antes do prazo)" },
+                                                        { val: 7.5, label: "Bom (Rapidez e qualidade)" },
+                                                        { val: 5, label: "Suficiente (No prazo limite)" },
+                                                        { val: 2.5, label: "Insuficiente (Com atrasos)" }
                                                     ].map((opt) => (
                                                         <button
                                                             key={opt.val}
                                                             onClick={() => handleEvalChange(t.id, 'deadlines', opt.val.toString())}
-                                                            className={`text-left p-3 rounded-md border text-xs transition-all ${
+                                                            className={`text-left px-3 py-2 rounded border text-xs transition-all flex justify-between items-center ${
                                                                 ev.deadlines === opt.val 
-                                                                ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500 text-blue-900' 
-                                                                : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-600'
+                                                                ? 'bg-blue-600 text-white border-blue-700 shadow-md' 
+                                                                : 'bg-white hover:bg-gray-100 border-gray-200 text-gray-600'
                                                             }`}
                                                         >
-                                                            <span className="font-bold block mb-1">{opt.val} Pontos</span>
-                                                            {opt.label}
+                                                            <span>{opt.label}</span>
+                                                            <span className="font-bold">{opt.val} pts</span>
                                                         </button>
                                                     ))}
                                                 </div>
                                             </div>
 
-                                            <div className="h-px bg-gray-200"></div>
-
                                             {/* Indicador 2: Qualidade */}
                                             <div className="space-y-3">
-                                                <div className="flex items-start justify-between">
-                                                    <div>
-                                                        <h5 className="font-bold text-sm text-gray-900">2. Qualidade do trabalho realizado (Max 10)</h5>
-                                                        <p className="text-xs text-gray-500">Avaliação da excelência e padrão do trabalho.</p>
-                                                    </div>
-                                                    <span className="font-mono font-bold text-lg text-purple-600">{ev.quality} pts</span>
+                                                <div className="flex items-center justify-between">
+                                                    <h5 className="font-bold text-sm text-gray-900 flex items-center gap-2">
+                                                        <Star className="h-4 w-4 text-purple-600" /> 2. Qualidade do Trabalho (0-10)
+                                                    </h5>
+                                                    <span className="font-mono font-bold text-lg text-purple-600 bg-white border px-2 rounded shadow-sm">{ev.quality}</span>
                                                 </div>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                <p className="text-xs text-gray-500">Avaliação da excelência pedagógica e rigor científico.</p>
+                                                <div className="grid grid-cols-1 gap-2">
                                                     {[
-                                                        { val: 10, label: "Qualidade excelente" },
-                                                        { val: 7.5, label: "Muito boa qualidade e exemplar" },
-                                                        { val: 5, label: "Boa qualidade e dentro do padrão estabelecido" },
-                                                        { val: 2.5, label: "Qualidade insuficiente e necessita de correções" }
+                                                        { val: 10, label: "Excelente (Exemplar)" },
+                                                        { val: 7.5, label: "Muito Bom (Acima da média)" },
+                                                        { val: 5, label: "Bom (Dentro do padrão)" },
+                                                        { val: 2.5, label: "Insuficiente (Necessita melhorias)" }
                                                     ].map((opt) => (
                                                         <button
                                                             key={opt.val}
                                                             onClick={() => handleEvalChange(t.id, 'quality', opt.val.toString())}
-                                                            className={`text-left p-3 rounded-md border text-xs transition-all ${
+                                                            className={`text-left px-3 py-2 rounded border text-xs transition-all flex justify-between items-center ${
                                                                 ev.quality === opt.val 
-                                                                ? 'bg-purple-50 border-purple-500 ring-1 ring-purple-500 text-purple-900' 
-                                                                : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-600'
+                                                                ? 'bg-purple-600 text-white border-purple-700 shadow-md' 
+                                                                : 'bg-white hover:bg-gray-100 border-gray-200 text-gray-600'
                                                             }`}
                                                         >
-                                                            <span className="font-bold block mb-1">{opt.val} Pontos</span>
-                                                            {opt.label}
+                                                            <span>{opt.label}</span>
+                                                            <span className="font-bold">{opt.val} pts</span>
                                                         </button>
                                                     ))}
                                                 </div>
                                             </div>
-
-                                            <div className="flex justify-end pt-2">
-                                                <Button size="sm" onClick={() => handleEvalSubmit(t.id)}>
-                                                    <Save className="h-4 w-4 mr-2" /> Salvar Avaliação Qualitativa
-                                                </Button>
-                                            </div>
                                         </div>
-                                    )}
-                                </div>
-                            )
-                        })}
-                    </CardContent>
-                </Card>
-            </div>
+
+                                        <div className="flex justify-end pt-4 border-t border-gray-200">
+                                            <Button onClick={() => handleEvalSubmit(t.id)} className="bg-gray-900 text-white hover:bg-black">
+                                                <Save className="h-4 w-4 mr-2" /> Salvar Avaliação de {t.name.split(' ')[0]}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
+                            </Card>
+                        );
+                    })}
+               </div>
           </div>
       )}
 
@@ -1015,157 +1083,171 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
       {/* --- ABA QUESTIONÁRIOS --- */}
       {activeTab === 'questionnaire' && (
-        <div className="grid gap-8 lg:grid-cols-12 print:hidden animate-in fade-in">
-            {/* Left: Builder Form */}
-            <div className="lg:col-span-5 space-y-6">
-                
-                {/* Target Audience Selector */}
-                <Card className="border-gray-300">
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-sm">Público Alvo do Questionário</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <Select value={targetRole} onChange={(e) => setTargetRole(e.target.value as 'student' | 'teacher')}>
-                            <option value="student">🎓 Para Alunos (Avaliar Docentes)</option>
-                            <option value="teacher">👨‍🏫 Para Docentes (Inquéritos Institucionais)</option>
-                        </Select>
-                        <p className="text-xs text-gray-500 mt-2">
-                            {targetRole === 'student' 
-                             ? 'Este questionário será exibido aos alunos quando entrarem na disciplina.'
-                             : 'Este questionário aparecerá no painel do docente para preenchimento.'}
-                        </p>
-                    </CardContent>
-                </Card>
+        <div className="animate-in fade-in space-y-6">
+            <Card className="border-l-4 border-l-purple-600 shadow-md">
+                   <CardHeader>
+                       <CardTitle className="flex items-center gap-2 text-purple-900">
+                           <Shield className="h-6 w-6" /> Configuração de Questionários (Privilégio de Gestor)
+                       </CardTitle>
+                       <p className="text-sm text-gray-500">
+                           Defina as perguntas que serão aplicadas em toda a instituição. Apenas gestores podem alterar estes modelos.
+                           As alterações afetam todos os usuários imediatamente.
+                       </p>
+                   </CardHeader>
+            </Card>
 
-                <Card className="sticky top-4">
-                    <CardHeader className="bg-slate-900 text-white rounded-t-lg">
-                        <CardTitle className="flex items-center gap-2">
-                            <Plus className="h-5 w-5" /> Adicionar Pergunta Manual
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4 pt-6">
-                        <div className="space-y-2">
-                            <Label>Texto da Pergunta</Label>
-                            <Input 
-                                value={newQText}
-                                onChange={(e) => setNewQText(e.target.value)}
-                                placeholder="Ex: O docente apresentou o programa?"
-                            />
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Tipo de Resposta</Label>
-                                <Select value={newQType} onChange={(e) => setNewQType(e.target.value as QuestionType)}>
-                                    <option value="binary">✅ Sim / Não (Full Mark)</option>
-                                    <option value="stars">⭐ Estrelas (1-5)</option>
-                                    <option value="scale_10">📊 Escala (0-10)</option>
-                                    <option value="text">📝 Texto (Sem pontos)</option>
-                                    <option value="choice">🔘 Múltipla Escolha</option>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Pontos Obtidos (Se SIM)</Label>
-                                <Input 
-                                    type="number" min="0"
-                                    value={newQWeight}
-                                    onChange={(e) => setNewQWeight(Number(e.target.value))}
-                                    disabled={newQType === 'text' || newQType === 'choice'}
-                                />
-                            </div>
-                        </div>
+            <div className="grid gap-8 lg:grid-cols-12 print:hidden">
+                {/* Left: Builder Form */}
+                <div className="lg:col-span-5 space-y-6">
+                    
+                    {/* Target Audience Selector */}
+                    <Card className="border-gray-300">
+                        <CardHeader className="pb-3">
+                            <CardTitle className="text-sm">Público Alvo do Questionário</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <Select value={targetRole} onChange={(e) => setTargetRole(e.target.value as 'student' | 'teacher')}>
+                                <option value="student">🎓 Para Alunos (Avaliar Docentes)</option>
+                                <option value="teacher">👨‍🏫 Para Docentes (Inquéritos Institucionais)</option>
+                            </Select>
+                            <p className="text-xs text-gray-500 mt-2">
+                                {targetRole === 'student' 
+                                ? 'Este questionário será exibido aos alunos quando entrarem na disciplina.'
+                                : 'Este questionário aparecerá no painel do docente para preenchimento.'}
+                            </p>
+                        </CardContent>
+                    </Card>
 
-                        {newQType === 'choice' && (
-                            <div className="space-y-2">
-                                <Label>Opções (separadas por vírgula)</Label>
-                                <Input 
-                                    value={newQOptions}
-                                    onChange={(e) => setNewQOptions(e.target.value)}
-                                    placeholder="Ex: Ruim, Regular, Bom, Excelente"
-                                />
-                            </div>
-                        )}
-
-                        <Button onClick={handleAddQuestion} className="w-full bg-slate-900">
-                            Adicionar ao Questionário
-                        </Button>
-                        
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Right: Preview List */}
-            <div className="lg:col-span-7 space-y-6">
-                <Card className="h-full flex flex-col bg-gray-50/50 border-dashed">
-                    <CardHeader className="bg-white border-b border-gray-200">
-                        <div className="flex items-center justify-between">
-                            <CardTitle className="flex items-center gap-2 text-gray-800">
-                                <Eye className="h-5 w-5 text-indigo-600" /> Pré-visualização do Formulário
+                    <Card className="sticky top-4">
+                        <CardHeader className="bg-slate-900 text-white rounded-t-lg">
+                            <CardTitle className="flex items-center gap-2">
+                                <Plus className="h-5 w-5" /> Adicionar Pergunta Manual
                             </CardTitle>
-                            <div className="text-xs px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md font-medium border border-indigo-100">
-                                Modo de Edição
+                        </CardHeader>
+                        <CardContent className="space-y-4 pt-6">
+                            <div className="space-y-2">
+                                <Label>Texto da Pergunta</Label>
+                                <Input 
+                                    value={newQText}
+                                    onChange={(e) => setNewQText(e.target.value)}
+                                    placeholder="Ex: O docente apresentou o programa?"
+                                />
                             </div>
-                        </div>
-                        <div className="pt-4">
-                            <Label className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Título do Formulário</Label>
-                            <Input 
-                                value={questionnaire?.title || ''} 
-                                onChange={(e) => handleUpdateTitle(e.target.value)} 
-                                className="mt-1 font-bold text-lg border-transparent hover:border-gray-300 focus:border-indigo-500 transition-colors bg-transparent px-0 shadow-none h-auto"
-                                placeholder={targetRole === 'student' ? "Ex: Ficha de Avaliação" : "Ex: Inquérito de Satisfação"}
-                            />
-                        </div>
-                    </CardHeader>
-                    <CardContent className="flex-1 overflow-y-auto p-6 space-y-4">
-                        {(!questionnaire || questionnaire.questions.length === 0) ? (
-                            <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-                                <FileQuestion className="h-12 w-12 mb-3 opacity-20" />
-                                <p className="font-medium">O formulário está vazio.</p>
-                                <p className="text-sm text-center max-w-xs mt-1">Adicione perguntas manualmente à esquerda para começar.</p>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Tipo de Resposta</Label>
+                                    <Select value={newQType} onChange={(e) => setNewQType(e.target.value as QuestionType)}>
+                                        <option value="binary">✅ Sim / Não (Full Mark)</option>
+                                        <option value="stars">⭐ Estrelas (1-5)</option>
+                                        <option value="scale_10">📊 Escala (0-10)</option>
+                                        <option value="text">📝 Texto (Sem pontos)</option>
+                                        <option value="choice">🔘 Múltipla Escolha</option>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Pontos Obtidos (Se SIM)</Label>
+                                    <Input 
+                                        type="number" min="0"
+                                        value={newQWeight}
+                                        onChange={(e) => setNewQWeight(Number(e.target.value))}
+                                        disabled={newQType === 'text' || newQType === 'choice'}
+                                    />
+                                </div>
                             </div>
-                        ) : (
-                            questionnaire.questions.map((q, idx) => (
-                                <div key={q.id} className="relative group bg-white p-5 rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all">
-                                    <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button 
-                                            onClick={() => handleRemoveQuestion(q.id)}
-                                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md"
-                                            title="Excluir Pergunta"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </button>
-                                    </div>
-                                    
-                                    <div className="mb-3 pr-8">
-                                        <div className="flex items-start gap-3">
-                                            <span className="text-sm font-bold text-gray-300 select-none">#{idx + 1}</span>
-                                            <div>
-                                                <p className="font-medium text-gray-900 text-base">{q.text}</p>
-                                                {q.weight !== undefined && q.weight > 0 && (
-                                                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded ml-2 inline-block mt-1">
-                                                        Peso: {q.weight} pts
-                                                    </span>
-                                                )}
+
+                            {newQType === 'choice' && (
+                                <div className="space-y-2">
+                                    <Label>Opções (separadas por vírgula)</Label>
+                                    <Input 
+                                        value={newQOptions}
+                                        onChange={(e) => setNewQOptions(e.target.value)}
+                                        placeholder="Ex: Ruim, Regular, Bom, Excelente"
+                                    />
+                                </div>
+                            )}
+
+                            <Button onClick={handleAddQuestion} className="w-full bg-slate-900">
+                                Adicionar ao Questionário
+                            </Button>
+                            
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Right: Preview List */}
+                <div className="lg:col-span-7 space-y-6">
+                    <Card className="h-full flex flex-col bg-gray-50/50 border-dashed">
+                        <CardHeader className="bg-white border-b border-gray-200">
+                            <div className="flex items-center justify-between">
+                                <CardTitle className="flex items-center gap-2 text-gray-800">
+                                    <Eye className="h-5 w-5 text-indigo-600" /> Pré-visualização do Formulário
+                                </CardTitle>
+                                <div className="text-xs px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md font-medium border border-indigo-100">
+                                    Modo de Edição
+                                </div>
+                            </div>
+                            <div className="pt-4">
+                                <Label className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Título do Formulário</Label>
+                                <Input 
+                                    value={questionnaire?.title || ''} 
+                                    onChange={(e) => handleUpdateTitle(e.target.value)} 
+                                    className="mt-1 font-bold text-lg border-transparent hover:border-gray-300 focus:border-indigo-500 transition-colors bg-transparent px-0 shadow-none h-auto"
+                                    placeholder={targetRole === 'student' ? "Ex: Ficha de Avaliação" : "Ex: Inquérito de Satisfação"}
+                                />
+                            </div>
+                        </CardHeader>
+                        <CardContent className="flex-1 overflow-y-auto p-6 space-y-4">
+                            {(!questionnaire || questionnaire.questions.length === 0) ? (
+                                <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                                    <FileQuestion className="h-12 w-12 mb-3 opacity-20" />
+                                    <p className="font-medium">O formulário está vazio.</p>
+                                    <p className="text-sm text-center max-w-xs mt-1">Adicione perguntas manualmente à esquerda para começar.</p>
+                                </div>
+                            ) : (
+                                questionnaire.questions.map((q, idx) => (
+                                    <div key={q.id} className="relative group bg-white p-5 rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all">
+                                        <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button 
+                                                onClick={() => handleRemoveQuestion(q.id)}
+                                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md"
+                                                title="Excluir Pergunta"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        </div>
+                                        
+                                        <div className="mb-3 pr-8">
+                                            <div className="flex items-start gap-3">
+                                                <span className="text-sm font-bold text-gray-300 select-none">#{idx + 1}</span>
+                                                <div>
+                                                    <p className="font-medium text-gray-900 text-base">{q.text}</p>
+                                                    {q.weight !== undefined && q.weight > 0 && (
+                                                        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded ml-2 inline-block mt-1">
+                                                            Peso: {q.weight} pts
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
+                                        
+                                        <div className="pl-8">
+                                            {renderPreviewInput(q)}
+                                        </div>
                                     </div>
-                                    
-                                    <div className="pl-8">
-                                        {renderPreviewInput(q)}
-                                    </div>
+                                ))
+                            )}
+                            
+                            {questionnaire && questionnaire.questions.length > 0 && (
+                                <div className="text-center pt-8 pb-4 opacity-50">
+                                    <Button disabled className="w-full max-w-sm bg-gray-300 text-gray-500 cursor-not-allowed">
+                                        Enviar Respostas (Simulação)
+                                    </Button>
                                 </div>
-                            ))
-                        )}
-                        
-                        {questionnaire && questionnaire.questions.length > 0 && (
-                            <div className="text-center pt-8 pb-4 opacity-50">
-                                <Button disabled className="w-full max-w-sm bg-gray-300 text-gray-500 cursor-not-allowed">
-                                    Enviar Respostas (Simulação)
-                                </Button>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
         </div>
       )} 

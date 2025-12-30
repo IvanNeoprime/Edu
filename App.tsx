@@ -7,7 +7,7 @@ import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { ManagerDashboard } from './components/ManagerDashboard';
 import { TeacherDashboard } from './components/TeacherDashboard';
 import { StudentDashboard } from './components/StudentDashboard';
-import { GraduationCap, ShieldCheck, ArrowRight, UserPlus, LogIn, User as UserIcon, Database, HardDrive } from 'lucide-react';
+import { GraduationCap, ShieldCheck, ArrowRight, UserPlus, LogIn, User as UserIcon, Database, HardDrive, Key, BookOpen, AlertCircle } from 'lucide-react';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -18,7 +18,7 @@ export default function App() {
   // Auth State
   const [email, setEmail] = useState(''); 
   const [password, setPassword] = useState('');
-  
+
   useEffect(() => {
       const init = async () => {
           try {
@@ -35,6 +35,7 @@ export default function App() {
             } catch(e) {
                 console.warn("Erro ao recuperar sessão", e);
             }
+
           } catch (e) {
               console.error("Fatal initialization error, ensuring UI renders:", e);
           } finally {
@@ -101,39 +102,49 @@ export default function App() {
             <p className="text-gray-500 mt-2">Sistema Nacional de Avaliação Académica</p>
         </div>
 
-        <Card className="w-full max-w-md shadow-lg border-0">
-          <CardHeader className="space-y-1">
+        <Card className="w-full max-w-md shadow-lg border-0 transition-all duration-300">
+          <CardHeader className="space-y-1 pb-4 border-b">
             <CardTitle className="text-2xl font-bold text-center">
                 Acesso ao Sistema
             </CardTitle>
+            <p className="text-center text-xs text-gray-500">
+                Insira suas credenciais institucionais para continuar.
+            </p>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handleLogin} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-            <div className="space-y-2">
-                <Label htmlFor="email">Email Institucional</Label>
-                <Input 
-                id="email" 
-                type="email" 
-                placeholder="Ex: nome@universidade.ac.mz" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                />
-            </div>
-            <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
-                <Input 
-                    id="password" 
-                    type="password" 
-                    placeholder="••••••••" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                />
-            </div>
-            <Button type="submit" className="w-full h-11" disabled={loading}>
-                {loading ? 'Verificando...' : 'Entrar'} <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
+          <CardContent className="pt-6">
+            <form onSubmit={handleLogin} className="space-y-4 animate-in fade-in">
+                <div className="space-y-2">
+                    <Label htmlFor="email">Email Institucional</Label>
+                    <Input 
+                    id="email" 
+                    type="email" 
+                    placeholder="Ex: nome@universidade.ac.mz" 
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="password">Senha</Label>
+                    <Input 
+                        id="password" 
+                        type="password" 
+                        placeholder="••••••••" 
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                    />
+                </div>
+                <Button type="submit" className="w-full h-11" disabled={loading}>
+                    {loading ? 'Verificando...' : 'Entrar'} <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
             </form>
+
+            <div className="mt-6 pt-4 border-t text-center">
+                <p className="text-xs text-gray-400">
+                    Não tem conta? <br/>
+                    O cadastro de novos estudantes e docentes é realizado exclusivamente pela <strong>Secretaria ou Gestão Académica</strong> da sua instituição.
+                </p>
+            </div>
           </CardContent>
         </Card>
         

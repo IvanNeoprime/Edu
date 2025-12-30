@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, CombinedScore, SelfEvaluation, TeacherCategory, Questionnaire, UserRole, Question } from '../types';
+import { User, CombinedScore, SelfEvaluation, TeacherCategory, Questionnaire, UserRole, Question, QualitativeEval } from '../types';
 import { BackendService } from '../services/backend';
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label, Select } from './ui';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
-import { Download, TrendingUp, FileText, BarChart3, Save, FileQuestion, Star, CheckCircle2, Lock, Printer, AlertCircle, Info, Calculator, FileCheck } from 'lucide-react';
+import { Download, TrendingUp, FileText, BarChart3, Save, FileQuestion, Star, CheckCircle2, Lock, Printer, AlertCircle, Info, Calculator, FileCheck, ClipboardList, Shield } from 'lucide-react';
 
 interface Props {
   user: User;
@@ -13,6 +13,7 @@ interface Props {
 export const TeacherDashboard: React.FC<Props> = ({ user }) => {
   const [activeTab, setActiveTab] = useState<'stats' | 'self-eval' | 'surveys'>('stats');
   const [stats, setStats] = useState<CombinedScore | undefined>(undefined);
+  const [qualEval, setQualEval] = useState<QualitativeEval | undefined>(undefined);
   
   // Surveys State
   const [availableSurvey, setAvailableSurvey] = useState<{questionnaire: Questionnaire} | null>(null);
@@ -40,6 +41,8 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
       regencySubjects: 0
   });
 
+  const [selfComments, setSelfComments] = useState('');
+
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
@@ -63,11 +66,16 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
   const loadData = async () => {
     const data = await BackendService.getTeacherStats(user.id);
     setStats(data);
+
+    // Load Manager's Qualitative Eval
+    const qEval = await BackendService.getQualitativeEval(user.id);
+    setQualEval(qEval);
     
     const savedEval = await BackendService.getSelfEval(user.id);
     if (savedEval) {
         setHeader(savedEval.header);
         setAnswers(savedEval.answers);
+        setSelfComments(savedEval.comments || '');
         // If data exists, assume it was saved previously
         setLastSaved(new Date()); 
     }
@@ -118,6 +126,8 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
 
   const handleSaveSelfEval = async (e: React.FormEvent) => {
       e.preventDefault();
+      if (lastSaved) return; // Prevent editing if already saved
+
       setSaving(true);
       
       // Ensure data integrity before saving
@@ -131,55 +141,19 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
       await BackendService.saveSelfEval({
           teacherId: user.id,
           header,
-          answers: cleanAnswers
+          answers: cleanAnswers,
+          comments: selfComments
       });
       setSaving(false);
       setLastSaved(new Date());
-      alert("Auto-avaliação salva com sucesso! Você pode baixar o comprovativo agora.");
+      alert("Auto-avaliação submetida com sucesso! O formulário foi fechado para edição.");
       loadData();
   };
 
-  const handleDownloadReceipt = () => {
-      const score = calculateLiveScore();
-      const date = new Date().toLocaleString();
-      const content = `
-COMPROVATIVO DE AUTO-AVALIAÇÃO - AVALIADOCENTE MZ
-------------------------------------------------
-Docente: ${user.name}
-Email: ${user.email}
-Data de Submissão: ${date}
-Instituição ID: ${user.institutionId}
-------------------------------------------------
-RESUMO DOS DADOS DECLARADOS:
-
-Categoria: ${header.category}
-Regime: ${header.contractRegime}
-
-INDICADORES QUANTITATIVOS:
-- Disciplinas Graduação: ${answers.gradSubjects}
-- Disciplinas Pós-Graduação: ${answers.postGradSubjects}
-- Horas Teóricas: ${answers.theoryHours}
-- Horas Práticas: ${answers.practicalHours}
-- Horas Consultas: ${answers.consultationHours}
-${header.category === 'assistente' ? `
-- Supervisão Graduação: ${answers.gradSupervision}
-- Supervisão Pós-Grad: ${answers.postGradSupervision}
-- Regências: ${answers.regencySubjects}
-` : ''}
-------------------------------------------------
-TOTAL DE PONTOS AUTO-AVALIAÇÃO: ${score}
-------------------------------------------------
-Este documento serve como prova de que os dados foram
-inseridos no sistema local. Aguarde a validação do gestor.
-`;
-      const blob = new Blob([content], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `comprovativo_avalia_${user.name.split(' ')[0]}_${new Date().toISOString().slice(0,10)}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+  const handleDownloadPDF = () => {
+      // Trigger browser print, which allows Save as PDF. 
+      // The CSS includes a @media print section that formats the document perfectly.
+      window.print();
   };
 
   const handleSubmitSurvey = async () => {
@@ -199,34 +173,6 @@ inseridos no sistema local. Aguarde a validação do gestor.
     } finally {
         setSurveySubmitting(false);
     }
-  };
-
-  const handleExportCSV = () => {
-      // Create CSV even if stats are null (using current self eval)
-      const currentSelfScore = stats?.selfEvalScore || calculateLiveScore();
-      const currentFinal = stats?.finalScore || currentSelfScore; // Approximation
-
-      const csvContent = `data:text/csv;charset=utf-8,` 
-          + `Docente,${user.name}\n`
-          + `Instituição,${user.institutionId}\n`
-          + `Data do Relatório,${new Date().toLocaleDateString()}\n\n`
-          + `Componente,Pontos\n`
-          + `Auto-Avaliação,${currentSelfScore}\n` 
-          + `Avaliação dos Alunos,${stats?.studentScore || 'Pendente'}\n`
-          + `Avaliação Qualitativa,${stats?.institutionalScore || 'Pendente'}\n`
-          + `SCORE FINAL (Provisório),${currentFinal}\n`;
-
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `relatorio_${user.name.replace(/\s+/g, '_').toLowerCase()}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-  };
-
-  const handlePrintPDF = () => {
-      window.print();
   };
 
   // --- Dynamic Question Renderer ---
@@ -269,8 +215,109 @@ inseridos no sistema local. Aguarde a validação do gestor.
       { name: 'Outros (Pendente)', value: 10, fill: '#e5e7eb' }
   ];
 
+  const isFormLocked = !!lastSaved;
+
   return (
-    <div className="space-y-8 p-4 md:p-8 max-w-6xl mx-auto animate-in fade-in duration-500 print:p-0 print:max-w-none">
+    <div className="space-y-8 p-4 md:p-8 max-w-6xl mx-auto animate-in fade-in duration-500">
+      
+      {/* --- VISÃO DE IMPRESSÃO (REPORT VIEW - PDF) --- */}
+      {/* Este bloco fica invisível na tela normal e visível apenas na impressão/PDF */}
+      <div className="hidden print:block font-serif p-8 max-w-[210mm] mx-auto bg-white text-black">
+          <div className="text-center border-b-2 border-black pb-4 mb-6">
+              <h1 className="text-2xl font-bold uppercase">Ficha de Avaliação de Desempenho Docente</h1>
+              <p className="text-sm mt-1">{user.institutionId?.toUpperCase()} - {new Date().getFullYear()}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mb-6 text-sm border p-4">
+              <div><strong>Nome:</strong> {user.name}</div>
+              <div><strong>Email:</strong> {user.email}</div>
+              <div><strong>Categoria:</strong> {header.category}</div>
+              <div><strong>Regime:</strong> {header.contractRegime}</div>
+          </div>
+
+          <div className="mb-6">
+              <h2 className="font-bold border-b border-black mb-2 uppercase text-sm">1. Auto-Avaliação (Indicadores Quantitativos)</h2>
+              <table className="w-full text-sm border-collapse border border-gray-300">
+                  <thead>
+                      <tr className="bg-gray-100">
+                          <th className="border p-1 text-left">Indicador</th>
+                          <th className="border p-1 text-right">Qtd</th>
+                          <th className="border p-1 text-right">Pts Unit.</th>
+                          <th className="border p-1 text-right">Subtotal</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+                      {getScoreBreakdown().map(item => (
+                          <tr key={item.name}>
+                              <td className="border p-1">{item.name}</td>
+                              <td className="border p-1 text-right">-</td>
+                              <td className="border p-1 text-right">-</td>
+                              <td className="border p-1 text-right">{item.value}</td>
+                          </tr>
+                      ))}
+                      <tr className="font-bold bg-gray-50">
+                          <td className="border p-1" colSpan={3}>Total Auto-Avaliação</td>
+                          <td className="border p-1 text-right">{calculateLiveScore()}</td>
+                      </tr>
+                  </tbody>
+              </table>
+          </div>
+
+          <div className="mb-6">
+              <h2 className="font-bold border-b border-black mb-2 uppercase text-sm">2. Auto-Reflexão do Docente</h2>
+              <div className="border p-4 text-sm min-h-[100px] bg-gray-50 italic">
+                  {selfComments || "Nenhuma reflexão registrada pelo docente."}
+              </div>
+          </div>
+
+          <div className="mb-6">
+              <h2 className="font-bold border-b border-black mb-2 uppercase text-sm">3. Avaliação Qualitativa (Preenchida pelo Gestor)</h2>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="border p-2">
+                      <div className="font-bold text-xs uppercase text-gray-500">Cumprimento de Prazos</div>
+                      <div className="text-lg">{qualEval?.deadlineCompliance ?? '-'} / 10</div>
+                  </div>
+                  <div className="border p-2">
+                      <div className="font-bold text-xs uppercase text-gray-500">Qualidade do Trabalho</div>
+                      <div className="text-lg">{qualEval?.workQuality ?? '-'} / 10</div>
+                  </div>
+              </div>
+          </div>
+
+          <div className="mb-8 border-t-2 border-black pt-4">
+              <h2 className="font-bold text-lg uppercase mb-4">Resultado Final Consolidado</h2>
+              <div className="grid grid-cols-4 gap-2 text-center text-sm">
+                  <div className="border p-2 bg-gray-50">
+                      <div className="font-bold">Auto-Aval.</div>
+                      <div>{stats?.selfEvalScore ?? calculateLiveScore()}</div>
+                  </div>
+                  <div className="border p-2 bg-gray-50">
+                      <div className="font-bold">Estudantes</div>
+                      <div>{stats?.studentScore ?? 'Pend.'}</div>
+                  </div>
+                  <div className="border p-2 bg-gray-50">
+                      <div className="font-bold">Institucional</div>
+                      <div>{stats?.institutionalScore ?? 'Pend.'}</div>
+                  </div>
+                  <div className="border p-2 bg-black text-white">
+                      <div className="font-bold">TOTAL</div>
+                      <div>{stats?.finalScore ?? 'Calculando'}</div>
+                  </div>
+              </div>
+          </div>
+
+          <div className="mt-12 grid grid-cols-2 gap-12 pt-8">
+              <div className="text-center border-t border-black pt-2">
+                  <p className="text-sm">Assinatura do Docente</p>
+              </div>
+              <div className="text-center border-t border-black pt-2">
+                  <p className="text-sm">Assinatura do Chefe de Departamento</p>
+              </div>
+          </div>
+          <div className="text-xs text-center mt-12 text-gray-500">Gerado digitalmente por AvaliaDocente MZ em {new Date().toLocaleDateString()}</div>
+      </div>
+      {/* --- FIM DA VISÃO DE IMPRESSÃO --- */}
+
       <header className="border-b pb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:hidden">
         <div>
             <h1 className="text-3xl font-bold tracking-tight">Painel do Docente</h1>
@@ -283,16 +330,9 @@ inseridos no sistema local. Aguarde a validação do gestor.
         </div>
       </header>
 
-      {/* Print Header */}
-      <div className="hidden print:block text-center mb-6">
-          <h2 className="text-2xl font-bold">Relatório Individual de Desempenho</h2>
-          <p className="text-gray-600">Docente: {user.name}</p>
-          <p className="text-gray-500 text-sm">Gerado em: {new Date().toLocaleDateString()}</p>
-      </div>
-
       {/* --- ABA ESTATÍSTICAS / RELATÓRIOS --- */}
       {activeTab === 'stats' && (
-        <div className="space-y-6 animate-in slide-in-from-bottom-4">
+        <div className="space-y-6 animate-in slide-in-from-bottom-4 print:hidden">
             {!stats ? (
                  // VIEW: NO OFFICIAL STATS YET (PRELIMINARY VIEW)
                  <div className="space-y-6">
@@ -316,7 +356,7 @@ inseridos no sistema local. Aguarde a validação do gestor.
                                 <div className="text-4xl font-bold text-purple-600">{calculateLiveScore()} pts</div>
                                 <p className="text-xs text-gray-500 mt-2">Baseado nos dados que você preencheu.</p>
                                 <Button variant="outline" size="sm" className="mt-4 w-full" onClick={() => setActiveTab('self-eval')}>
-                                    Editar Auto-Avaliação
+                                    Ver Detalhes
                                 </Button>
                             </CardContent>
                         </Card>
@@ -339,7 +379,7 @@ inseridos no sistema local. Aguarde a validação do gestor.
             ) : (
                 // VIEW: OFFICIAL STATS AVAILABLE
                 <>
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 print:grid-cols-4">
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Pontuação Final</CardTitle>
@@ -382,8 +422,8 @@ inseridos no sistema local. Aguarde a validação do gestor.
                     </Card>
                 </div>
 
-                <div className="grid gap-6 md:grid-cols-2 print:block print:space-y-6">
-                    <Card className="print:shadow-none print:border-none">
+                <div className="grid gap-6 md:grid-cols-3">
+                    <Card className="md:col-span-2">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5"/> Composição da Nota</CardTitle>
                         </CardHeader>
@@ -408,31 +448,31 @@ inseridos no sistema local. Aguarde a validação do gestor.
                         </CardContent>
                     </Card>
 
-                    <Card className="print:shadow-none print:border-none">
+                    <Card>
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2">Distribuição de Peso</CardTitle>
+                            <CardTitle className="flex items-center gap-2">
+                                Avaliação Qualitativa
+                                <span className="ml-auto inline-flex items-center gap-1 text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-500">
+                                    <Lock className="h-3 w-3" /> Gestor
+                                </span>
+                            </CardTitle>
+                            <p className="text-xs text-gray-500">Atribuída pelo Gestor Institucional</p>
                         </CardHeader>
-                        <CardContent className="h-[300px]">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={pieData}
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={60}
-                                        outerRadius={80}
-                                        paddingAngle={5}
-                                        dataKey="value"
-                                        label
-                                    >
-                                        {pieData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={entry.fill} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip />
-                                    <Legend />
-                                </PieChart>
-                            </ResponsiveContainer>
+                        <CardContent className="space-y-4">
+                            {qualEval ? (
+                                <>
+                                <div className="bg-gray-50 p-3 rounded border">
+                                    <div className="text-xs font-semibold text-gray-500 uppercase">Cumprimento de Prazos</div>
+                                    <div className="text-xl font-bold text-gray-800">{qualEval.deadlineCompliance || 0} <span className="text-sm font-normal text-gray-400">/ 10</span></div>
+                                </div>
+                                <div className="bg-gray-50 p-3 rounded border">
+                                    <div className="text-xs font-semibold text-gray-500 uppercase">Qualidade do Trabalho</div>
+                                    <div className="text-xl font-bold text-gray-800">{qualEval.workQuality || 0} <span className="text-sm font-normal text-gray-400">/ 10</span></div>
+                                </div>
+                                </>
+                            ) : (
+                                <p className="text-sm text-gray-400 italic">Ainda não avaliado pelo gestor.</p>
+                            )}
                         </CardContent>
                     </Card>
                 </div>
@@ -440,11 +480,8 @@ inseridos no sistema local. Aguarde a validação do gestor.
             )}
 
             <div className="flex justify-end gap-4 print:hidden pt-4 border-t">
-                <Button variant="outline" onClick={handlePrintPDF}>
-                    <Printer className="mr-2 h-4 w-4" /> Imprimir Relatório
-                </Button>
-                <Button onClick={handleExportCSV}>
-                    <Download className="mr-2 h-4 w-4" /> Baixar Relatório (CSV)
+                <Button className="w-full sm:w-auto" size="lg" onClick={handleDownloadPDF}>
+                    <Download className="mr-2 h-4 w-4" /> Baixar Relatório (PDF)
                 </Button>
             </div>
         </div>
@@ -456,6 +493,18 @@ inseridos no sistema local. Aguarde a validação do gestor.
             
             {/* Left Column: Form */}
             <div className="lg:col-span-8">
+                {isFormLocked && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-4 flex items-start gap-3">
+                        <Lock className="h-5 w-5 text-yellow-600 mt-0.5" />
+                        <div>
+                            <h4 className="font-bold text-yellow-800 text-sm">Formulário Bloqueado</h4>
+                            <p className="text-sm text-yellow-700">
+                                Você já submeteu sua auto-avaliação. Para fazer alterações, entre em contato com o Gestor Institucional.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 <form onSubmit={handleSaveSelfEval} className="space-y-6">
                     {/* Header Section */}
                     <Card className="border-blue-100 bg-blue-50/50">
@@ -465,26 +514,26 @@ inseridos no sistema local. Aguarde a validação do gestor.
                         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Categoria</Label>
-                                <Select value={header.category} onChange={e => setHeader({...header, category: e.target.value as TeacherCategory})}>
+                                <Select disabled={isFormLocked} value={header.category} onChange={e => setHeader({...header, category: e.target.value as TeacherCategory})}>
                                     <option value="assistente">Assistente (Pleno)</option>
                                     <option value="assistente_estagiario">Assistente Estagiário</option>
                                 </Select>
                             </div>
                             <div className="space-y-2">
                                 <Label>Função</Label>
-                                <Input value={header.function} onChange={e => setHeader({...header, function: e.target.value})} />
+                                <Input disabled={isFormLocked} value={header.function} onChange={e => setHeader({...header, function: e.target.value})} />
                             </div>
                             <div className="space-y-2">
                                 <Label>Regime</Label>
-                                <Input value={header.contractRegime} onChange={e => setHeader({...header, contractRegime: e.target.value})} placeholder="Tempo Inteiro / Parcial" />
+                                <Input disabled={isFormLocked} value={header.contractRegime} onChange={e => setHeader({...header, contractRegime: e.target.value})} placeholder="Tempo Inteiro / Parcial" />
                             </div>
                             <div className="space-y-2">
                                 <Label>Período</Label>
-                                <Input value={header.workPeriod} onChange={e => setHeader({...header, workPeriod: e.target.value})} placeholder="Laboral / PL" />
+                                <Input disabled={isFormLocked} value={header.workPeriod} onChange={e => setHeader({...header, workPeriod: e.target.value})} placeholder="Laboral / PL" />
                             </div>
                             <div className="space-y-2">
                                 <Label>Ano Lectivo</Label>
-                                <Input value={header.academicYear} onChange={e => setHeader({...header, academicYear: e.target.value})} />
+                                <Input disabled={isFormLocked} value={header.academicYear} onChange={e => setHeader({...header, academicYear: e.target.value})} />
                             </div>
                         </CardContent>
                     </Card>
@@ -492,7 +541,7 @@ inseridos no sistema local. Aguarde a validação do gestor.
                     {/* Questions Section */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>2. Indicadores de Desempenho</CardTitle>
+                            <CardTitle>2. Indicadores Quantitativos</CardTitle>
                             <p className="text-sm text-gray-500">Preencha as quantidades. O sistema calculará os pontos automaticamente.</p>
                         </CardHeader>
                         <CardContent className="space-y-6">
@@ -503,11 +552,11 @@ inseridos no sistema local. Aguarde a validação do gestor.
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-2">
                                         <Label>Disciplinas de Graduação (15 pts cada)</Label>
-                                        <Input type="number" min="0" value={answers.gradSubjects} onChange={e => setAnswers({...answers, gradSubjects: parseInt(e.target.value)||0})} />
+                                        <Input disabled={isFormLocked} type="number" min="0" value={answers.gradSubjects} onChange={e => setAnswers({...answers, gradSubjects: parseInt(e.target.value)||0})} />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Disciplinas de Pós-Graduação (5 pts cada)</Label>
-                                        <Input type="number" min="0" value={answers.postGradSubjects} onChange={e => setAnswers({...answers, postGradSubjects: parseInt(e.target.value)||0})} />
+                                        <Input disabled={isFormLocked} type="number" min="0" value={answers.postGradSubjects} onChange={e => setAnswers({...answers, postGradSubjects: parseInt(e.target.value)||0})} />
                                     </div>
                                 </div>
                             </div>
@@ -517,15 +566,15 @@ inseridos no sistema local. Aguarde a validação do gestor.
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                     <div className="space-y-2">
                                         <Label>Aulas Teóricas (16 pts)</Label>
-                                        <Input type="number" min="0" value={answers.theoryHours} onChange={e => setAnswers({...answers, theoryHours: parseInt(e.target.value)||0})} />
+                                        <Input disabled={isFormLocked} type="number" min="0" value={answers.theoryHours} onChange={e => setAnswers({...answers, theoryHours: parseInt(e.target.value)||0})} />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Aulas Práticas (14 pts)</Label>
-                                        <Input type="number" min="0" value={answers.practicalHours} onChange={e => setAnswers({...answers, practicalHours: parseInt(e.target.value)||0})} />
+                                        <Input disabled={isFormLocked} type="number" min="0" value={answers.practicalHours} onChange={e => setAnswers({...answers, practicalHours: parseInt(e.target.value)||0})} />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Consultas/Atendimento (5 pts)</Label>
-                                        <Input type="number" min="0" value={answers.consultationHours} onChange={e => setAnswers({...answers, consultationHours: parseInt(e.target.value)||0})} />
+                                        <Input disabled={isFormLocked} type="number" min="0" value={answers.consultationHours} onChange={e => setAnswers({...answers, consultationHours: parseInt(e.target.value)||0})} />
                                     </div>
                                 </div>
                             </div>
@@ -538,15 +587,15 @@ inseridos no sistema local. Aguarde a validação do gestor.
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in">
                                         <div className="space-y-2">
                                             <Label>Dissertações Graduação (6 pts cada)</Label>
-                                            <Input type="number" min="0" value={answers.gradSupervision} onChange={e => setAnswers({...answers, gradSupervision: parseInt(e.target.value)||0})} />
+                                            <Input disabled={isFormLocked} type="number" min="0" value={answers.gradSupervision} onChange={e => setAnswers({...answers, gradSupervision: parseInt(e.target.value)||0})} />
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Teses Pós-Graduação (6 pts cada)</Label>
-                                            <Input type="number" min="0" value={answers.postGradSupervision} onChange={e => setAnswers({...answers, postGradSupervision: parseInt(e.target.value)||0})} />
+                                            <Input disabled={isFormLocked} type="number" min="0" value={answers.postGradSupervision} onChange={e => setAnswers({...answers, postGradSupervision: parseInt(e.target.value)||0})} />
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Disciplinas em Regência (8 pts cada)</Label>
-                                            <Input type="number" min="0" value={answers.regencySubjects} onChange={e => setAnswers({...answers, regencySubjects: parseInt(e.target.value)||0})} />
+                                            <Input disabled={isFormLocked} type="number" min="0" value={answers.regencySubjects} onChange={e => setAnswers({...answers, regencySubjects: parseInt(e.target.value)||0})} />
                                         </div>
                                     </div>
                                 ) : (
@@ -564,14 +613,42 @@ inseridos no sistema local. Aguarde a validação do gestor.
 
                         </CardContent>
                     </Card>
+
+                    {/* Qualitative Self Reflection */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>3. Auto-Reflexão do Docente</CardTitle>
+                            <p className="text-sm text-gray-500">Espaço para considerações, constrangimentos ou conquistas do semestre. (Não confundir com a avaliação do gestor).</p>
+                        </CardHeader>
+                        <CardContent>
+                            <textarea 
+                                disabled={isFormLocked}
+                                className="w-full min-h-[120px] p-3 rounded-md border border-gray-300 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500"
+                                placeholder="Descreva aqui sua análise qualitativa..."
+                                value={selfComments}
+                                onChange={(e) => setSelfComments(e.target.value)}
+                            />
+                        </CardContent>
+                    </Card>
                     
                     <div className="flex flex-col gap-4">
-                        <Button type="submit" size="lg" className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 text-lg shadow-md" disabled={saving}>
-                            {saving ? 'Salvando...' : <><Save className="mr-2 h-5 w-5" /> Salvar e Enviar Auto-Avaliação</>}
+                        <Button 
+                            type="submit" 
+                            size="lg" 
+                            className={`w-full h-12 text-lg shadow-md ${isFormLocked ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`} 
+                            disabled={saving || isFormLocked}
+                        >
+                            {isFormLocked ? (
+                                <><Lock className="mr-2 h-5 w-5" /> Submetido e Bloqueado</>
+                            ) : (
+                                saving ? 'Salvando...' : <><Save className="mr-2 h-5 w-5" /> Salvar Auto-Avaliação Completa</>
+                            )}
                         </Button>
-                        <p className="text-center text-xs text-gray-500">
-                            Ao clicar em salvar, os dados são registrados no sistema local e estarão disponíveis para o gestor.
-                        </p>
+                        {!isFormLocked && (
+                            <p className="text-center text-xs text-gray-500">
+                                Atenção: Após salvar, o formulário será bloqueado para edição.
+                            </p>
+                        )}
                     </div>
                 </form>
             </div>
@@ -586,7 +663,7 @@ inseridos no sistema local. Aguarde a validação do gestor.
                     </CardHeader>
                     <CardContent className="pt-6 space-y-6">
                         <div className="text-center">
-                            <p className="text-sm font-medium text-gray-500 mb-1">Pontuação Estimada</p>
+                            <p className="text-sm font-medium text-gray-500 mb-1">Pontuação Quantitativa</p>
                             <div className="text-5xl font-extrabold text-indigo-600 tracking-tight">
                                 {calculateLiveScore()}
                             </div>
@@ -612,9 +689,6 @@ inseridos no sistema local. Aguarde a validação do gestor.
                                     <CheckCircle2 className="h-4 w-4" />
                                     <span>Salvo em: {lastSaved.toLocaleTimeString()}</span>
                                 </div>
-                                <Button variant="outline" className="w-full border-dashed border-gray-400 hover:border-gray-900" onClick={handleDownloadReceipt}>
-                                    <FileCheck className="mr-2 h-4 w-4" /> Baixar Comprovativo
-                                </Button>
                             </div>
                         )}
                     </CardContent>

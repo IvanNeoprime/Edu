@@ -109,6 +109,8 @@ export interface SelfEvaluation {
     postGradSupervision?: number;
     regencySubjects?: number;
   };
+  // Novo campo: Avaliação Qualitativa descritiva do próprio docente
+  comments?: string; 
 }
 
 export interface QualitativeEval {

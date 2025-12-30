@@ -240,6 +240,16 @@ const MockBackend = {
   async getInstitution(id: string): Promise<Institution | undefined> {
       return getTable<Institution>(DB_KEYS.INSTITUTIONS).find(i => i.id === id);
   },
+  async getInstitutionCourses(institutionId: string): Promise<string[]> {
+      const subjects = getTable<Subject>(DB_KEYS.SUBJECTS).filter(s => s.institutionId === institutionId);
+      const courses = new Set<string>();
+      subjects.forEach(s => {
+          if (s.course && s.course.trim() !== '') {
+              courses.add(s.course.trim());
+          }
+      });
+      return Array.from(courses).sort();
+  },
   async updateInstitution(id: string, data: Partial<Institution>): Promise<void> {
       const list = getTable<Institution>(DB_KEYS.INSTITUTIONS);
       const idx = list.findIndex(i => i.id === id);
@@ -593,6 +603,16 @@ const SupabaseBackend = {
         const { data, error } = await supabase.from('institutions').select('*').eq('id', id).single();
         if (error || !data) return undefined;
         return { ...data, managerEmails: data.managerEmails || data.manager_emails || [] };
+    },
+    async getInstitutionCourses(institutionId: string): Promise<string[]> {
+        if (!supabase) return [];
+        const { data, error } = await supabase.from('subjects').select('course').eq('institutionId', institutionId);
+        if (error) { console.error(error); return []; }
+        const courses = new Set<string>();
+        data.forEach((s: any) => {
+            if (s.course && s.course.trim()) courses.add(s.course.trim());
+        });
+        return Array.from(courses).sort();
     },
     async createInstitution(data: { name: string, code: string, managerEmails: string[], logo?: string }): Promise<Institution> {
         if (!supabase) throw new Error("No client");
