@@ -465,69 +465,96 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   return (
     <>
       {/* --- INÍCIO DO CONTEÚDO PARA IMPRESSÃO --- */}
-      <div className="hidden print:block">
-        <div className="p-4">
-          <header className="flex justify-between items-center border-b pb-4 mb-6">
-            <div className="flex items-center gap-4">
-              {institution?.logo && <img src={institution.logo} className="h-16 w-16 object-contain" alt="Logo"/>}
+      <div className="hidden print:block font-sans">
+        <div className="p-6">
+          {/* Cabeçalho do Relatório */}
+          <header className="text-center mb-10">
+            <div className="flex justify-center items-center gap-4 mb-4">
+              {institution?.logo && <img src={institution.logo} className="h-20 w-20 object-contain" alt="Logo"/>}
               <div>
-                <h1 className="text-2xl font-bold">{institution?.name}</h1>
-                <p className="text-gray-600">Relatório de Desempenho Global de Docentes</p>
+                <h1 className="text-3xl font-bold text-gray-800">{institution?.name}</h1>
+                <p className="text-lg text-gray-600">Relatório de Desempenho Global de Docentes</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-sm">Data de Emissão: {new Date().toLocaleDateString()}</p>
-            </div>
+            <p className="text-sm text-gray-500">Data de Emissão: {new Date().toLocaleDateString()}</p>
           </header>
 
-          <section className="mb-6">
-             <div className="grid grid-cols-3 gap-4 text-center">
-                <div className="bg-gray-100 p-3 rounded-lg">
-                    <h3 className="text-sm font-medium text-gray-600">Total de Docentes</h3>
-                    <p className="text-2xl font-bold">{teachers.length}</p>
-                </div>
-                 <div className="bg-gray-100 p-3 rounded-lg">
-                    <h3 className="text-sm font-medium text-gray-600">Total de Avaliações</h3>
-                    <p className="text-2xl font-bold">{allScores.length}</p>
-                </div>
-                 <div className="bg-gray-100 p-3 rounded-lg">
-                    <h3 className="text-sm font-medium text-gray-600">Média Institucional</h3>
-                    <p className="text-2xl font-bold">{avgScore}</p>
-                </div>
-             </div>
+          {/* Resumo Geral */}
+          <section className="mb-8 p-4 border rounded-lg bg-gray-50">
+              <h2 className="text-lg font-semibold text-gray-700 mb-3 text-center">Resumo Geral do Período</h2>
+              <div className="flex justify-around items-center text-center">
+                  <div>
+                      <p className="text-2xl font-bold text-gray-800">{teachers.length}</p>
+                      <p className="text-sm text-gray-600">Total de Docentes</p>
+                  </div>
+                  <div className="border-l h-12 border-gray-200"></div>
+                  <div>
+                      <p className="text-2xl font-bold text-gray-800">{allScores.length}</p>
+                      <p className="text-sm text-gray-600">Avaliações Processadas</p>
+                  </div>
+                  <div className="border-l h-12 border-gray-200"></div>
+                  <div>
+                      <p className="text-2xl font-bold text-gray-800">{avgScore}</p>
+                      <p className="text-sm text-gray-600">Média Institucional</p>
+                  </div>
+              </div>
           </section>
           
+          {/* Tabela de Resultados Detalhados */}
           <section>
-            <h2 className="text-xl font-semibold mb-4">Resultados Detalhados</h2>
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-gray-200">
+            <h2 className="text-xl font-semibold mb-4 text-gray-800">Resultados Detalhados por Docente</h2>
+            <table className="w-full text-sm border-collapse border border-gray-300">
+              <thead className="bg-gray-100">
                 <tr>
-                  <th className="p-2 border font-semibold">Docente</th>
-                  <th className="p-2 border font-semibold text-center">Av. Alunos</th>
-                  <th className="p-2 border font-semibold text-center">Auto-Av.</th>
-                  <th className="p-2 border font-semibold text-center">Av. Institucional</th>
-                  <th className="p-2 border font-semibold text-center">Nota Final</th>
+                  <th className="p-3 border border-gray-300 font-semibold text-left">Docente</th>
+                  <th className="p-3 border border-gray-300 font-semibold text-left w-1/3">Disciplinas Lecionadas</th>
+                  <th className="p-3 border border-gray-300 font-semibold text-center">Av. Alunos</th>
+                  <th className="p-3 border border-gray-300 font-semibold text-center">Auto-Av.</th>
+                  <th className="p-3 border border-gray-300 font-semibold text-center">Av. Institucional</th>
+                  <th className="p-3 border border-gray-300 font-semibold text-center">Nota Final</th>
                 </tr>
               </thead>
               <tbody>
-                {allScores.sort((a,b) => b.finalScore - a.finalScore).map(score => {
+                {allScores.sort((a,b) => b.finalScore - a.finalScore).map((score, index) => {
                   const teacher = teachers.find(t => t.id === score.teacherId);
+                  const teacherSubjects = subjects.filter(s => s.teacherId === score.teacherId);
                   return (
-                    <tr key={score.teacherId} className="break-inside-avoid">
-                      <td className="p-2 border">{teacher?.name || 'N/A'}</td>
-                      <td className="p-2 border text-center">{score.studentScore.toFixed(2)}</td>
-                      <td className="p-2 border text-center">{score.selfEvalScore.toFixed(2)}</td>
-                      <td className="p-2 border text-center">{score.institutionalScore.toFixed(2)}</td>
-                      <td className="p-2 border text-center font-bold">{score.finalScore.toFixed(2)}</td>
+                    <tr key={score.teacherId} className={`break-inside-avoid ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                      <td className="p-2 border border-gray-300 text-left align-top font-medium">{teacher?.name || 'N/A'}</td>
+                      <td className="p-2 border border-gray-300 text-left align-top text-xs">
+                        {teacherSubjects.length > 0 ? (
+                          <ul className="list-inside space-y-1">
+                            {teacherSubjects.map(s => (
+                              <li key={s.id}>
+                                <span className="font-semibold">{s.name}</span>
+                                <span className="text-gray-500"> ({s.course || 'N/D'})</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <span className="text-gray-400 italic">Nenhuma disciplina registada</span>
+                        )}
+                      </td>
+                      <td className="p-2 border border-gray-300 text-center align-middle">{score.studentScore.toFixed(2)}</td>
+                      <td className="p-2 border border-gray-300 text-center align-middle">{score.selfEvalScore.toFixed(2)}</td>
+                      <td className="p-2 border border-gray-300 text-center align-middle">{score.institutionalScore.toFixed(2)}</td>
+                      <td className="p-2 border border-gray-300 text-center align-middle font-bold text-gray-800">{score.finalScore.toFixed(2)}</td>
                     </tr>
                   )
                 })}
               </tbody>
             </table>
+            {allScores.length === 0 && (
+                <div className="text-center py-8 border border-t-0 border-gray-300 text-gray-500 bg-gray-50">
+                    Nenhum resultado final foi calculado para este período.
+                </div>
+            )}
           </section>
 
-          <footer className="mt-12 pt-4 border-t text-center text-xs text-gray-400">
-             <p>Relatório gerado por AvaliaDocente MZ</p>
+          {/* Rodapé */}
+          <footer className="mt-16 pt-4 border-t border-gray-300 text-center text-xs text-gray-500">
+             <p className="font-semibold">{institution?.name}</p>
+             <p>Relatório gerado pelo Sistema AvaliaDocente MZ</p>
           </footer>
         </div>
       </div>
@@ -594,9 +621,4 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         {activeTab === 'students' && ( <div className="grid gap-8 lg:grid-cols-12 animate-in fade-in"><div className="lg:col-span-4 space-y-6"><Card><CardHeader><CardTitle className="flex items-center gap-2"><GraduationCap className="h-5 w-5" /> Cadastrar Aluno</CardTitle></CardHeader><CardContent><form onSubmit={handleAddStudent} className="bg-gray-50 p-4 rounded-lg border space-y-4"><div className="space-y-2"><Label>Nome</Label><Input value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required /></div><div className="space-y-2"><Label>Email</Label><Input type="email" value={newStudentEmail} onChange={e => setNewStudentEmail(e.target.value)} required /></div><div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Curso</Label><Select value={newStudentCourse} onChange={e => setNewStudentCourse(e.target.value)} disabled={uniqueCourses.length === 0}><option value="">Curso...</option>{uniqueCourses.map(c => <option key={c} value={c}>{c}</option>)}</Select></div><div className="space-y-2"><Label>Ano/Nível</Label><Input value={newStudentLevel} onChange={e => setNewStudentLevel(e.target.value)} /></div></div><div className="space-y-2"><Label>Senha</Label><Input type="text" value={newStudentPwd} onChange={e => setNewStudentPwd(e.target.value)} required /></div><Button type="submit" className="w-full"><Plus className="mr-2 h-4 w-4" /> Adicionar Estudante</Button></form></CardContent></Card></div><div className="lg:col-span-8"><Card><CardHeader><CardTitle className="flex items-center gap-2">Lista de Estudantes ({students.length})</CardTitle></CardHeader><CardContent><div className="space-y-6">{Object.entries(groupedStudents).map(([course, levels]) => (<div key={course} className="border rounded-md overflow-hidden"><div className="bg-gray-100 px-4 py-2 font-semibold text-gray-800 border-b">{course}</div><div className="divide-y">{Object.entries(levels).map(([level, users]) => (<div key={level}><div className="bg-gray-50 px-4 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wider border-b">{level}</div><div>{users.map(std => (<div key={std.id} className="p-4 bg-white hover:bg-gray-50 flex justify-between items-center border-b last:border-0"><div className="flex items-center gap-3"><div className="h-8 w-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">{std.avatar ? <img src={std.avatar} className="h-full w-full object-cover" alt="Avatar"/> : <Users className="h-4 w-4 m-2 text-gray-400" />}</div><div><p className="font-medium text-gray-900">{std.name}</p><p className="text-sm text-gray-500">{std.email}</p></div></div><Button size="sm" variant="ghost" onClick={() => startEditUser(std)} className="text-gray-500"><Edit className="h-4 w-4" /></Button></div>))}</div></div>))}</div></div>))}</div></CardContent></Card></div></div>)}
         {activeTab === 'questionnaire' && ( <div className="animate-in fade-in space-y-6"><div className="grid gap-8 lg:grid-cols-12"><div className="lg:col-span-5 space-y-6"><Card><CardHeader className="pb-3"><CardTitle className="text-sm">Público Alvo do Questionário</CardTitle></CardHeader><CardContent><Select value={targetRole} onChange={(e) => setTargetRole(e.target.value as 'student' | 'teacher')}><option value="student">🎓 Alunos (Avaliar Docentes)</option><option value="teacher">👨‍🏫 Docentes (Institucional)</option></Select></CardContent></Card><Card><CardHeader className="bg-slate-900 text-white rounded-t-lg"><CardTitle className="flex items-center gap-2"><Plus className="h-5 w-5" /> Adicionar Pergunta</CardTitle></CardHeader><CardContent className="space-y-4 pt-6"><div className="space-y-2"><Label>Texto</Label><Input value={newQText} onChange={(e) => setNewQText(e.target.value)} /></div><div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Tipo</Label><Select value={newQType} onChange={(e) => setNewQType(e.target.value as QuestionType)}><option value="binary">Sim / Não</option><option value="stars">Estrelas (1-5)</option><option value="scale_10">Escala (0-10)</option><option value="text">Texto</option><option value="choice">Múltipla Escolha</option></Select></div><div className="space-y-2"><Label>Pontos (Se SIM)</Label><Input type="number" min="0" value={newQWeight} onChange={(e) => setNewQWeight(Number(e.target.value))} disabled={newQType === 'text' || newQType === 'choice'} /></div></div><Button onClick={handleAddQuestion} className="w-full bg-slate-900">Adicionar Pergunta</Button></CardContent></Card></div><div className="lg:col-span-7 space-y-6"><Card className="h-full flex flex-col bg-gray-50/50"><CardHeader className="bg-white border-b border-gray-200"><div className="flex items-center justify-between"><CardTitle className="flex items-center gap-2 text-gray-800"><Eye className="h-5 w-5 text-indigo-600" /> Pré-visualização do Formulário</CardTitle></div><Input value={questionnaire?.title || ''} onChange={(e) => handleUpdateTitle(e.target.value)} className="mt-4 font-bold text-lg" placeholder="Título do Formulário" /></CardHeader><CardContent className="flex-1 overflow-y-auto p-6 space-y-4">{(!questionnaire || questionnaire.questions.length === 0) ? (<div className="flex flex-col items-center justify-center h-64 text-gray-400"><FileQuestion className="h-12 w-12 mb-3 opacity-20" /><p className="font-medium">O formulário está vazio.</p></div>) : (questionnaire.questions.map((q, idx) => (<div key={q.id} className="relative group bg-white p-5 rounded-lg border border-gray-200 shadow-sm"><div className="absolute right-3 top-3"><button onClick={() => handleRemoveQuestion(q.id)} className="p-1.5 text-gray-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div><div className="mb-3 pr-8"><p className="font-medium text-gray-900 text-base">#{idx + 1}. {q.text}</p></div><div className="pl-4 opacity-70 pointer-events-none">{renderPreviewInput(q)}</div></div>)))}</CardContent></Card></div></div></div>)} 
         {activeTab === 'qualitative' && ( <div className="animate-in fade-in"><Card><CardHeader><CardTitle className="flex items-center gap-2"><ClipboardList className="h-5 w-5" /> Avaliação Qualitativa Institucional</CardTitle><p className="text-sm text-gray-500 pt-1">Atribua uma nota de 0 a 10 para cada indicador. Esta avaliação representa 8% da nota final do docente.</p></CardHeader><CardContent className="space-y-2">{teachers.map(t => ( <div key={t.id} className="border rounded-lg overflow-hidden"><button onClick={() => setExpandedTeacher(prev => prev === t.id ? null : t.id)} className="w-full flex items-center justify-between p-4 bg-white hover:bg-gray-50 transition-colors"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">{t.avatar ? <img src={t.avatar} className="h-full w-full object-cover" alt="Avatar"/> : <Users className="h-5 w-5 m-2.5 text-gray-400" />}</div><div className="text-left"><p className="font-medium">{t.name}</p><p className="text-sm text-gray-500">{t.email}</p></div></div><div className="flex items-center gap-2 text-gray-500">{expandedTeacher === t.id ? <ChevronUp/> : <ChevronDown/>}</div></button>{expandedTeacher === t.id && ( <div className="p-4 bg-gray-50/70 border-t space-y-4 animate-in fade-in duration-300"><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div className="space-y-2"><Label>Cumprimento de Prazos (0-10)</Label><Input type="number" min="0" max="10" value={qualEvals[t.id]?.deadlines || 0} onChange={e => handleEvalChange(t.id, 'deadlines', e.target.value)} /></div><div className="space-y-2"><Label>Qualidade de Trabalho (0-10)</Label><Input type="number" min="0" max="10" value={qualEvals[t.id]?.quality || 0} onChange={e => handleEvalChange(t.id, 'quality', e.target.value)} /></div></div><div className="space-y-2"><Label>Comentários / Observações</Label><textarea value={qualEvals[t.id]?.comments || ''} onChange={e => handleEvalChange(t.id, 'comments', e.target.value)} className="w-full min-h-[80px] p-2 border rounded" placeholder="Adicione notas sobre o desempenho..." /></div><Button onClick={() => handleEvalSubmit(t.id)}><Save className="mr-2 h-4 w-4"/> Salvar Avaliação</Button></div>)}</div>))} </CardContent></Card></div>)}
-        {activeTab === 'stats' && ( <div className="space-y-6 animate-in fade-in"><Card><CardHeader className="flex flex-row justify-between items-center"><CardTitle className="flex items-center gap-2"><BarChartHorizontal className="h-5 w-5" /> Relatório de Desempenho Global</CardTitle><div className="flex gap-2"><Button variant="outline" onClick={handleExportCSV}><Download className="mr-2 h-4 w-4" /> Exportar CSV</Button><Button variant="outline" onClick={handlePrintReport}><Printer className="mr-2 h-4 w-4" /> Exportar PDF</Button></div></CardHeader><CardContent><div className="h-[400px] w-full"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Legend /><Bar dataKey="finalScore" fill="#1f2937" name="Nota Final" /></BarChart></ResponsiveContainer></div></CardContent></Card></div>)}
-        {activeTab === 'settings' && institution && ( <div className="animate-in fade-in"><Card className="max-w-2xl mx-auto"><CardHeader><CardTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" /> Configurações da Instituição</CardTitle></CardHeader><CardContent><form onSubmit={handleUpdateInstitution} className="space-y-4"><div className="space-y-2"><Label>Nome da Instituição</Label><Input value={institution.name} onChange={e => setInstitution({...institution, name: e.target.value})}/></div><div className="space-y-2"><Label>Logotipo</Label><div className="flex items-center gap-4"><div className="h-16 w-16 border rounded bg-white p-1 flex items-center justify-center">{institution.logo ? <img src={institution.logo} className="object-contain h-full w-full" alt="Logo"/> : <ImageIcon className="h-6 w-6 text-gray-300"/>}</div><Input type="file" accept="image/*" onChange={handleInstLogoUpload} /></div></div><Button type="submit"><Save className="mr-2 h-4 w-4"/> Salvar Alterações</Button></form></CardContent></Card></div>)}
-      </div>
-    </>
-  );
-};
+        {activeTab === 'stats' && ( <div className="space-y-6 animate-in fade-in"><Card><CardHeader className="flex flex-row justify-between items-center"><CardTitle className="flex items-center gap-2"><BarChartHorizontal className="h-5 w-5" /> Relatório de Desempenho Global</CardTitle><div className="flex gap-2"><Button variant="outline" onClick={handleExportCSV}><Download className="mr-2 h-4 w-4" /> Exportar CSV</Button><Button variant="outline" onClick={handlePrintReport}><Printer className="mr-2 h-4 w-4" /> Exportar PDF</Button></div></CardHeader><CardContent><div className="h-[400px] w-full"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Legend /><Bar dataKey="finalScore" fill="#1f2
