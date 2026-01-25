@@ -512,115 +512,119 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       <div className="hidden print:block font-serif">
         {printingTeacher && printingScore ? (
             // --- NOVO RELATÓRIO INDIVIDUAL (FOLHA DE CLASSIFICAÇÃO) ---
-            <div className="p-4 text-sm">
-                <header className="flex justify-between items-start mb-6">
-                    <div className="text-center">
-                        {institution?.logo && <img src={institution.logo} className="h-20 w-20 object-contain mx-auto" alt="Logo"/>}
-                        <h1 className="font-bold">{institution?.name}</h1>
-                        <p>Auditoria de Moçambique</p>
-                    </div>
-                    <div className="border-2 border-black p-2 w-64 text-center h-24">
-                        <p className="font-bold">Despacho de homologação</p>
-                        <p className="mt-4">O Director Geral</p>
-                        <p className="mt-8">Data: ___/___/_____</p>
-                    </div>
-                </header>
+            <div className="p-4 text-sm flex flex-col justify-between min-h-screen">
+                <main>
+                    <header className="flex justify-between items-start mb-6">
+                        <div className="text-center">
+                            {institution?.logo && <img src={institution.logo} className="h-20 w-20 object-contain mx-auto" alt="Logo"/>}
+                            <h1 className="font-bold">{institution?.name}</h1>
+                            <p>Auditoria de Moçambique</p>
+                        </div>
+                        <div className="border-2 border-black p-2 w-64 text-center h-24">
+                            <p className="font-bold">Despacho de homologação</p>
+                            <p className="mt-4">O Director Geral</p>
+                            <p className="mt-8">Data: ___/___/_____</p>
+                        </div>
+                    </header>
 
-                <div className="text-center font-bold my-6">
-                    <p>Divisão Pedagógica</p>
-                    <h2 className="text-base">FOLHA DE CLASSIFICAÇÃO ANUAL DE DOCENTES E INVESTIGADORES</h2>
-                </div>
+                    <div className="text-center font-bold my-6">
+                        <p>Divisão Pedagógica</p>
+                        <h2 className="text-base">FOLHA DE CLASSIFICAÇÃO ANUAL DE DOCENTES E INVESTIGADORES</h2>
+                    </div>
+                    
+                    <div className="space-y-1 mb-6">
+                        <p><strong>Unidade orgânica (UO):</strong> Divisão Pedagógica</p>
+                        <p><strong>Departamento:</strong> Graduação</p>
+                    </div>
+
+                    <div className="space-y-1 mb-6">
+                        <p><strong>1. Dados pessoais</strong></p>
+                        <p><strong>2. Nome completo:</strong> {printingTeacher.name}</p>
+                        <p><strong>3. Categoria:</strong> {printingTeacher.category === 'assistente_estagiario' ? 'Assistente Estagiário' : 'Assistente'}</p>
+                        <p><strong>4. Função de direcção ou de chefia:</strong> {printingSelfEval?.header.function || 'Docente'}</p>
+                        <p><strong>5. Regime laboral (tempo inteiro/tempo parcial):</strong> {printingSelfEval?.header.contractRegime || 'Tempo Inteiro'}</p>
+                        <p><strong>6. Período a que se refere a avaliação:</strong> de 01/01/{new Date().getFullYear()} a 31/12/{new Date().getFullYear()}</p>
+                    </div>
+                    
+                    <div className="mb-6">
+                        <p className="font-bold mb-2">7. Tabela de indicadores do desempenho</p>
+                        <table className="w-full border-collapse border-2 border-black">
+                            <thead>
+                                <tr className="font-bold bg-gray-100">
+                                    <td className="border border-black p-1">Grupos de indicadores (por ficha)</td>
+                                    <td className="border border-black p-1 text-center">Pontos obtidos</td>
+                                    <td className="border border-black p-1 text-center">%</td>
+                                    <td className="border border-black p-1 text-center">Pontos bonificados</td>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td className="border border-black p-1">Auto-avaliação (1)</td>
+                                    <td className="border border-black p-1 text-center">{printingScore.selfEvalScore.toFixed(1)}</td>
+                                    <td className="border border-black p-1"></td>
+                                    <td className="border border-black p-1"></td>
+                                </tr>
+                                 <tr>
+                                    <td className="border border-black p-1">Avaliação do docente pelo estudante (2) a)</td>
+                                    <td className="border border-black p-1 text-center">{printingScore.studentScore.toFixed(1)}</td>
+                                    <td className="border border-black p-1"></td>
+                                    <td className="border border-black p-1"></td>
+                                </tr>
+                                 <tr>
+                                    <td className="border border-black p-1">Avaliação qualitativa (3)</td>
+                                    <td className="border border-black p-1 text-center">{printingScore.institutionalScore.toFixed(1)}</td>
+                                    <td className="border border-black p-1"></td>
+                                    <td className="border border-black p-1"></td>
+                                </tr>
+                                <tr className="font-bold bg-gray-100">
+                                    <td className="border border-black p-1">Total de pontos (1+2+3)</td>
+                                    <td className="border border-black p-1 text-center">{printingScore.finalScore.toFixed(1)}</td>
+                                    <td className="border border-black p-1 text-center">{calculatePercentage(printingScore.finalScore).toFixed(1)}%</td>
+                                    <td className="border border-black p-1"></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p className="text-xs mt-1">a) Para os Investigadores científicos é dispensável.</p>
+                    </div>
+
+                    <div className="space-y-1 mb-6">
+                        <p className="font-bold">8. Classificação obtida:</p>
+                        <p>a) Pontuação total final obtida: <span className="font-bold">{printingScore.finalScore.toFixed(1)}</span> pontos;</p>
+                        <p>b) Classificação final: <span className="font-bold">{calculateClassification20(printingScore.finalScore).toFixed(2)}</span> valores;</p>
+                        <p>c) Percentagem: <span className="font-bold">{calculatePercentage(printingScore.finalScore).toFixed(1)}%</span>;</p>
+                        <p>d) Apreciação final obtida: <span className="font-bold">{getAppreciation(calculateClassification20(printingScore.finalScore))}</span>;</p>
+                        <p>e) Pontuação bonificada total obtida: 0 pontos.</p>
+                    </div>
+                    
+                    <div className="mb-12">
+                        <p className="font-bold">9. Distinções, louvores, bónus ou prémios obtidos na última avaliação do desempenho:</p>
+                        <p>- Nada Consta.</p>
+                        <div className="border-b border-black mt-2 w-full"></div>
+                    </div>
+                </main>
                 
-                <div className="space-y-1 mb-6">
-                    <p><strong>Unidade orgânica (UO):</strong> Divisão Pedagógica</p>
-                    <p><strong>Departamento:</strong> Graduação</p>
-                </div>
-
-                <div className="space-y-1 mb-6">
-                    <p><strong>1. Dados pessoais</strong></p>
-                    <p><strong>2. Nome completo:</strong> {printingTeacher.name}</p>
-                    <p><strong>3. Categoria:</strong> {printingTeacher.category === 'assistente_estagiario' ? 'Assistente Estagiário' : 'Assistente'}</p>
-                    <p><strong>4. Função de direcção ou de chefia:</strong> {printingSelfEval?.header.function || 'Docente'}</p>
-                    <p><strong>5. Regime laboral (tempo inteiro/tempo parcial):</strong> {printingSelfEval?.header.contractRegime || 'Tempo Inteiro'}</p>
-                    <p><strong>6. Período a que se refere a avaliação:</strong> de 01/01/{new Date().getFullYear()} a 31/12/{new Date().getFullYear()}</p>
-                </div>
-                
-                <div className="mb-6">
-                    <p className="font-bold mb-2">7. Tabela de indicadores do desempenho</p>
-                    <table className="w-full border-collapse border-2 border-black">
-                        <thead>
-                            <tr className="font-bold bg-gray-100">
-                                <td className="border border-black p-1">Grupos de indicadores (por ficha)</td>
-                                <td className="border border-black p-1 text-center">Pontos obtidos</td>
-                                <td className="border border-black p-1 text-center">%</td>
-                                <td className="border border-black p-1 text-center">Pontos bonificados</td>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td className="border border-black p-1">Auto-avaliação (1)</td>
-                                <td className="border border-black p-1 text-center">{printingScore.selfEvalScore.toFixed(1)}</td>
-                                <td className="border border-black p-1"></td>
-                                <td className="border border-black p-1"></td>
-                            </tr>
-                             <tr>
-                                <td className="border border-black p-1">Avaliação do docente pelo estudante (2) a)</td>
-                                <td className="border border-black p-1 text-center">{printingScore.studentScore.toFixed(1)}</td>
-                                <td className="border border-black p-1"></td>
-                                <td className="border border-black p-1"></td>
-                            </tr>
-                             <tr>
-                                <td className="border border-black p-1">Avaliação qualitativa (3)</td>
-                                <td className="border border-black p-1 text-center">{printingScore.institutionalScore.toFixed(1)}</td>
-                                <td className="border border-black p-1"></td>
-                                <td className="border border-black p-1"></td>
-                            </tr>
-                            <tr className="font-bold bg-gray-100">
-                                <td className="border border-black p-1">Total de pontos (1+2+3)</td>
-                                <td className="border border-black p-1 text-center">{printingScore.finalScore.toFixed(1)}</td>
-                                <td className="border border-black p-1 text-center">{calculatePercentage(printingScore.finalScore).toFixed(1)}%</td>
-                                <td className="border border-black p-1"></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    <p className="text-xs mt-1">a) Para os Investigadores científicos é dispensável.</p>
-                </div>
-
-                <div className="space-y-1 mb-6">
-                    <p className="font-bold">8. Classificação obtida:</p>
-                    <p>a) Pontuação total final obtida: <span className="font-bold">{printingScore.finalScore.toFixed(1)}</span> pontos;</p>
-                    <p>b) Classificação final: <span className="font-bold">{calculateClassification20(printingScore.finalScore).toFixed(2)}</span> valores;</p>
-                    <p>c) Percentagem: <span className="font-bold">{calculatePercentage(printingScore.finalScore).toFixed(1)}%</span>;</p>
-                    <p>d) Apreciação final obtida: <span className="font-bold">{getAppreciation(calculateClassification20(printingScore.finalScore))}</span>;</p>
-                    <p>e) Pontuação bonificada total obtida: 0 pontos.</p>
-                </div>
-                
-                <div className="mb-12">
-                    <p className="font-bold">9. Distinções, louvores, bónus ou prémios obtidos na última avaliação do desempenho:</p>
-                    <p>- Nada Consta.</p>
-                    <div className="border-b border-black mt-2 w-full"></div>
-                </div>
-
-                <div className="flex justify-around items-start text-center mt-24">
-                    <div className="w-2/5">
-                        <p>Tomei conhecimento</p>
-                        <div className="border-b-2 border-black mt-12 mb-2"></div>
-                        <p className="font-bold">O Docente Avaliado</p>
-                        <p className="text-xs">({printingTeacher.name})</p>
-                        <p className="mt-8">Data: ___ / ___ / ______</p>
+                <footer>
+                    <div className="flex justify-around items-start text-center pt-12">
+                        <div className="w-2/5">
+                            <p>Tomei conhecimento</p>
+                            <div className="border-b border-black mt-16 mb-2"></div>
+                            <p className="font-bold">O Docente Avaliado</p>
+                            <p className="text-xs text-gray-700">({printingTeacher.name})</p>
+                            <p className="mt-4">Data: ___ / ___ / ______</p>
+                        </div>
+                         <div className="w-2/5">
+                            <p>O Avaliador</p>
+                            <div className="border-b border-black mt-16 mb-2"></div>
+                            <p className="font-bold">O Director da Divisão Pedagógica</p>
+                            <p className="mt-4">Data: ___ / ___ / ______</p>
+                        </div>
                     </div>
-                     <div className="w-2/5">
-                        <p>O Avaliador</p>
-                        <div className="border-b-2 border-black mt-12 mb-2"></div>
-                        <p className="font-bold">O Director da Divisão Pedagógica</p>
-                        <p className="mt-8">Data: ___ / ___ / ______</p>
-                    </div>
-                </div>
 
-                <footer className="mt-16 pt-4 text-center text-xs">
-                    <p className="font-bold">{institution?.name}</p>
-                    <p>Rua John Issa, n° 93, Tel: +258 21328657, Fax: +258 21328657, Cel.: +258 823053873</p>
-                    <p>www.iscam.ac.mz; E-mail: info@gmail.com; O FUTURO COM EXCELÊNCIA</p>
+                    <div className="mt-12 pt-4 text-center text-xs border-t border-black">
+                        <p className="font-bold">{institution?.name}</p>
+                        <p>Rua John Issa, n° 93, Tel: +258 21328657, Fax: +258 21328657, Cel.: +258 823053873</p>
+                        <p>www.iscam.ac.mz; E-mail: info@gmail.com; O FUTURO COM EXCELÊNCIA</p>
+                    </div>
                 </footer>
             </div>
         ) : (
