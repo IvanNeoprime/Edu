@@ -604,19 +604,18 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                 </main>
                 
                 <footer>
-                    <div className="flex justify-around items-start text-center pt-12">
+                    <div className="flex justify-around items-start text-center pt-16">
                         <div className="w-2/5">
                             <p>Tomei conhecimento</p>
-                            <div className="border-b border-black mt-16 mb-2"></div>
-                            <p className="font-bold">O Docente Avaliado</p>
-                            <p className="text-xs text-gray-700">({printingTeacher.name})</p>
-                            <p className="mt-4">Data: ___ / ___ / ______</p>
+                            <p>O Docente Avaliado</p>
+                            <div className="border-b border-black mt-12 mb-2"></div>
+                            <p>Data: ___ / ___ / 20___</p>
                         </div>
                          <div className="w-2/5">
                             <p>O Avaliador</p>
-                            <div className="border-b border-black mt-16 mb-2"></div>
-                            <p className="font-bold">O Director da Divisão Pedagógica</p>
-                            <p className="mt-4">Data: ___ / ___ / ______</p>
+                            <p>O Director da Divisão Pedagógica</p>
+                            <div className="border-b border-black mt-12 mb-2"></div>
+                            <p>Data: ___ / ___ / 20___</p>
                         </div>
                     </div>
 
