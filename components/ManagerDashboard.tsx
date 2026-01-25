@@ -512,7 +512,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       <div className="hidden print:block font-serif">
         {printingTeacher && printingScore ? (
             // --- NOVO RELATÓRIO INDIVIDUAL (FOLHA DE CLASSIFICAÇÃO) ---
-            <div className="p-4 text-sm flex flex-col justify-between min-h-screen">
+            <div className="p-4 text-sm">
                 <main>
                     <header className="flex justify-between items-start mb-6">
                         <div className="text-center">
@@ -603,8 +603,8 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                     </div>
                 </main>
                 
-                <footer>
-                    <div className="flex justify-around items-start text-center pt-16">
+                <footer className="mt-24">
+                    <div className="flex justify-around items-start text-center">
                         <div className="w-2/5">
                             <p>Tomei conhecimento</p>
                             <p>O Docente Avaliado</p>
