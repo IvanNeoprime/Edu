@@ -35,6 +35,12 @@
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
+        
+        /* Força a ocultação do cabeçalho da aplicação na impressão */
+        nav {
+            display: none !important;
+        }
+        
         /* As classes print:* do Tailwind farão o resto do trabalho. */
       }
     </style>
