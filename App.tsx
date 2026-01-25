@@ -9,6 +9,76 @@ import { TeacherDashboard } from './components/TeacherDashboard';
 import { StudentDashboard } from './components/StudentDashboard';
 import { GraduationCap, ShieldCheck, ArrowRight, UserPlus, LogIn, User as UserIcon, Database, HardDrive, Key, BookOpen, AlertCircle } from 'lucide-react';
 
+function ChangePasswordModal({ user, onPasswordChanged }: { user: User, onPasswordChanged: () => void }) {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setError('As senhas não coincidem.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setError('A senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+    setError('');
+    setLoading(true);
+    try {
+      await BackendService.changePassword(user.id, newPassword);
+      alert('Palavra-passe alterada com sucesso!');
+      onPasswordChanged();
+    } catch (err: any) {
+      setError(err.message || 'Ocorreu um erro ao alterar a senha.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-300">
+        <CardHeader>
+          <CardTitle className="text-xl">Alterar Palavra-Passe</CardTitle>
+          <p className="text-sm text-gray-500">Para sua segurança, é necessário definir uma nova palavra-passe para o primeiro acesso.</p>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-password">Nova Palavra-Passe</Label>
+              <Input
+                id="new-password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password">Confirmar Palavra-Passe</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+              />
+            </div>
+            {error && <p className="text-sm text-red-500 flex items-center gap-2"><AlertCircle size={14}/> {error}</p>}
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? 'Salvando...' : 'Salvar Nova Palavra-Passe'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [appLoading, setAppLoading] = useState(true);
@@ -79,6 +149,53 @@ export default function App() {
       default: return <div>Role desconhecido.</div>;
     }
   };
+
+  const renderAppLayout = (children: React.ReactNode) => (
+    <div className="min-h-screen bg-gray-50">
+      <nav className="bg-white border-b sticky top-0 z-10 shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex justify-between h-16">
+                  <div className="flex items-center gap-2">
+                      <div className="bg-black text-white p-1.5 rounded-lg">
+                        <GraduationCap className="h-5 w-5" />
+                      </div>
+                      <span className="font-bold text-lg hidden sm:block tracking-tight">AvaliaDocente MZ</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                      {/* Storage Badge in Navbar */}
+                      <div className="hidden md:flex items-center gap-1.5 px-3 py-1 bg-gray-100 rounded-full text-xs font-medium text-gray-500 border">
+                          {systemMode === 'supabase' ? (
+                              <><Database size={12} className="text-green-600" /> Conectado</>
+                          ) : (
+                              <><HardDrive size={12} className="text-orange-500" /> Armazenamento Local</>
+                          )}
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                          <div className="h-9 w-9 rounded-full bg-gray-200 overflow-hidden border border-gray-300">
+                              {user?.avatar ? <img src={user.avatar} className="h-full w-full object-cover" /> : <UserIcon className="h-5 w-5 m-2 text-gray-500" />}
+                          </div>
+                          <div className="text-right hidden sm:block leading-tight">
+                              <div className="text-sm font-medium">{user?.name}</div>
+                              <div className="text-xs text-gray-500 capitalize flex items-center justify-end gap-1">
+                                  {user?.role === UserRole.TEACHER && !user?.approved && (
+                                      <span className="w-2 h-2 bg-yellow-400 rounded-full" title="Pendente"></span>
+                                  )}
+                                  {user?.role.replace('_', ' ')}
+                              </div>
+                          </div>
+                      </div>
+                      <div className="h-6 w-px bg-gray-200 mx-2"></div>
+                      <Button variant="ghost" size="sm" onClick={handleLogout}>Sair</Button>
+                  </div>
+              </div>
+          </div>
+      </nav>
+      <main>
+        {children}
+      </main>
+    </div>
+  );
 
   if (appLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500 animate-pulse">Iniciando Sistema...</div>;
 
@@ -156,50 +273,19 @@ export default function App() {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b sticky top-0 z-10 shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex justify-between h-16">
-                  <div className="flex items-center gap-2">
-                      <div className="bg-black text-white p-1.5 rounded-lg">
-                        <GraduationCap className="h-5 w-5" />
-                      </div>
-                      <span className="font-bold text-lg hidden sm:block tracking-tight">AvaliaDocente MZ</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                      {/* Storage Badge in Navbar */}
-                      <div className="hidden md:flex items-center gap-1.5 px-3 py-1 bg-gray-100 rounded-full text-xs font-medium text-gray-500 border">
-                          {systemMode === 'supabase' ? (
-                              <><Database size={12} className="text-green-600" /> Conectado</>
-                          ) : (
-                              <><HardDrive size={12} className="text-orange-500" /> Armazenamento Local</>
-                          )}
-                      </div>
+  if (user.mustChangePassword) {
+    return (
+        <>
+            <div className="filter blur-sm pointer-events-none">
+                {renderAppLayout(renderDashboard())}
+            </div>
+            <ChangePasswordModal 
+                user={user}
+                onPasswordChanged={() => setUser({ ...user, mustChangePassword: false })}
+            />
+        </>
+    );
+  }
 
-                      <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 rounded-full bg-gray-200 overflow-hidden border border-gray-300">
-                              {user.avatar ? <img src={user.avatar} className="h-full w-full object-cover" /> : <UserIcon className="h-5 w-5 m-2 text-gray-500" />}
-                          </div>
-                          <div className="text-right hidden sm:block leading-tight">
-                              <div className="text-sm font-medium">{user.name}</div>
-                              <div className="text-xs text-gray-500 capitalize flex items-center justify-end gap-1">
-                                  {user.role === UserRole.TEACHER && !user.approved && (
-                                      <span className="w-2 h-2 bg-yellow-400 rounded-full" title="Pendente"></span>
-                                  )}
-                                  {user.role.replace('_', ' ')}
-                              </div>
-                          </div>
-                      </div>
-                      <div className="h-6 w-px bg-gray-200 mx-2"></div>
-                      <Button variant="ghost" size="sm" onClick={handleLogout}>Sair</Button>
-                  </div>
-              </div>
-          </div>
-      </nav>
-      <main>
-        {renderDashboard()}
-      </main>
-    </div>
-  );
+  return renderAppLayout(renderDashboard());
 }

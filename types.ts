@@ -16,6 +16,7 @@ export interface User {
   institutionId?: string;
   approved?: boolean; // For teachers
   avatar?: string; // Base64 ou URL da foto de perfil
+  mustChangePassword?: boolean; // Adicionado para controle de troca de senha
   // Novos campos para alunos
   course?: string;
   level?: string; // Ano curricular (ex: 1, 2, 3)
@@ -120,6 +121,7 @@ export interface QualitativeEval {
   workQuality?: number;
   score?: number;
   evaluatedAt?: string;
+  comments?: string; // Adicionado para comentários do gestor
 }
 
 export interface CombinedScore {

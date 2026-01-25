@@ -114,9 +114,9 @@ const initializeSeedData = () => {
         };
         const demoUsers: User[] = [
             { id: 'u_super_ivan', email: SUPER_ADMIN_EMAIL, name: 'Super Admin Ivan', role: UserRole.SUPER_ADMIN, approved: true },
-            { id: 'u_mgr_demo', email: 'gestor@demo.ac.mz', name: 'Gestor Modelo', role: UserRole.INSTITUTION_MANAGER, institutionId: demoInstId, approved: true },
-            { id: 'u_tchr_demo', email: 'docente@demo.ac.mz', name: 'Prof. Carlos Teste', role: UserRole.TEACHER, institutionId: demoInstId, approved: true, category: 'assistente' },
-            { id: 'u_std_demo', email: 'aluno@demo.ac.mz', name: 'Aluno Exemplo', role: UserRole.STUDENT, institutionId: demoInstId, approved: true, course: 'Eng. Informática', level: '1', shifts: ['Diurno', 'Noturno'], classGroups: ['A', 'B'] }
+            { id: 'u_mgr_demo', email: 'gestor@demo.ac.mz', name: 'Gestor Modelo', role: UserRole.INSTITUTION_MANAGER, institutionId: demoInstId, approved: true, mustChangePassword: true },
+            { id: 'u_tchr_demo', email: 'docente@demo.ac.mz', name: 'Prof. Carlos Teste', role: UserRole.TEACHER, institutionId: demoInstId, approved: true, category: 'assistente', mustChangePassword: true },
+            { id: 'u_std_demo', email: 'aluno@demo.ac.mz', name: 'Aluno Exemplo', role: UserRole.STUDENT, institutionId: demoInstId, approved: true, course: 'Eng. Informática', level: '1', shifts: ['Diurno', 'Noturno'], classGroups: ['A', 'B'], mustChangePassword: true }
         ];
         (demoUsers[1] as any).password = '123456';
         (demoUsers[2] as any).password = '123456';
@@ -180,6 +180,19 @@ const MockBackend = {
       if (!sessionStr) return null;
       try { return JSON.parse(sessionStr).user; } catch { return null; }
   },
+  async changePassword(userId: string, newPassword?: string): Promise<void> {
+    const users = getTable<User>(DB_KEYS.USERS);
+    const userIndex = users.findIndex(u => u.id === userId);
+    if (userIndex !== -1) {
+        if (newPassword) {
+            (users[userIndex] as any).password = newPassword;
+        }
+        users[userIndex].mustChangePassword = false;
+        setTable(DB_KEYS.USERS, users);
+    } else {
+        throw new Error("User not found.");
+    }
+  },
   async addTeacher(institutionId: string, name: string, email: string, password?: string, avatar?: string, category?: TeacherCategory): Promise<User> {
       const users = getTable<User>(DB_KEYS.USERS);
       const existingUser = users.find(u => u.email === email);
@@ -202,7 +215,8 @@ const MockBackend = {
           institutionId, 
           approved: true,
           avatar,
-          category
+          category,
+          mustChangePassword: !!password
       };
       (newUser as any).password = password || '123456';
       
@@ -227,7 +241,8 @@ const MockBackend = {
           level: level || '',
           avatar,
           shifts: shifts as ('Diurno'|'Noturno')[] || [],
-          classGroups: classGroups || []
+          classGroups: classGroups || [],
+          mustChangePassword: !!password
       };
       (newUser as any).password = password || '123456';
       
@@ -235,6 +250,14 @@ const MockBackend = {
       setTable(DB_KEYS.USERS, users);
       
       return newUser;
+  },
+  async updateUser(id: string, data: Partial<User>): Promise<void> {
+    const users = getTable<User>(DB_KEYS.USERS);
+    const idx = users.findIndex(u => u.id === id);
+    if (idx !== -1) {
+        users[idx] = { ...users[idx], ...data };
+        setTable(DB_KEYS.USERS, users);
+    }
   },
   async getInstitutions(): Promise<Institution[]> { return getTable<Institution>(DB_KEYS.INSTITUTIONS); },
   async getInstitution(id: string): Promise<Institution | undefined> {
@@ -265,7 +288,7 @@ const MockBackend = {
   },
   async inviteManager(institutionId: string, email: string, name: string, password?: string) {
       const users = getTable<User>(DB_KEYS.USERS);
-      const newManager: User = { id: `user_mgr_${Date.now()}`, email, name, role: UserRole.INSTITUTION_MANAGER, institutionId, approved: true };
+      const newManager: User = { id: `user_mgr_${Date.now()}`, email, name, role: UserRole.INSTITUTION_MANAGER, institutionId, approved: true, mustChangePassword: true };
       if (password) (newManager as any).password = password;
       users.push(newManager); setTable(DB_KEYS.USERS, users); return { success: true };
   },
@@ -407,13 +430,9 @@ const MockBackend = {
                      const weight = q.weight || 1; // "Pontos Obtidos" se SIM
                      const val = typeof a.value === 'number' ? a.value : 0;
                      
-                     // Logic: If Binary (Sim/Não), value 1 = Sim, 0 = Não.
-                     // Sim gets 'weight' points. Não gets 0.
                      if (q.type === 'binary') {
                          if (val === 1) rPoints += weight;
                      } else {
-                         // Fallback for Stars/Scale: Normalize to weight
-                         // ex: 5 stars = full weight. 
                          let ratio = 0;
                          if (q.type === 'stars') ratio = val / 5;
                          if (q.type === 'scale_10') ratio = val / 10;
@@ -425,7 +444,6 @@ const MockBackend = {
               });
               if (validResponseCount > 0) {
                   const avgPoints = totalRawPoints / validResponseCount;
-                  // Apply multiplier to student score as well (implied by total score calculation)
                   studentPoints = avgPoints * multiplier;
               }
           }
@@ -434,14 +452,12 @@ const MockBackend = {
           let selfPoints = 0;
           if (self && self.answers) {
               const a = self.answers;
-              // Pontuação baseada nas respostas específicas
               selfPoints += (a.gradSubjects || 0) * 15;
               selfPoints += (a.postGradSubjects || 0) * 5;
               selfPoints += (a.theoryHours || 0) * 16;
               selfPoints += (a.practicalHours || 0) * 14;
               selfPoints += (a.consultationHours || 0) * 5;
               
-              // CRITICAL: Only calculate Supervision and Regency if Full Assistant (Pleno)
               if (category === 'assistente') {
                   selfPoints += (a.gradSupervision || 0) * 6;
                   selfPoints += (a.postGradSupervision || 0) * 6;
@@ -454,7 +470,6 @@ const MockBackend = {
           let qualPoints = 0;
           if (qual) {
               const rawQual = (qual.deadlineCompliance || 0) + (qual.workQuality || 0);
-              // Apply multiplier as per document instruction
               qualPoints = rawQual * multiplier;
           }
 
@@ -492,13 +507,10 @@ const MockBackend = {
 
 /**
  * 🟢 SUPABASE BACKEND (Robust & Scalable Implementation)
- * Preparado para conexão direta com tabelas: 'users', 'institutions', 'subjects', etc.
- * Nota de Escalabilidade: Evita-se 'select *' em tabelas grandes. Filtra-se por InstitutionID sempre que possível.
  */
 const SupabaseBackend = {
     async checkHealth(): Promise<{ ok: boolean; mode: string; error?: string }> {
         if (!supabase) return { ok: false, mode: 'supabase', error: 'Supabase client not initialized' };
-        // Test connection
         const { error } = await supabase.from('institutions').select('id').limit(1);
         if (error) return { ok: false, mode: 'supabase', error: error.message };
         return { ok: true, mode: 'supabase' };
@@ -506,13 +518,11 @@ const SupabaseBackend = {
     async login(email: string, password?: string): Promise<{ user: User; token: string } | null> {
         if (!supabase) return null;
         
-        // ⚠️ Nota: Em produção, usar Supabase Auth (GoTrue).
-        // Aqui usamos uma tabela 'users' customizada para manter consistência com o frontend existente.
         const { data, error } = await supabase
             .from('users')
             .select('*')
             .eq('email', email)
-            .eq('password', password) // Comparação direta (Migrar para hash em prod)
+            .eq('password', password)
             .single();
 
         if (error || !data) {
@@ -532,7 +542,8 @@ const SupabaseBackend = {
             level: data.level,
             category: data.category,
             shifts: data.shifts || (data.shift ? [data.shift] : []),
-            classGroups: data.classGroups || (data.classGroup ? [data.classGroup] : [])
+            classGroups: data.classGroups || (data.classGroup ? [data.classGroup] : []),
+            mustChangePassword: data.mustChangePassword
         };
 
         const sessionData = { user, token: 'supa_jwt_' + Date.now(), expiry: Date.now() + 86400000 };
@@ -548,6 +559,19 @@ const SupabaseBackend = {
         if (!sessionStr) return null;
         try { return JSON.parse(sessionStr).user; } catch { return null; }
     },
+    async changePassword(userId: string, newPassword?: string): Promise<void> {
+        if (!supabase) throw new Error("Supabase não inicializado");
+        const updateData: { password?: string; mustChangePassword: boolean } = {
+            mustChangePassword: false,
+        };
+        if (newPassword) {
+            updateData.password = newPassword;
+        }
+        const { error } = await supabase.from('users').update(updateData).eq('id', userId);
+        if (error) {
+            throw new Error(`Falha ao atualizar a senha: ${error.message}`);
+        }
+    },
     async addTeacher(institutionId: string, name: string, email: string, password?: string, avatar?: string, category?: TeacherCategory): Promise<User> {
         if (!supabase) throw new Error("Supabase não iniciado");
         
@@ -560,7 +584,8 @@ const SupabaseBackend = {
             approved: true,
             avatar,
             password: password || '123456',
-            category
+            category,
+            mustChangePassword: !!password
         };
 
         const { data, error } = await supabase.from('users').insert([newUser]).select().single();
@@ -582,12 +607,18 @@ const SupabaseBackend = {
             avatar,
             password: password || '123456',
             shifts,
-            classGroups
+            classGroups,
+            mustChangePassword: !!password
         };
 
         const { data, error } = await supabase.from('users').insert([newUser]).select().single();
         if (error) throw new Error(`Erro ao adicionar estudante: ${error.message}`);
         return data as User;
+    },
+    async updateUser(id: string, data: Partial<User>): Promise<void> {
+        if (!supabase) return;
+        const { error } = await supabase.from('users').update(data).eq('id', id);
+        if (error) throw new Error(error.message);
     },
     async getInstitutions(): Promise<Institution[]> {
         if (!supabase) return [];
@@ -640,7 +671,8 @@ const SupabaseBackend = {
             role: UserRole.INSTITUTION_MANAGER, 
             institutionId, 
             approved: true, 
-            password: password 
+            password: password,
+            mustChangePassword: true
         };
         const { error } = await supabase.from('users').insert([newManager]);
         if (error) throw new Error(error.message);
@@ -674,11 +706,8 @@ const SupabaseBackend = {
         if (error) throw new Error(error.message);
         return res as Subject;
     },
-    // Otimizado: Busca apenas usuários da instituição ou filtra no banco se a tabela for muito grande
     async getUsers(): Promise<User[]> {
         if (!supabase) return [];
-        // TODO: Em produção, nunca fazer select * sem filtro de instituição.
-        // Limitado a 1000 para segurança.
         const { data, error } = await supabase.from('users').select('*').limit(1000); 
         if(error) console.error(error);
         return (data as User[]) || [];
@@ -693,7 +722,6 @@ const SupabaseBackend = {
         
         if (data) return data as Questionnaire;
 
-        // Preview Padrão se não existir
         if (role === 'student') {
              return {
                 id: `default_std_${institutionId}`,
@@ -720,7 +748,6 @@ const SupabaseBackend = {
         const { error } = await supabase.from('questionnaires').upsert(data);
         if (error) throw new Error(error.message);
     },
-    // OTIMIZADO: Não busca todos os usuários do banco.
     async getAvailableSurveys(institutionId: string, userRole: UserRole = UserRole.STUDENT): Promise<{questionnaire: Questionnaire, subjects: SubjectWithTeacher[]} | null> {
         if (!supabase) return null;
         const target = userRole === UserRole.TEACHER ? 'teacher' : 'student';
@@ -741,15 +768,12 @@ const SupabaseBackend = {
 
         if (!activeQ) return null;
 
-        // 1. Buscar disciplinas da instituição
         const { data: subjects } = await supabase.from('subjects').select('*').eq('institutionId', institutionId);
         
         if (!subjects || subjects.length === 0) return { questionnaire: activeQ, subjects: [] };
 
-        // 2. Extrair IDs únicos dos professores dessas disciplinas
         const teacherIds = Array.from(new Set(subjects.map((s: any) => s.teacherId)));
 
-        // 3. Buscar APENAS os nomes dos professores envolvidos (Scalable Query)
         let teachersMap: Record<string, string> = {};
         if (teacherIds.length > 0) {
             const { data: teachers, error } = await supabase.from('users')
@@ -770,8 +794,6 @@ const SupabaseBackend = {
     async submitAnonymousResponse(userId: string, response: any): Promise<void> {
         if (!supabase) return;
         
-        // Em produção, deve-se usar RLS ou uma tabela de logs para evitar votos duplicados.
-        // Aqui, inserimos diretamente.
         const newResponse = { ...response, id: `resp_${Date.now()}_${Math.random().toString(36).substr(2,9)}`, timestamp: new Date().toISOString() };
         const { error } = await supabase.from('responses').insert([newResponse]);
         if (error) throw new Error(error.message);
@@ -798,18 +820,14 @@ const SupabaseBackend = {
         if (error || !data) return undefined;
         return data as QualitativeEval;
     },
-    // REIMPLEMENTADO PARA SUPABASE (Client-side Heavy Lifting for now)
-    // Em produção real, migrar lógica para Supabase Edge Functions.
     async calculateScores(institutionId: string): Promise<void> {
         if (!supabase) return;
 
-        // 1. Fetch Subjects & Teachers IDs for this Institution
         const { data: subjects } = await supabase.from('subjects').select('id, teacherId, teacherCategory').eq('institutionId', institutionId);
         if (!subjects || subjects.length === 0) return;
         
         const teacherIds = Array.from(new Set(subjects.map((s: any) => s.teacherId)));
 
-        // 2. Fetch Active Questionnaire ID for Students
         const { data: activeQ } = await supabase.from('questionnaires')
             .select('*')
             .eq('institutionId', institutionId)
@@ -819,8 +837,6 @@ const SupabaseBackend = {
         
         const questionnaireToUse = activeQ || { id: 'default', questions: PDF_STANDARD_QUESTIONS };
 
-        // 3. Fetch ALL Data needed (Filtered by Teacher IDs where possible to be slightly more scalable)
-        // Note: Supabase 'in' limit is usually around 65k parameters, safe for now.
         const { data: responses } = await supabase.from('responses').select('*').in('teacherId', teacherIds);
         const { data: selfEvals } = await supabase.from('self_evals').select('*').in('teacherId', teacherIds);
         const { data: qualEvals } = await supabase.from('qualitative_evals').select('*').in('teacherId', teacherIds);
@@ -835,7 +851,6 @@ const SupabaseBackend = {
             const category: TeacherCategory = self?.header?.category || teacherSubjects[0]?.teacherCategory || 'assistente';
             const multiplier = category === 'assistente_estagiario' ? 0.46 : 0.88;
 
-            // A. Student Score
             const teacherResponses = responses?.filter((r: any) => r.teacherId === tid) || [];
             let studentPoints = 0;
             
@@ -869,12 +884,10 @@ const SupabaseBackend = {
 
                 if (validResponseCount > 0) {
                     const avgPoints = totalRawPoints / validResponseCount;
-                    // Apply multiplier to Student Score as well
                     studentPoints = avgPoints * multiplier;
                 }
             }
 
-            // B. Self Eval
             let selfPoints = 0;
             if (self && self.answers) {
                 const a = self.answers;
@@ -884,7 +897,6 @@ const SupabaseBackend = {
                 selfPoints += (a.practicalHours || 0) * 14;
                 selfPoints += (a.consultationHours || 0) * 5;
                 
-                // CRITICAL: Only calculate Supervision and Regency if Full Assistant (Pleno)
                 if (category === 'assistente') {
                     selfPoints += (a.gradSupervision || 0) * 6;
                     selfPoints += (a.postGradSupervision || 0) * 6;
@@ -892,7 +904,6 @@ const SupabaseBackend = {
                 }
             }
 
-            // C. Institutional
             const qual = qualEvals?.find((q: any) => q.teacherId === tid);
             let qualPoints = 0;
             if (qual) {
@@ -912,7 +923,6 @@ const SupabaseBackend = {
             });
         });
 
-        // Batch Upsert
         if (scoresToUpsert.length > 0) {
             const { error } = await supabase.from('scores').upsert(scoresToUpsert);
             if (error) console.error("Erro ao salvar scores:", error);
@@ -920,7 +930,6 @@ const SupabaseBackend = {
     },
     async getAllScores(institutionId: string): Promise<CombinedScore[]> {
         if (!supabase) return [];
-        // First get teachers of this institution to filter scores
         const { data: subjects } = await supabase.from('subjects').select('teacherId').eq('institutionId', institutionId);
         if (!subjects) return [];
         const teacherIds = Array.from(new Set(subjects.map((s: any) => s.teacherId)));
@@ -938,18 +947,8 @@ const SupabaseBackend = {
         return data as CombinedScore;
     },
     async getStudentProgress(studentId: string): Promise<{completed: number, pending: number, history: any[]}> {
-        // Implementação simplificada: contar respostas deste usuário
-        // Em um sistema real, faríamos um 'count' e compararíamos com total de disciplinas matriculadas
         if (!supabase) return { completed: 0, pending: 0, history: [] };
         
-        // Esta query não é ideal para performance em massa, mas serve para o painel individual
-        // O Supabase filtra 'responses' pelo usuário se RLS estiver ativo, mas aqui não temos a coluna userId explícita na tabela responses do mock?
-        // No create table do doc anterior não tinha userId, apenas 'student' implícito? 
-        // Ah, submitAnonymousResponse não salva o ID do aluno para garantir anonimato. 
-        // Logo, não dá para saber o progresso exato sem um log de "votou".
-        // Para o MVP, retornamos 0 ou usamos LocalStorage para trackear progresso localmente mesmo usando Supabase.
-        
-        // Fallback para LocalStorage tracker para UX do aluno, já que o anonimato impede query no banco
         const votes = getTable<string>(DB_KEYS.VOTES_TRACKER);
         const myVotes = votes.filter(v => v.startsWith(studentId));
         return { completed: myVotes.length, pending: 0, history: [] }; 
@@ -963,6 +962,4 @@ const SupabaseBackend = {
 // ==================================================================================
 // 🎮 EXPORT SERVICE
 // ==================================================================================
-// Prioridade: Supabase > Mock (Local)
-
 export const BackendService = isUsingSupabase ? SupabaseBackend : MockBackend;
