@@ -22,15 +22,20 @@
       @media print {
         @page {
           size: A4;
-          margin: 15mm 15mm 15mm 15mm; /* Margens limpas */
+          margin: 15mm; /* Margens limpas */
         }
         body {
-          background-color: white;
-          -webkit-print-color-adjust: exact !important; /* Força impressão de cores de fundo */
+          background-color: white !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          font-size: 10pt;
+        }
+        /* Garante que os gráficos recharts (SVG) mantenham suas cores */
+        .recharts-wrapper {
+          -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
-        /* Oculta elementos padrão do navegador se possível */
-        #root { width: 100%; }
+        /* As classes print:* do Tailwind farão o resto do trabalho. */
       }
     </style>
   <script type="importmap">
