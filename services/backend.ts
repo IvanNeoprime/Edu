@@ -118,9 +118,23 @@ const SupabaseBackend = {
         if (error) throw error;
         return data as User;
     },
-    async addStudent(instId: string, name: string, email: string, pwd?: string, course?: string, level?: string, av?: string, shifts?: string[], groups?: string[]) {
+    async addStudent(instId: string, name: string, email: string, pwd?: string, course?: string, level?: string, studentCode?: string, semester?: string, groups?: string[]) {
         if (!supabase) return null as any;
-        const newUser = { id: 's_' + Date.now(), email, name, role: UserRole.STUDENT, institutionId: instId, approved: true, course, level, password: pwd || '123456', mustChangePassword: true };
+        const newUser = { 
+            id: 's_' + Date.now(), 
+            email, 
+            name, 
+            role: UserRole.STUDENT, 
+            institutionId: instId, 
+            approved: true, 
+            course, 
+            level, 
+            studentCode,
+            semester,
+            classGroups: groups,
+            password: pwd || '123456', 
+            mustChangePassword: true 
+        };
         const { data, error } = await supabase.from('users').insert([newUser]).select().single();
         if (error) throw error;
         return data as User;
@@ -194,8 +208,29 @@ const SupabaseBackend = {
 
 const MockBackend = {
     ...SupabaseBackend,
+    async addStudent(instId: string, name: string, email: string, pwd?: string, course?: string, level?: string, studentCode?: string, semester?: string, groups?: string[]) {
+        const users = getTable<User>(DB_KEYS.USERS);
+        const newUser: User = { 
+            id: 's_' + Date.now(), 
+            email, 
+            name, 
+            role: UserRole.STUDENT, 
+            institutionId: instId, 
+            approved: true, 
+            course, 
+            level, 
+            studentCode,
+            semester: semester as any,
+            classGroups: groups,
+            password: pwd || '123456', 
+            mustChangePassword: true 
+        };
+        users.push(newUser);
+        setTable(DB_KEYS.USERS, users);
+        return newUser;
+    },
     async calculateScores(instId: string) {
-        const teachers = getTable<User>('ad_users').filter(u => u.institutionId === instId && u.role === UserRole.TEACHER);
+        const teachers = getTable<User>(DB_KEYS.USERS).filter(u => u.institutionId === instId && u.role === UserRole.TEACHER);
         const resps = getTable<StudentResponse>('ad_responses');
         const selfs = getTable<SelfEvaluation>('ad_self_evals');
         const quals = getTable<QualitativeEval>('ad_inst_evals');
