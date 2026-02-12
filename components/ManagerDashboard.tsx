@@ -1,94 +1,48 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { BackendService } from '../services/backend';
-import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution, SelfEvaluation } from '../types';
+import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select } from './ui';
-import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, BarChartHorizontal, Key, GraduationCap, Download, Printer, Image as ImageIcon, Settings, Building2, Save, FileText, ClipboardList, Shield, Edit, Lock, Unlock, CalendarClock } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { Users, BookOpen, Plus, Trash2, Key, GraduationCap, Image as ImageIcon, Settings, Save, Lock, Unlock, CalendarClock, Briefcase, Mail, UserPlus, Info, CheckCircle2 } from 'lucide-react';
 
 interface Props {
   institutionId: string;
 }
 
-interface NewSubjectItem {
-    name: string;
-    code: string;
-    course: string;
-    level: string;
-    classGroup: string;
-    shift: 'Diurno' | 'Noturno';
-}
-
 export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'teachers' | 'students' | 'qualitative' | 'questionnaire' | 'stats' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'teachers' | 'students' | 'subjects' | 'questionnaire' | 'settings'>('overview');
   const [institution, setInstitution] = useState<Institution | null>(null);
   const [teachers, setTeachers] = useState<User[]>([]);
   const [students, setStudents] = useState<User[]>([]);
-  const [unapproved, setUnapproved] = useState<User[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [allScores, setAllScores] = useState<CombinedScore[]>([]);
-  const [allSelfEvals, setAllSelfEvals] = useState<Record<string, SelfEvaluation>>({});
-  
-  const [qualEvals, setQualEvals] = useState<Record<string, { deadlines: number, quality: number, comments: string }>>({});
-  const [expandedTeacher, setExpandedTeacher] = useState<string | null>(null);
-
   const [loading, setLoading] = useState(false);
-  const [calculating, setCalculating] = useState(false);
 
-  // States for printing
-  const [printingTeacher, setPrintingTeacher] = useState<User | null>(null);
-  const [printingScore, setPrintingScore] = useState<CombinedScore | null>(null);
-  const [printingSelfEval, setPrintingSelfEval] = useState<SelfEvaluation | null>(null);
+  // New Teacher Form
+  const [tName, setTName] = useState('');
+  const [tEmail, setTEmail] = useState('');
+  const [tPwd, setTPwd] = useState('');
+  const [tCat, setTCat] = useState<TeacherCategory>('assistente');
 
-  // Edit User State
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editEmail, setEditEmail] = useState('');
+  // New Student Form
+  const [sName, setSName] = useState('');
+  const [sEmail, setSEmail] = useState('');
+  const [sPwd, setSPwd] = useState('');
+  const [sCourse, setSCourse] = useState('');
+  const [sLevel, setSLevel] = useState('1');
+  const [sShifts, setSShifts] = useState<string[]>(['Diurno']);
+  const [sGroups, setSGroups] = useState('');
 
-  // Questionnaire State
-  const [targetRole, setTargetRole] = useState<'student' | 'teacher'>('student');
-  const [questionnaire, setQuestionnaire] = useState<Questionnaire | null>(null);
-  
-  // Form Builder State
-  const [newQText, setNewQText] = useState('');
-  const [newQType, setNewQType] = useState<QuestionType>('binary');
-  const [newQWeight, setNewQWeight] = useState(1);
-  const [newQOptions, setNewQOptions] = useState('');
-
-  // Form State for New Teacher
-  const [newTeacherName, setNewTeacherName] = useState('');
-  const [newTeacherEmail, setNewTeacherEmail] = useState('');
-  const [newTeacherPwd, setNewTeacherPwd] = useState('');
-  const [newTeacherAvatar, setNewTeacherAvatar] = useState('');
-  const [newTeacherCategory, setNewTeacherCategory] = useState<TeacherCategory>('assistente');
-  const [newTeacherSubjects, setNewTeacherSubjects] = useState<NewSubjectItem[]>([]);
-
-  // Temp subject form
-  const [tempSubject, setTempSubject] = useState<NewSubjectItem>({ name: '', code: '', course: '', level: '', classGroup: '', shift: 'Diurno'});
-
-  // Form State for New Student
-  const [newStudentName, setNewStudentName] = useState('');
-  const [newStudentEmail, setNewStudentEmail] = useState('');
-  const [newStudentPwd, setNewStudentPwd] = useState('');
-  const [newStudentCourse, setNewStudentCourse] = useState('');
-  const [newStudentLevel, setNewStudentLevel] = useState('');
-  const [newStudentAvatar, setNewStudentAvatar] = useState('');
-  const [newStudentShifts, setNewStudentShifts] = useState<string[]>([]);
-  const [newStudentClassGroups, setNewStudentClassGroups] = useState('');
+  // New Subject Form
+  const [subName, setSubName] = useState('');
+  const [subCode, setSubCode] = useState('');
+  const [subTeacherId, setSubTeacherId] = useState('');
+  const [subCourse, setSubCourse] = useState('');
+  const [subLevel, setSubLevel] = useState('1');
+  const [subShift, setSubShift] = useState<'Diurno' | 'Noturno'>('Diurno');
+  const [subGroup, setSubGroup] = useState('A');
+  const [subSemester, setSubSemester] = useState('1');
 
   useEffect(() => { loadData(); }, [institutionId]);
-  useEffect(() => { loadQuestionnaire(); }, [targetRole, institutionId]);
-
-  useEffect(() => {
-    if (activeTab === 'stats' || activeTab === 'overview') {
-        BackendService.getAllScores(institutionId).then(setAllScores);
-    }
-  }, [activeTab, institutionId]);
-
-  const loadQuestionnaire = async () => {
-    const q = await BackendService.getInstitutionQuestionnaire(institutionId, targetRole);
-    setQuestionnaire(q);
-  };
 
   const loadData = async () => {
     setLoading(true);
@@ -98,184 +52,268 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         const allUsers = await BackendService.getUsers();
         setTeachers(allUsers.filter(u => u.role === UserRole.TEACHER && u.institutionId === institutionId));
         setStudents(allUsers.filter(u => u.role === UserRole.STUDENT && u.institutionId === institutionId));
-        setUnapproved(await BackendService.getUnapprovedTeachers(institutionId));
         setSubjects(await BackendService.getInstitutionSubjects(institutionId));
-        loadQuestionnaire();
     } catch (e) { console.error(e); } finally { setLoading(false); }
-  };
-
-  const handleDeleteUser = async (userId: string, name: string) => {
-    if (window.confirm(`Tem certeza que deseja eliminar o utilizador "${name}"? Todos os seus dados associados serão perdidos.`)) {
-        await BackendService.deleteUser(userId);
-        alert("Utilizador eliminado.");
-        loadData();
-    }
-  };
-
-  const handleToggleEvaluation = async () => {
-    if (!institution) return;
-    const newState = !institution.isEvaluationOpen;
-    await BackendService.updateInstitution(institutionId, { isEvaluationOpen: newState });
-    setInstitution({ ...institution, isEvaluationOpen: newState });
-    alert(`Período de avaliação ${newState ? 'Aberto' : 'Fechado'}.`);
-  };
-
-  const handleUpdatePeriodName = async (name: string) => {
-    if (!institution) return;
-    await BackendService.updateInstitution(institutionId, { evaluationPeriodName: name });
-    setInstitution({ ...institution, evaluationPeriodName: name });
-  };
-
-  const handleCalculateScores = async () => {
-    setCalculating(true);
-    try {
-        await BackendService.calculateScores(institutionId);
-        const scores = await BackendService.getAllScores(institutionId);
-        setAllScores(scores);
-        alert("Cálculo concluído!");
-    } catch (e) { alert(e); } finally { setCalculating(false); }
-  };
-
-  const startEditUser = (user: User) => {
-    setEditingUser(user);
-    setEditName(user.name);
-    setEditEmail(user.email);
-  };
-
-  const handleSaveEditUser = async () => {
-    if (!editingUser) return;
-    await BackendService.updateUser(editingUser.id, { name: editName, email: editEmail });
-    alert("Dados atualizados.");
-    setEditingUser(null);
-    loadData();
   };
 
   const handleAddTeacher = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newUser = await BackendService.addTeacher(institutionId, newTeacherName, newTeacherEmail, newTeacherPwd, newTeacherAvatar, newTeacherCategory);
-    for (const sub of newTeacherSubjects) {
-        await BackendService.assignSubject({ ...sub, teacherId: newUser.id, institutionId });
-    }
-    setNewTeacherName(''); setNewTeacherSubjects([]);
+    if (!tName || !tEmail || !tPwd) return alert("Preencha todos os campos");
+    await BackendService.addTeacher(institutionId, tName, tEmail, tPwd, '', tCat);
+    setTName(''); setTEmail(''); setTPwd('');
     loadData();
     alert("Docente cadastrado!");
   };
 
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
-    await BackendService.addStudent(institutionId, newStudentName, newStudentEmail, newStudentPwd, newStudentCourse, newStudentLevel, newStudentAvatar, newStudentShifts, newStudentClassGroups.split(',').map(s=>s.trim()));
-    setNewStudentName('');
+    if (!sName || !sEmail || !sPwd || !sCourse) return alert("Preencha todos os campos obrigatórios");
+    await BackendService.addStudent(institutionId, sName, sEmail, sPwd, sCourse, sLevel, '', sShifts, sGroups.split(',').map(g=>g.trim()));
+    setSName(''); setSEmail(''); setSPwd(''); setSCourse('');
     loadData();
     alert("Estudante cadastrado!");
   };
 
-  const handleAddQuestion = async () => {
-    if (!newQText) return;
-    const newQuestion = { id: 'q_'+Date.now(), text: newQText, type: newQType, weight: newQWeight, options: newQOptions ? newQOptions.split(',') : undefined };
-    const updatedQ = questionnaire ? { ...questionnaire, questions: [...questionnaire.questions, newQuestion] } : { id: 'q_'+Date.now(), institutionId, title: 'Questionário', questions: [newQuestion], active: true, targetRole };
-    setQuestionnaire(updatedQ as any);
-    await BackendService.saveQuestionnaire(updatedQ);
-    setNewQText('');
+  const handleAddSubject = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!subName || !subTeacherId || !subCourse) return alert("Preencha os campos obrigatórios");
+      await BackendService.assignSubject({
+          name: subName,
+          code: subCode,
+          institutionId,
+          teacherId: subTeacherId,
+          course: subCourse,
+          level: subLevel,
+          shift: subShift,
+          classGroup: subGroup,
+          semester: subSemester,
+          academicYear: new Date().getFullYear().toString()
+      });
+      setSubName(''); setSubCode('');
+      loadData();
+      alert("Disciplina criada e vinculada!");
   };
 
-  const groupedStudents = useMemo(() => students.reduce((acc, student) => {
-    const course = student.course || 'Sem Curso';
-    const level = student.level || 'Sem Ano';
-    if (!acc[course]) acc[course] = {};
-    if (!acc[course][level]) acc[course][level] = [];
-    acc[course][level].push(student);
-    return acc;
-  }, {} as any), [students]);
+  const handleDeleteUser = async (id: string, name: string) => {
+      if (window.confirm(`Eliminar ${name}?`)) {
+          await BackendService.deleteUser(id);
+          loadData();
+      }
+  };
 
-  const chartData = useMemo(() => allScores.map(score => {
-    const teacher = teachers.find(t => t.id === score.teacherId);
-    return { name: teacher?.name.split(' ')[0] || 'Docente', finalScore: score.finalScore };
-  }), [allScores, teachers]);
+  const handleDeleteSubject = async (id: string) => {
+      if (window.confirm("Eliminar disciplina?")) {
+          await BackendService.deleteSubject(id);
+          loadData();
+      }
+  };
 
   return (
-    <div className="print:hidden space-y-8 p-4 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-500">
-        {editingUser && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                <Card className="w-full max-w-md shadow-2xl">
-                    <CardHeader className="border-b"><CardTitle>Editar Utilizador</CardTitle></CardHeader>
-                    <CardContent className="pt-6 space-y-4">
-                        <div><Label>Nome</Label><Input value={editName} onChange={e => setEditName(e.target.value)} /></div>
-                        <div><Label>Email</Label><Input value={editEmail} onChange={e => setEditEmail(e.target.value)} /></div>
-                        <div className="flex justify-end gap-3 pt-4"><Button variant="ghost" onClick={() => setEditingUser(null)}>Cancelar</Button><Button onClick={handleSaveEditUser}>Salvar</Button></div>
-                    </CardContent>
-                </Card>
-            </div>
-        )}
-
+    <div className="space-y-8 p-4 md:p-8 max-w-7xl mx-auto animate-fade-in">
         <header className="border-b pb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex items-center gap-4">
               {institution?.logo && <img src={institution.logo} className="h-16 w-16 object-contain" alt="Logo" />}
               <div>
                   <h1 className="text-3xl font-bold tracking-tight">{institution?.name || 'Gestão'}</h1>
-                  <p className="text-gray-500">Administração de Docentes e Avaliações</p>
+                  <p className="text-gray-500">Gestão Académica e de Avaliação</p>
               </div>
           </div>
           <div className="flex bg-gray-100 p-1 rounded-lg flex-wrap gap-1">
-              {['overview', 'teachers', 'students', 'qualitative', 'questionnaire', 'stats', 'settings'].map(tab => (
-                  <button key={tab} onClick={() => setActiveTab(tab as any)} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === tab ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>
-                      {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {[
+                  {id: 'overview', label: 'Início', icon: Briefcase},
+                  {id: 'teachers', label: 'Docentes', icon: Users},
+                  {id: 'students', label: 'Estudantes', icon: GraduationCap},
+                  {id: 'subjects', label: 'Disciplinas', icon: BookOpen},
+                  {id: 'settings', label: 'Definições', icon: Settings},
+              ].map(tab => (
+                  <button 
+                    key={tab.id} 
+                    onClick={() => setActiveTab(tab.id as any)} 
+                    className={`px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 transition-all ${activeTab === tab.id ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}
+                  >
+                      <tab.icon size={16} /> {tab.label}
                   </button>
               ))}
           </div>
         </header>
 
         {activeTab === 'overview' && (
-            <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Card><CardHeader><CardTitle className="text-gray-500 text-sm">Docentes</CardTitle></CardHeader><CardContent className="text-3xl font-bold">{teachers.length}</CardContent></Card>
-                    <Card><CardHeader><CardTitle className="text-gray-500 text-sm">Alunos</CardTitle></CardHeader><CardContent className="text-3xl font-bold">{students.length}</CardContent></Card>
-                    <Card className={institution?.isEvaluationOpen ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}><CardHeader><CardTitle className="text-gray-500 text-sm">Estado do Período</CardTitle></CardHeader><CardContent className="text-xl font-bold flex items-center gap-2">{institution?.isEvaluationOpen ? <Unlock className="text-green-600"/> : <Lock className="text-red-600"/>} {institution?.isEvaluationOpen ? 'Aberto' : 'Fechado'}</CardContent></Card>
-                </div>
-                <Card className="bg-slate-800 text-white"><CardContent className="pt-6 flex justify-between items-center"><p>Processar notas finais do semestre.</p><Button onClick={handleCalculateScores} disabled={calculating} className="bg-white text-black hover:bg-gray-100"><Calculator className="mr-2 h-4 w-4"/> Calcular Agora</Button></CardContent></Card>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <Card><CardContent className="pt-6"><p className="text-xs text-gray-500 uppercase font-bold">Docentes</p><p className="text-3xl font-bold">{teachers.length}</p></CardContent></Card>
+                <Card><CardContent className="pt-6"><p className="text-xs text-gray-500 uppercase font-bold">Estudantes</p><p className="text-3xl font-bold">{students.length}</p></CardContent></Card>
+                <Card><CardContent className="pt-6"><p className="text-xs text-gray-500 uppercase font-bold">Disciplinas</p><p className="text-3xl font-bold">{subjects.length}</p></CardContent></Card>
+                <Card className={institution?.isEvaluationOpen ? 'bg-green-50' : 'bg-red-50'}><CardContent className="pt-6"><p className="text-xs text-gray-500 uppercase font-bold">Estado</p><p className="text-xl font-bold flex items-center gap-2">{institution?.isEvaluationOpen ? <Unlock className="text-green-600" size={20}/> : <Lock className="text-red-600" size={20}/>} {institution?.isEvaluationOpen ? 'Aberto' : 'Fechado'}</p></CardContent></Card>
             </div>
         )}
 
         {activeTab === 'teachers' && (
             <div className="grid gap-8 lg:grid-cols-12">
-                <div className="lg:col-span-5"><Card><CardHeader><CardTitle>Cadastrar Docente</CardTitle></CardHeader><CardContent><form onSubmit={handleAddTeacher} className="space-y-4"><div><Label>Nome</Label><Input value={newTeacherName} onChange={e=>setNewTeacherName(e.target.value)} required/></div><div><Label>Email</Label><Input value={newTeacherEmail} onChange={e=>setNewTeacherEmail(e.target.value)} required/></div><div><Label>Senha</Label><Input value={newTeacherPwd} onChange={e=>setNewTeacherPwd(e.target.value)} required/></div><Button type="submit" className="w-full">Cadastrar</Button></form></CardContent></Card></div>
-                <div className="lg:col-span-7"><Card><CardHeader><CardTitle>Lista de Docentes</CardTitle></CardHeader><CardContent className="space-y-2">{teachers.map(t=>(<div key={t.id} className="p-3 border rounded-lg flex justify-between items-center"><div><p className="font-medium">{t.name}</p><p className="text-xs text-gray-500">{t.email}</p></div><div className="flex gap-2"><Button variant="ghost" size="sm" onClick={()=>startEditUser(t)}><Edit size={16}/></Button><Button variant="ghost" size="sm" onClick={()=>handleDeleteUser(t.id, t.name)} className="text-red-500"><Trash2 size={16}/></Button></div></div>))}</CardContent></Card></div>
+                <div className="lg:col-span-5">
+                    <Card>
+                        <CardHeader><CardTitle>Novo Docente</CardTitle></CardHeader>
+                        <CardContent>
+                            <form onSubmit={handleAddTeacher} className="space-y-4">
+                                <div><Label>Nome Completo</Label><Input value={tName} onChange={e=>setTName(e.target.value)} placeholder="Ex: Dr. Pedro Macuácua" /></div>
+                                <div><Label>Email Institucional</Label><Input type="email" value={tEmail} onChange={e=>setTEmail(e.target.value)} placeholder="docente@uni.ac.mz" /></div>
+                                <div><Label>Senha Temporária</Label><Input type="password" value={tPwd} onChange={e=>setTPwd(e.target.value)} placeholder="Senha para 1º acesso" /></div>
+                                <div>
+                                    <Label>Categoria Académica</Label>
+                                    <Select value={tCat} onChange={e=>setTCat(e.target.value as any)}>
+                                        <option value="assistente">Assistente (Pleno)</option>
+                                        <option value="assistente_estagiario">Assistente Estagiário</option>
+                                    </Select>
+                                </div>
+                                <Button type="submit" className="w-full">Cadastrar Docente</Button>
+                            </form>
+                        </CardContent>
+                    </Card>
+                </div>
+                <div className="lg:col-span-7">
+                    <Card>
+                        <CardHeader><CardTitle>Corpo Docente ({teachers.length})</CardTitle></CardHeader>
+                        <CardContent className="space-y-2 max-h-[500px] overflow-y-auto">
+                            {teachers.map(t => (
+                                <div key={t.id} className="p-4 border rounded-lg flex justify-between items-center bg-white hover:bg-gray-50">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center font-bold text-gray-600">{t.name[0]}</div>
+                                        <div>
+                                            <p className="font-semibold text-sm">{t.name}</p>
+                                            <p className="text-xs text-gray-500">{t.email} • {t.category?.replace('_', ' ')}</p>
+                                        </div>
+                                    </div>
+                                    <Button variant="ghost" size="sm" onClick={()=>handleDeleteUser(t.id, t.name)} className="text-red-500"><Trash2 size={16}/></Button>
+                                </div>
+                            ))}
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
         )}
 
         {activeTab === 'students' && (
             <div className="grid gap-8 lg:grid-cols-12">
-                <div className="lg:col-span-4"><Card><CardHeader><CardTitle>Cadastrar Aluno</CardTitle></CardHeader><CardContent><form onSubmit={handleAddStudent} className="space-y-4"><div><Label>Nome</Label><Input value={newStudentName} onChange={e=>setNewStudentName(e.target.value)} required/></div><div><Label>Email</Label><Input value={newStudentEmail} onChange={e=>setNewStudentEmail(e.target.value)} required/></div><Button type="submit" className="w-full">Cadastrar</Button></form></CardContent></Card></div>
-                <div className="lg:col-span-8"><Card><CardHeader><CardTitle>Lista de Alunos</CardTitle></CardHeader><CardContent className="space-y-2">{students.map(s=>(<div key={s.id} className="p-3 border rounded-lg flex justify-between items-center"><div><p className="font-medium">{s.name}</p><p className="text-xs text-gray-500">{s.email}</p></div><div className="flex gap-2"><Button variant="ghost" size="sm" onClick={()=>startEditUser(s)}><Edit size={16}/></Button><Button variant="ghost" size="sm" onClick={()=>handleDeleteUser(s.id, s.name)} className="text-red-500"><Trash2 size={16}/></Button></div></div>))}</CardContent></Card></div>
+                <div className="lg:col-span-5">
+                    <Card>
+                        <CardHeader><CardTitle>Novo Estudante</CardTitle></CardHeader>
+                        <CardContent>
+                            <form onSubmit={handleAddStudent} className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="col-span-2"><Label>Nome Completo</Label><Input value={sName} onChange={e=>setSName(e.target.value)} /></div>
+                                    <div className="col-span-2"><Label>Email</Label><Input type="email" value={sEmail} onChange={e=>setSEmail(e.target.value)} /></div>
+                                    <div className="col-span-2"><Label>Senha Inicial</Label><Input type="password" value={sPwd} onChange={e=>setSPwd(e.target.value)} /></div>
+                                    <div><Label>Curso</Label><Input value={sCourse} onChange={e=>setSCourse(e.target.value)} placeholder="Ex: Informática" /></div>
+                                    <div><Label>Ano de Frequência</Label><Select value={sLevel} onChange={e=>setSLevel(e.target.value)}><option value="1">1º Ano</option><option value="2">2º Ano</option><option value="3">3º Ano</option><option value="4">4º Ano</option><option value="5">5º Ano</option></Select></div>
+                                    <div><Label>Turno</Label><Select value={sShifts[0]} onChange={e=>setSShifts([e.target.value])}><option value="Diurno">Diurno</option><option value="Noturno">Noturno</option></Select></div>
+                                    <div><Label>Turmas (Ex: A, B)</Label><Input value={sGroups} onChange={e=>setSGroups(e.target.value)} placeholder="Separar por vírgula" /></div>
+                                </div>
+                                <Button type="submit" className="w-full">Cadastrar Estudante</Button>
+                            </form>
+                        </CardContent>
+                    </Card>
+                </div>
+                <div className="lg:col-span-7">
+                    <Card>
+                        <CardHeader><CardTitle>Lista de Estudantes ({students.length})</CardTitle></CardHeader>
+                        <CardContent className="space-y-2 max-h-[500px] overflow-y-auto">
+                            {students.map(s => (
+                                <div key={s.id} className="p-4 border rounded-lg flex justify-between items-center bg-white">
+                                    <div>
+                                        <p className="font-semibold text-sm">{s.name}</p>
+                                        <p className="text-xs text-gray-500">{s.course} • {s.level}º Ano • {s.shifts?.join(', ')} • Turma {s.classGroups?.join('/')}</p>
+                                    </div>
+                                    <Button variant="ghost" size="sm" onClick={()=>handleDeleteUser(s.id, s.name)} className="text-red-500"><Trash2 size={16}/></Button>
+                                </div>
+                            ))}
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        )}
+
+        {activeTab === 'subjects' && (
+            <div className="grid gap-8 lg:grid-cols-12">
+                <div className="lg:col-span-5">
+                    <Card>
+                        <CardHeader><CardTitle>Registo de Disciplina</CardTitle></CardHeader>
+                        <CardContent>
+                            <form onSubmit={handleAddSubject} className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="col-span-2"><Label>Nome da Disciplina</Label><Input value={subName} onChange={e=>setSubName(e.target.value)} placeholder="Ex: Algoritmos e Est. Dados" /></div>
+                                    <div><Label>Código</Label><Input value={subCode} onChange={e=>setSubCode(e.target.value)} placeholder="Ex: INF101" /></div>
+                                    <div>
+                                        <Label>Docente Responsável</Label>
+                                        <Select value={subTeacherId} onChange={e=>setSubTeacherId(e.target.value)}>
+                                            <option value="">Selecionar...</option>
+                                            {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+                                        </Select>
+                                    </div>
+                                    <div><Label>Curso Destino</Label><Input value={subCourse} onChange={e=>setSubCourse(e.target.value)} placeholder="Ex: Informática" /></div>
+                                    <div><Label>Ano Curricular</Label><Select value={subLevel} onChange={e=>setSubLevel(e.target.value)}><option value="1">1º Ano</option><option value="2">2º Ano</option><option value="3">3º Ano</option><option value="4">4º Ano</option><option value="5">5º Ano</option></Select></div>
+                                    <div><Label>Turno</Label><Select value={subShift} onChange={e=>setSubShift(e.target.value as any)}><option value="Diurno">Diurno</option><option value="Noturno">Noturno</option></Select></div>
+                                    <div><Label>Turma</Label><Input value={subGroup} onChange={e=>setSubGroup(e.target.value)} placeholder="Ex: A" /></div>
+                                    <div><Label>Semestre</Label><Select value={subSemester} onChange={e=>setSubSemester(e.target.value)}><option value="1">1º Semestre</option><option value="2">2º Semestre</option></Select></div>
+                                </div>
+                                <Button type="submit" className="w-full">Criar Disciplina e Vincular</Button>
+                            </form>
+                        </CardContent>
+                    </Card>
+                </div>
+                <div className="lg:col-span-7">
+                    <Card>
+                        <CardHeader><CardTitle>Disciplinas Ativas ({subjects.length})</CardTitle></CardHeader>
+                        <CardContent className="space-y-2 max-h-[500px] overflow-y-auto">
+                            {subjects.map(s => {
+                                const teacher = teachers.find(t=>t.id === s.teacherId);
+                                return (
+                                    <div key={s.id} className="p-4 border rounded-lg flex justify-between items-center bg-white shadow-sm border-l-4 border-l-blue-600">
+                                        <div>
+                                            <p className="font-bold text-sm">{s.name} <span className="text-gray-400 font-normal">({s.code})</span></p>
+                                            <p className="text-xs text-blue-700 font-medium">Docente: {teacher?.name || 'Não vinculado'}</p>
+                                            <p className="text-xs text-gray-500 mt-1">{s.course} • {s.level}º Ano • Turma {s.classGroup} ({s.shift})</p>
+                                        </div>
+                                        <Button variant="ghost" size="sm" onClick={()=>handleDeleteSubject(s.id)} className="text-red-500"><Trash2 size={16}/></Button>
+                                    </div>
+                                )
+                            })}
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
         )}
 
         {activeTab === 'settings' && (
-            <div className="space-y-6 max-w-2xl mx-auto">
-                <Card className="border-indigo-100 shadow-sm">
-                    <CardHeader className="bg-indigo-50/50"><CardTitle className="flex items-center gap-2"><CalendarClock className="h-5 w-5 text-indigo-700"/> Gestão do Período de Avaliação</CardTitle></CardHeader>
-                    <CardContent className="pt-6 space-y-6">
+            <div className="max-w-2xl mx-auto space-y-6">
+                <Card>
+                    <CardHeader><CardTitle className="flex items-center gap-2"><CalendarClock className="text-blue-600"/> Controlo de Período</CardTitle></CardHeader>
+                    <CardContent className="space-y-6 pt-4">
+                        <div className="flex items-center justify-between p-4 border rounded-xl bg-gray-50">
+                            <div>
+                                <h4 className="font-bold">Avaliação Académica</h4>
+                                <p className="text-sm text-gray-500">Permite que alunos e docentes submetam inquéritos.</p>
+                            </div>
+                            <Button 
+                                variant={institution?.isEvaluationOpen ? 'destructive' : 'primary'} 
+                                onClick={async () => {
+                                    const newState = !institution?.isEvaluationOpen;
+                                    await BackendService.updateInstitution(institutionId, { isEvaluationOpen: newState });
+                                    setInstitution(prev => prev ? {...prev, isEvaluationOpen: newState} : null);
+                                    alert(`Período ${newState ? 'Aberto' : 'Fechado'}`);
+                                }}
+                            >
+                                {institution?.isEvaluationOpen ? 'Fechar Período' : 'Abrir Período'}
+                            </Button>
+                        </div>
                         <div className="space-y-2">
                             <Label>Nome do Período Atual</Label>
-                            <Input value={institution?.evaluationPeriodName || ''} onChange={e => handleUpdatePeriodName(e.target.value)} placeholder="Ex: Semestre 1, 2024" />
-                            <p className="text-xs text-gray-500">Este nome aparecerá nos relatórios e para os alunos.</p>
-                        </div>
-                        <div className="flex items-center justify-between p-4 border rounded-lg bg-gray-50">
-                            <div>
-                                <h4 className="font-bold">Estado das Submissões</h4>
-                                <p className="text-sm text-gray-500">{institution?.isEvaluationOpen ? 'Alunos e Docentes podem preencher formulários.' : 'O sistema está bloqueado para novas respostas.'}</p>
-                            </div>
-                            <Button variant={institution?.isEvaluationOpen ? 'destructive' : 'primary'} onClick={handleToggleEvaluation}>
-                                {institution?.isEvaluationOpen ? <><Lock className="mr-2 h-4 w-4"/> Fechar Período</> : <><Unlock className="mr-2 h-4 w-4"/> Abrir Período</>}
-                            </Button>
+                            <Input value={institution?.evaluationPeriodName || ''} onChange={async e => {
+                                const val = e.target.value;
+                                setInstitution(prev => prev ? {...prev, evaluationPeriodName: val} : null);
+                                await BackendService.updateInstitution(institutionId, { evaluationPeriodName: val });
+                            }} />
                         </div>
                     </CardContent>
                 </Card>
-                <Card><CardHeader><CardTitle>Dados da Instituição</CardTitle></CardHeader><CardContent className="space-y-4"><div><Label>Nome</Label><Input value={institution?.name || ''} onChange={e=>setInstitution({...institution!, name: e.target.value})}/></div><Button onClick={()=>BackendService.updateInstitution(institutionId, {name: institution?.name})}>Salvar Alterações</Button></CardContent></Card>
             </div>
-        )}
-
-        {activeTab === 'stats' && (
-            <Card><CardHeader><CardTitle>Resultados Globais</CardTitle></CardHeader><CardContent><div className="h-[300px]"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="name"/><YAxis/><Tooltip/><Legend/><Bar dataKey="finalScore" fill="#3b82f6" name="Pontuação Final"/></BarChart></ResponsiveContainer></div></CardContent></Card>
         )}
     </div>
   );
