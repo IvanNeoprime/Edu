@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { User, Questionnaire, Question, Institution } from '../types';
 import { BackendService, SubjectWithTeacher } from '../services/backend';
 import { Card, CardContent, CardHeader, CardTitle, Button, Select, Label, cn } from './ui';
-import { Lock, CheckCircle2, Star, User as UserIcon, BookOpen, Hash, MessageSquare, AlertCircle } from 'lucide-react';
+import { Lock, CheckCircle2, Star, User as UserIcon, BookOpen, Hash, MessageSquare, AlertCircle, ArrowRight } from 'lucide-react';
 
 interface Props {
   user: User;
@@ -71,12 +71,12 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
     const qCount = data.questionnaire.questions.length;
     const aCount = Object.keys(answers).length;
     
-    if (aCount < qCount) return alert(`Por favor responda todas as questões antes de submeter.`);
+    if (aCount < qCount) return alert(`Por favor, preencha todas as perguntas do inquérito antes de submeter.`);
 
     setSubmitting(true);
     try {
         const subject = data.subjects.find(s => s.id === selectedSubjectId);
-        if (!subject) throw new Error("Disciplina inválida");
+        if (!subject) throw new Error("Cadeira não encontrada");
 
         await BackendService.submitAnonymousResponse(user.id, {
             institutionId: user.institutionId,
@@ -90,9 +90,9 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
         setAnswers({});
         setSelectedSubjectId('');
         setSelectedTeacherId('');
-        setTimeout(() => setSuccess(false), 3000);
+        setTimeout(() => setSuccess(false), 4000);
     } catch (e: any) {
-        alert(e.message || "Erro ao submeter");
+        alert(e.message || "Erro de submissão");
     } finally {
         setSubmitting(false);
     }
@@ -105,92 +105,94 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
       switch (q.type) {
           case 'stars':
               return (
-                  <div className="flex gap-2">
+                  <div className="flex gap-3">
                       {[1, 2, 3, 4, 5].map((star) => (
-                          <button key={star} onClick={() => setV(star)} className="focus:outline-none transition-transform hover:scale-110">
-                              <Star className={cn("h-10 w-10", (val as number) >= star ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200')} />
+                          <button key={star} onClick={() => setV(star)} className="focus:outline-none transition-all hover:scale-125">
+                              <Star className={cn("h-12 w-12", (val as number) >= star ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200 dark:text-slate-800')} />
                           </button>
                       ))}
                   </div>
               );
           case 'binary':
               return (
-                  <div className="flex gap-4">
-                      <button onClick={() => setV(1)} className={cn("flex-1 py-4 rounded-2xl border-2 font-bold transition-all", val === 1 ? 'bg-green-100 border-green-500 text-green-700' : 'bg-white border-gray-100 text-gray-400 hover:bg-gray-50')}>SIM</button>
-                      <button onClick={() => setV(0)} className={cn("flex-1 py-4 rounded-2xl border-2 font-bold transition-all", val === 0 ? 'bg-red-100 border-red-500 text-red-700' : 'bg-white border-gray-100 text-gray-400 hover:bg-gray-50')}>NÃO</button>
+                  <div className="flex gap-4 max-w-sm">
+                      <button onClick={() => setV(1)} className={cn("flex-1 py-5 rounded-2xl border-2 font-black text-lg transition-all", val === 1 ? 'bg-green-100 border-green-500 text-green-700 dark:bg-green-900/40 dark:text-green-400' : 'bg-white dark:bg-slate-900 border-gray-100 dark:border-slate-800 text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800')}>SIM</button>
+                      <button onClick={() => setV(0)} className={cn("flex-1 py-5 rounded-2xl border-2 font-black text-lg transition-all", val === 0 ? 'bg-red-100 border-red-500 text-red-700 dark:bg-red-900/40 dark:text-red-400' : 'bg-white dark:bg-slate-900 border-gray-100 dark:border-slate-800 text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800')}>NÃO</button>
                   </div>
               );
           case 'scale_10':
               return (
                   <div className="flex flex-wrap gap-2">
                       {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                          <button key={n} onClick={() => setV(n)} className={cn("h-10 w-10 rounded-lg border-2 font-bold text-xs transition-all", val === n ? 'bg-purple-600 border-purple-600 text-white' : 'bg-white border-gray-100 text-gray-400 hover:border-purple-200')}>{n}</button>
+                          <button key={n} onClick={() => setV(n)} className={cn("h-11 w-11 rounded-xl border-2 font-black text-sm transition-all", val === n ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white dark:bg-slate-900 border-gray-100 dark:border-slate-800 text-gray-400 dark:text-slate-500 hover:border-blue-200')}>{n}</button>
                       ))}
                   </div>
               );
           case 'text':
-              return <textarea className="w-full p-4 rounded-2xl border-2 border-gray-100 focus:border-blue-400 transition-all text-sm outline-none" rows={3} placeholder="Sua opinião sincera..." value={val as string || ''} onChange={(e) => setV(e.target.value)} />;
+              return <textarea className="w-full p-5 rounded-2xl border-2 border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:border-blue-400 dark:focus:border-blue-500 transition-all text-sm outline-none shadow-sm" rows={4} placeholder="Diga-nos o que pensa com honestidade..." value={val as string || ''} onChange={(e) => setV(e.target.value)} />;
           default:
               return null;
       }
   };
 
-  if (!data) return <div className="p-8 text-center animate-pulse text-gray-400">Ligando ao portal universitário...</div>;
+  if (!data) return <div className="p-8 text-center animate-pulse text-gray-400 dark:text-slate-600 font-bold uppercase tracking-widest">Carregando portal académico...</div>;
 
   const isEvaluationOpen = institution?.isEvaluationOpen ?? true;
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-8 animate-fade-in pb-20">
-      <header className="flex flex-col md:flex-row justify-between md:items-center gap-4 border-b pb-8">
-        <div className="flex items-center gap-5">
-            <div className="h-16 w-16 bg-black rounded-3xl flex items-center justify-center text-white shadow-xl rotate-3">
-                <BookOpen size={32} />
+    <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-8 animate-fade-in pb-24 dark:bg-slate-950 transition-colors">
+      <header className="flex flex-col md:flex-row justify-between md:items-center gap-6 border-b dark:border-slate-800 pb-10">
+        <div className="flex items-center gap-6">
+            <div className="h-20 w-20 bg-black dark:bg-white rounded-[2.5rem] flex items-center justify-center text-white dark:text-black shadow-2xl rotate-3">
+                <BookOpen size={40} strokeWidth={2.5} />
             </div>
             <div>
-                <h1 className="text-3xl font-black text-gray-900 tracking-tight">Avaliação Semestral</h1>
-                <p className="text-gray-500 font-medium flex items-center gap-2">
-                   {user.course} • {user.level}º Ano • {institution?.evaluationPeriodName || 'Semestre 1'}
+                <h1 className="text-4xl font-black text-gray-900 dark:text-white tracking-tight uppercase">Avaliação de Ensino</h1>
+                <p className="text-gray-500 dark:text-slate-400 font-bold text-sm flex items-center gap-2">
+                   {user.course} • {user.level}º ANO • {institution?.evaluationPeriodName || 'Semestre 1'}
                 </p>
             </div>
         </div>
       </header>
 
       {success ? (
-          <Card className="bg-green-50 border-green-200 py-20 text-center animate-in zoom-in shadow-2xl rounded-3xl">
-              <div className="h-20 w-20 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-6 text-white shadow-lg">
-                <CheckCircle2 size={40} />
+          <Card className="bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900/30 py-24 text-center animate-in zoom-in shadow-2xl rounded-[3rem]">
+              <div className="h-24 w-24 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-8 text-white shadow-lg animate-bounce">
+                <CheckCircle2 size={48} />
               </div>
-              <h2 className="text-3xl font-black text-green-900">Submissão Concluída!</h2>
-              <p className="text-green-700 mt-2">Sua voz ajuda a melhorar o ensino em Moçambique.</p>
-              <Button onClick={() => window.location.reload()} variant="outline" className="mt-8">Fazer Nova Avaliação</Button>
+              <h2 className="text-4xl font-black text-green-900 dark:text-green-400 uppercase tracking-tighter">Obrigado pela sua voz!</h2>
+              <p className="text-green-700 dark:text-green-500 mt-4 text-lg font-medium">Sua avaliação anónima foi registada com sucesso.</p>
+              <Button onClick={() => window.location.reload()} variant="outline" className="mt-10 rounded-2xl px-10 h-14 font-black">FAZER NOVA AVALIAÇÃO</Button>
           </Card>
       ) : !isEvaluationOpen ? (
-          <Card className="bg-yellow-50 border-yellow-200 py-16 text-center rounded-3xl">
-              <Lock className="h-16 w-16 mx-auto mb-6 text-yellow-600 opacity-50" />
-              <h2 className="text-2xl font-black text-yellow-900 tracking-tight">Portal Temporariamente Indisponível</h2>
-              <p className="text-yellow-700">O período de submissões está encerrado ou ainda não iniciou.</p>
+          <Card className="bg-yellow-50 dark:bg-yellow-950/10 border-yellow-200 dark:border-yellow-900/20 py-20 text-center rounded-[3rem] shadow-xl">
+              <Lock className="h-20 w-20 mx-auto mb-8 text-yellow-600 opacity-40" />
+              <h2 className="text-3xl font-black text-yellow-900 dark:text-yellow-500 tracking-tight uppercase">Portal Fechado</h2>
+              <p className="text-yellow-700 dark:text-yellow-600 mt-2 font-medium">O período de submissões para este semestre encontra-se encerrado.</p>
           </Card>
       ) : (
           <div className="space-y-8">
-              <Card className="border-none shadow-xl bg-white rounded-3xl">
-                  <CardHeader className="bg-gray-50/50 border-b rounded-t-3xl p-6">
-                      <CardTitle className="text-lg flex items-center gap-2"><ArrowRightIcon /> Seleção de Cadeira</CardTitle>
+              <Card className="border-none shadow-2xl bg-white dark:bg-slate-900 rounded-[2.5rem] overflow-hidden">
+                  <CardHeader className="bg-gray-50/50 dark:bg-slate-800/30 border-b dark:border-slate-800 p-8">
+                      <CardTitle className="text-xl flex items-center gap-3 dark:text-white uppercase font-black tracking-tight">
+                        <ArrowRight className="text-blue-600" size={24}/> Identificação da Aula
+                      </CardTitle>
                   </CardHeader>
-                  <CardContent className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-                      <div className="space-y-3">
-                          <Label className="font-bold text-gray-700">Selecione o Docente</Label>
-                          <Select value={selectedTeacherId} onChange={e => { setSelectedTeacherId(e.target.value); setSelectedSubjectId(''); }}>
-                              <option value="">-- Escolher Docente --</option>
-                              {uniqueTeachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  <CardContent className="p-10 grid grid-cols-1 md:grid-cols-2 gap-10">
+                      <div className="space-y-4">
+                          <Label className="font-black text-gray-700 dark:text-slate-300 uppercase tracking-widest text-xs">Selecione o Docente</Label>
+                          <Select value={selectedTeacherId} onChange={e => { setSelectedTeacherId(e.target.value); setSelectedSubjectId(''); }} className="h-14 text-lg font-bold">
+                              <option value="">-- LISTA DE DOCENTES --</option>
+                              {uniqueTeachers.map(t => <option key={t.id} value={t.id}>{t.name.toUpperCase()}</option>)}
                           </Select>
                       </div>
-                      <div className="space-y-3">
-                          <Label className="font-bold text-gray-700">Selecione a Disciplina</Label>
-                          <Select value={selectedSubjectId} onChange={e => setSelectedSubjectId(e.target.value)} disabled={!selectedTeacherId}>
-                              <option value="">-- Escolher Disciplina --</option>
+                      <div className="space-y-4">
+                          <Label className="font-black text-gray-700 dark:text-slate-300 uppercase tracking-widest text-xs">Selecione a Cadeira</Label>
+                          <Select value={selectedSubjectId} onChange={e => setSelectedSubjectId(e.target.value)} disabled={!selectedTeacherId} className="h-14 text-lg font-bold">
+                              <option value="">-- CADEIRAS VINCULADAS --</option>
                               {availableSubjectsForTeacher.map(s => (
                                   <option key={s.id} value={s.id}>
-                                      {s.name} (Semestre {s.semester}) • Turma {s.classGroup}
+                                      {s.name.toUpperCase()} (SEM {s.semester})
                                   </option>
                               ))}
                           </Select>
@@ -199,34 +201,36 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
               </Card>
 
               {selectedSubjectId && (
-                  <div className="space-y-8 animate-in slide-in-from-bottom-6 duration-500">
-                      <div className="bg-blue-600 p-6 rounded-3xl text-white shadow-lg flex items-start gap-4">
-                          <AlertCircle size={24} className="shrink-0 text-blue-200" />
-                          <div className="space-y-1">
-                              <p className="font-black text-lg">Inquérito de Avaliação</p>
-                              <p className="text-blue-100 text-sm">Responda com honestidade. Sua identidade está protegida por encriptação e anonimato garantido por lei moçambicana.</p>
+                  <div className="space-y-10 animate-in slide-in-from-bottom-8 duration-500">
+                      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-8 rounded-[2rem] text-white shadow-2xl flex items-start gap-5">
+                          <AlertCircle size={32} className="shrink-0 text-blue-200 mt-1" />
+                          <div className="space-y-2">
+                              <p className="font-black text-2xl uppercase tracking-tighter leading-none">Aviso de Privacidade</p>
+                              <p className="text-blue-100 text-sm font-medium leading-relaxed">Suas respostas são encriptadas e armazenadas de forma que ninguém, nem o gestor nem o docente, pode identificar o autor. Sua honestidade é o que melhora o ensino.</p>
                           </div>
                       </div>
 
-                      {data.questionnaire.questions.map((q, idx) => (
-                          <Card key={q.id} className="border-none shadow-md hover:shadow-xl transition-shadow rounded-3xl">
-                              <CardContent className="p-8">
-                                  <div className="flex gap-4 items-start mb-6">
-                                      <div className="h-8 w-8 bg-gray-100 text-gray-600 rounded-full flex items-center justify-center font-bold text-sm shrink-0">{idx + 1}</div>
-                                      <p className="font-black text-xl text-gray-900 leading-tight">{q.text}</p>
-                                  </div>
-                                  <div className="pl-12">
-                                      {renderQuestionInput(q)}
-                                  </div>
-                              </CardContent>
-                          </Card>
-                      ))}
+                      <div className="space-y-6">
+                        {data.questionnaire.questions.map((q, idx) => (
+                            <Card key={q.id} className="border-none shadow-xl hover:shadow-2xl transition-all rounded-[2rem] dark:bg-slate-900 overflow-hidden group">
+                                <CardContent className="p-10">
+                                    <div className="flex gap-6 items-start mb-8">
+                                        <div className="h-10 w-10 bg-gray-900 dark:bg-slate-800 text-white rounded-2xl flex items-center justify-center font-black text-sm shrink-0 shadow-lg group-hover:scale-110 transition-transform">{idx + 1}</div>
+                                        <p className="font-black text-2xl text-gray-900 dark:text-white leading-tight tracking-tight">{q.text}</p>
+                                    </div>
+                                    <div className="md:pl-16">
+                                        {renderQuestionInput(q)}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+                      </div>
 
-                      <div className="pt-8">
-                        <Button size="lg" className="w-full bg-black hover:bg-gray-800 h-16 text-xl font-black rounded-3xl shadow-2xl transition-all active:scale-95" onClick={handleSubmit} disabled={submitting}>
-                            {submitting ? 'A processar inquérito...' : 'Finalizar e Submeter Agora'}
+                      <div className="pt-10">
+                        <Button size="lg" className="w-full bg-black dark:bg-blue-600 hover:bg-gray-800 dark:hover:bg-blue-500 h-20 text-2xl font-black rounded-[2rem] shadow-2xl transition-all active:scale-95 text-white" onClick={handleSubmit} disabled={submitting}>
+                            {submitting ? 'PROCESSANDO INQUÉRITO...' : 'SUBMETER AVALIAÇÃO AGORA'}
                         </Button>
-                        <p className="text-center text-gray-400 text-xs mt-4">Ao clicar, você confirma a veracidade das informações para fins estatísticos.</p>
+                        <p className="text-center text-gray-400 dark:text-slate-500 text-[10px] font-black uppercase tracking-widest mt-6">Ao submeter, os dados tornam-se propriedade estatística da instituição</p>
                       </div>
                   </div>
               )}
@@ -235,7 +239,3 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
     </div>
   );
 };
-
-const ArrowRightIcon = () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-blue-600"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-);

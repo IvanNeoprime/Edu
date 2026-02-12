@@ -14,17 +14,14 @@ export interface User {
   name: string;
   role: UserRole;
   institutionId?: string;
-  approved?: boolean; // For teachers
-  avatar?: string; // Base64 ou URL da foto de perfil
-  mustChangePassword?: boolean; // Adicionado para controle de troca de senha
-  // Fix: Added password property for authentication logic in backend services
+  approved?: boolean;
+  avatar?: string;
+  mustChangePassword?: boolean;
   password?: string;
-  // Novos campos para alunos
   course?: string;
-  level?: string; // Ano curricular (ex: 1, 2, 3)
-  shifts?: ('Diurno' | 'Noturno')[]; // Lista de turnos do aluno
-  classGroups?: string[]; // Lista de turmas do aluno (ex: ['A', 'B'])
-  // Novo campo para docentes
+  level?: string; // 1 a 6
+  shifts?: ('Diurno' | 'Noturno')[];
+  classGroups?: string[];
   category?: TeacherCategory;
 }
 
@@ -32,11 +29,10 @@ export interface Institution {
   id: string;
   name: string;
   code: string;
-  logo?: string; // Base64 ou URL do logotipo
+  logo?: string;
   createdAt: string;
   managerEmails: string[];
   inviteCode?: string;
-  // Novos campos para gestão de período
   isEvaluationOpen?: boolean;
   evaluationPeriodName?: string;
 }
@@ -44,28 +40,26 @@ export interface Institution {
 export interface Subject {
   id: string;
   name: string;
-  code?: string; // Agora opcional
+  code?: string;
   institutionId: string;
   teacherId: string;
-  // Novos campos solicitados para contexto
   academicYear?: string;
   level?: string;
-  semester?: string;
+  semester?: '1' | '2';
   course?: string;
   teacherCategory?: TeacherCategory;
-  classGroup?: string; // Identificador da Turma (ex: A, B)
-  shift?: 'Diurno' | 'Noturno'; // Novo campo restrito
-  modality?: 'Presencial' | 'Online'; // Novo campo de modalidade
+  classGroup?: string;
+  shift?: 'Diurno' | 'Noturno';
+  modality?: 'Presencial' | 'Online';
 }
 
-export type QuestionType = 'binary' | 'scale_10' | 'stars' | 'text' | 'choice';
+export type QuestionType = 'binary' | 'scale_10' | 'stars' | 'text';
 
 export interface Question {
   id: string;
   text: string;
   type: QuestionType;
-  weight?: number; // Pontos Obtidos
-  options?: string[]; // For multiple choice
+  weight?: number;
 }
 
 export interface Questionnaire {
@@ -74,16 +68,15 @@ export interface Questionnaire {
   title: string;
   questions: Question[];
   active: boolean;
-  // Novo campo para definir público alvo
   targetRole?: 'student' | 'teacher'; 
 }
 
 export interface StudentResponse {
   id: string;
-  institutionId: string; // Adicionado para validação de período
+  institutionId: string;
   questionnaireId: string;
-  teacherId?: string; // Opcional se for um inquérito geral para docentes
-  subjectId?: string; // Opcional se for um inquérito geral
+  teacherId?: string;
+  subjectId?: string;
   answers: { questionId: string; value: number | string }[];
   timestamp: string;
 }
@@ -97,16 +90,14 @@ export interface InstitutionalEval {
 
 export interface SelfEvaluation {
   teacherId: string;
-  institutionId: string; // Adicionado para validação
-  // Cabeçalho
+  institutionId: string;
   header: {
     category: TeacherCategory;
     function: string;
-    contractRegime: string; // Tempo inteiro/parcial
-    workPeriod: string; // Laboral/PL
+    contractRegime: string;
+    workPeriod: string;
     academicYear: string;
   };
-  // Respostas específicas (Quantidades que serão multiplicadas pelos pontos)
   answers: {
     gradSubjects?: number;
     postGradSubjects?: number;
@@ -117,7 +108,6 @@ export interface SelfEvaluation {
     postGradSupervision?: number;
     regencySubjects?: number;
   };
-  // Novo campo: Avaliação Qualitativa descritiva do próprio docente
   comments?: string; 
 }
 
@@ -128,15 +118,15 @@ export interface QualitativeEval {
   workQuality?: number;
   score?: number;
   evaluatedAt?: string;
-  comments?: string; // Adicionado para comentários do gestor
+  comments?: string;
 }
 
 export interface CombinedScore {
   teacherId: string;
-  studentScore: number; // Pontos calculados (Coeficiente aplicado)
+  studentScore: number; 
   institutionalScore: number; 
-  selfEvalScore: number; // Pontos absolutos
-  finalScore: number; // Soma total
+  selfEvalScore: number;
+  finalScore: number;
   lastCalculated: string;
 }
 
