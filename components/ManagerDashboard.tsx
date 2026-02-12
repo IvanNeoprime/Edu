@@ -4,7 +4,7 @@ import { BackendService } from '../services/backend';
 import { User, UserRole, Subject, Question, Institution, CombinedScore } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, cn } from './ui';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, CartesianGrid } from 'recharts';
-import { Users, BookOpen, Trash2, GraduationCap, Settings, Briefcase, FileText, Star, FileDown, Printer, Calculator, Download, CheckCircle, Search, ClipboardList, Save, TrendingUp, Activity } from 'lucide-react';
+import { Users, BookOpen, Trash2, GraduationCap, Settings, Briefcase, FileText, Star, FileDown, Printer, Calculator, Download, CheckCircle, Search, ClipboardList, Save, TrendingUp, Activity, Filter, X } from 'lucide-react';
 
 interface Props {
   institutionId: string;
@@ -19,6 +19,12 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [scores, setScores] = useState<CombinedScore[]>([]);
   const [isCalculating, setIsCalculating] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Estados de Filtros
+  const [filterYear, setFilterYear] = useState<string>('all');
+  const [filterSemester, setFilterSemester] = useState<string>('all');
+  const [filterCourse, setFilterCourse] = useState<string>('all');
+  const [filterGroup, setFilterGroup] = useState<string>('all');
   
   const [qTarget, setQTarget] = useState<'student' | 'teacher'>('student');
   const [editingQuestions, setEditingQuestions] = useState<Question[]>([]);
@@ -40,14 +46,40 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     } catch (e) { console.error(e); }
   };
 
-  const handleCalculate = async () => {
-    setIsCalculating(true);
-    await BackendService.calculateScores(institutionId);
-    await loadData();
-    setIsCalculating(false);
-  };
+  // Opções dinâmicas para os filtros baseadas nos dados
+  const filterOptions = useMemo(() => {
+    const years = Array.from(new Set(subjects.map(s => s.academicYear).filter(Boolean)));
+    const courses = Array.from(new Set(subjects.map(s => s.course).filter(Boolean)));
+    const groups = Array.from(new Set(subjects.map(s => s.classGroup).filter(Boolean)));
+    return { years, courses, groups };
+  }, [subjects]);
 
-  // Processamento de dados para os gráficos
+  // Lógica de Filtragem de Docentes baseada nas cadeiras que eles lecionam
+  const filteredData = useMemo(() => {
+    let filteredSubjects = [...subjects];
+    if (filterYear !== 'all') filteredSubjects = filteredSubjects.filter(s => s.academicYear === filterYear);
+    if (filterSemester !== 'all') filteredSubjects = filteredSubjects.filter(s => s.semester === filterSemester);
+    if (filterCourse !== 'all') filteredSubjects = filteredSubjects.filter(s => s.course === filterCourse);
+    if (filterGroup !== 'all') filteredSubjects = filteredSubjects.filter(s => s.classGroup === filterGroup);
+
+    const relevantTeacherIds = new Set(filteredSubjects.map(s => s.teacherId));
+    
+    // Se nenhum filtro aplicado, mostrar todos os docentes da instituição
+    const isAnyFilterActive = filterYear !== 'all' || filterSemester !== 'all' || filterCourse !== 'all' || filterGroup !== 'all';
+    
+    const displayTeachers = isAnyFilterActive 
+        ? teachers.filter(t => relevantTeacherIds.has(t.id))
+        : teachers;
+
+    const displayScores = scores.filter(s => {
+        const t = displayTeachers.find(teacher => teacher.id === s.teacherId);
+        return !!t;
+    });
+
+    return { displayTeachers, displayScores };
+  }, [teachers, subjects, scores, filterYear, filterSemester, filterCourse, filterGroup]);
+
+  // Gráficos reagem ao filteredData
   const distributionData = useMemo(() => {
     const bins = [
       { name: '0-10', count: 0, color: '#ef4444' },
@@ -55,19 +87,26 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       { name: '14-17', count: 0, color: '#3b82f6' },
       { name: '17-20', count: 0, color: '#10b981' }
     ];
-    scores.forEach(s => {
+    filteredData.displayScores.forEach(s => {
       if (s.finalScore < 10) bins[0].count++;
       else if (s.finalScore < 14) bins[1].count++;
       else if (s.finalScore < 17) bins[2].count++;
       else bins[3].count++;
     });
     return bins;
-  }, [scores]);
+  }, [filteredData.displayScores]);
 
   const participationData = [
-    { name: 'Concluído', value: scores.length, color: '#10b981' },
-    { name: 'Pendente', value: Math.max(0, teachers.length - scores.length), color: '#e2e8f0' }
+    { name: 'Avaliado', value: filteredData.displayScores.length, color: '#10b981' },
+    { name: 'Pendente', value: Math.max(0, filteredData.displayTeachers.length - filteredData.displayScores.length), color: '#e2e8f0' }
   ];
+
+  const handleCalculate = async () => {
+    setIsCalculating(true);
+    await BackendService.calculateScores(institutionId);
+    await loadData();
+    setIsCalculating(false);
+  };
 
   const loadCurrentQuestionnaire = async () => {
     const q = await BackendService.getInstitutionQuestionnaire(institutionId, qTarget);
@@ -89,7 +128,14 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     document.body.removeChild(link);
   };
 
-  const filteredTeachers = teachers.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const clearFilters = () => {
+    setFilterYear('all');
+    setFilterSemester('all');
+    setFilterCourse('all');
+    setFilterGroup('all');
+  };
+
+  const finalTeachersList = filteredData.displayTeachers.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <div className="space-y-6 p-4 md:p-8 max-w-7xl mx-auto animate-fade-in">
@@ -98,15 +144,15 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         <div className="print-only">
             <div className="report-header">
                 <h1 className="text-xl font-black uppercase">{institution?.name}</h1>
-                <h2 className="text-md font-bold text-gray-700 uppercase">Pauta Consolidada de Avaliação</h2>
-                <p className="text-xs">Gerado em: {new Date().toLocaleDateString()}</p>
+                <h2 className="text-md font-bold text-gray-700 uppercase">Pauta Consolidada - {filterCourse !== 'all' ? filterCourse : 'Geral'}</h2>
+                <p className="text-[10px] uppercase font-bold text-gray-400">Ano: {filterYear} | Semestre: {filterSemester} | Turma: {filterGroup}</p>
             </div>
             <table>
                 <thead>
                     <tr><th>Docente</th><th>Alunos (12%)</th><th>Auto (80%)</th><th>Gestão (8%)</th><th>Média Final</th></tr>
                 </thead>
                 <tbody>
-                    {teachers.map(t => {
+                    {finalTeachersList.map(t => {
                         const s = scores.find(sc => sc.teacherId === t.id);
                         return (
                             <tr key={t.id}>
@@ -135,13 +181,13 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           </div>
           <div className="flex bg-gray-100/50 p-1 rounded-xl flex-wrap gap-1 border border-gray-200">
               {[
-                  {id: 'overview', label: 'Início', icon: Briefcase},
+                  {id: 'overview', label: 'Dashboard', icon: Briefcase},
                   {id: 'teachers', label: 'Docentes', icon: Users},
                   {id: 'students', label: 'Alunos', icon: GraduationCap},
-                  {id: 'subjects', label: 'Cadeiras', icon: BookOpen},
-                  {id: 'reports', label: 'Pautas', icon: ClipboardList},
+                  {id: 'subjects', label: 'Turmas/Cadeiras', icon: BookOpen},
+                  {id: 'reports', label: 'Pauta e Resultados', icon: ClipboardList},
                   {id: 'questionnaire', label: 'Inquéritos', icon: FileText},
-                  {id: 'settings', label: 'Config', icon: Settings},
+                  {id: 'settings', label: 'Sistema', icon: Settings},
               ].map(tab => (
                   <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={cn("px-3 py-1.5 text-[9px] font-black rounded-lg flex items-center gap-2 transition-all uppercase tracking-wider", activeTab === tab.id ? "bg-white shadow-sm text-black border border-gray-200" : "text-gray-400 hover:text-gray-700")}>
                       <tab.icon size={12} /> {tab.label}
@@ -150,30 +196,68 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           </div>
         </header>
 
+        {/* BARRA DE FILTROS (Aparece em Dashboard e Pauta) */}
+        {(activeTab === 'overview' || activeTab === 'reports') && (
+            <div className="bg-white border-b border-x rounded-xl shadow-sm p-4 flex flex-wrap gap-4 items-end no-print animate-fade-in">
+                <div className="space-y-1 flex-1 min-w-[120px]">
+                    <Label className="flex items-center gap-1.5"><Filter size={10}/> Ano Lectivo</Label>
+                    <Select value={filterYear} onChange={e => setFilterYear(e.target.value)} className="h-8 text-[10px]">
+                        <option value="all">Todos os Anos</option>
+                        {filterOptions.years.map(y => <option key={y} value={y}>{y}</option>)}
+                    </Select>
+                </div>
+                <div className="space-y-1 flex-1 min-w-[100px]">
+                    <Label>Semestre</Label>
+                    <Select value={filterSemester} onChange={e => setFilterSemester(e.target.value)} className="h-8 text-[10px]">
+                        <option value="all">Todos</option>
+                        <option value="1">1º Semestre</option>
+                        <option value="2">2º Semestre</option>
+                    </Select>
+                </div>
+                <div className="space-y-1 flex-[2] min-w-[150px]">
+                    <Label>Curso / Departamento</Label>
+                    <Select value={filterCourse} onChange={e => setFilterCourse(e.target.value)} className="h-8 text-[10px]">
+                        <option value="all">Instituição Global</option>
+                        {filterOptions.courses.map(c => <option key={c} value={c}>{c}</option>)}
+                    </Select>
+                </div>
+                <div className="space-y-1 flex-1 min-w-[100px]">
+                    <Label>Turma</Label>
+                    <Select value={filterGroup} onChange={e => setFilterGroup(e.target.value)} className="h-8 text-[10px]">
+                        <option value="all">Todas</option>
+                        {filterOptions.groups.map(g => <option key={g} value={g}>Turma {g}</option>)}
+                    </Select>
+                </div>
+                <Button size="xs" variant="ghost" onClick={clearFilters} className="h-8 text-gray-400 hover:text-red-500">
+                    <X size={14} className="mr-1"/> Limpar
+                </Button>
+            </div>
+        )}
+
         {activeTab === 'overview' && (
             <div className="space-y-6 no-print">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <Card className="bg-white border-none shadow-sm p-4 flex items-center gap-4">
                         <div className="h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center"><Users size={20}/></div>
-                        <div><Label className="text-[8px] mb-1 block">Docentes</Label><p className="text-xl font-black">{teachers.length}</p></div>
+                        <div><Label className="text-[8px] mb-1 block">Docentes no Filtro</Label><p className="text-xl font-black">{filteredData.displayTeachers.length}</p></div>
                     </Card>
                     <Card className="bg-white border-none shadow-sm p-4 flex items-center gap-4">
                         <div className="h-10 w-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center"><GraduationCap size={20}/></div>
-                        <div><Label className="text-[8px] mb-1 block">Estudantes</Label><p className="text-xl font-black">{students.length}</p></div>
+                        <div><Label className="text-[8px] mb-1 block">Estudantes Totais</Label><p className="text-xl font-black">{students.length}</p></div>
                     </Card>
                     <Card className="bg-white border-none shadow-sm p-4 flex items-center gap-4">
                         <div className="h-10 w-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center"><Activity size={20}/></div>
-                        <div><Label className="text-[8px] mb-1 block">Inquéritos</Label><p className="text-xl font-black">{scores.length}</p></div>
+                        <div><Label className="text-[8px] mb-1 block">Avaliações Concluídas</Label><p className="text-xl font-black">{filteredData.displayScores.length}</p></div>
                     </Card>
                     <Card className="bg-black text-white p-4 flex items-center gap-4 border-none shadow-xl">
                         <div className="h-10 w-10 rounded-lg bg-white/10 text-white flex items-center justify-center"><TrendingUp size={20}/></div>
-                        <div><Label className="text-white/40 text-[8px] mb-1 block">Status</Label><p className="text-[10px] font-black uppercase">{institution?.isEvaluationOpen ? 'Em Aberto' : 'Finalizado'}</p></div>
+                        <div><Label className="text-white/40 text-[8px] mb-1 block">Filtro Ativo</Label><p className="text-[10px] font-black uppercase truncate">{filterCourse === 'all' ? 'Instituição' : filterCourse}</p></div>
                     </Card>
                 </div>
 
                 <div className="grid md:grid-cols-3 gap-6">
                     <Card className="md:col-span-2 border-none shadow-lg bg-white">
-                        <CardHeader className="pb-0"><CardTitle className="text-[10px] opacity-50 flex items-center gap-2"><TrendingUp size={14}/> Distribuição de Notas (Docentes)</CardTitle></CardHeader>
+                        <CardHeader className="pb-0"><CardTitle className="text-[10px] opacity-50 flex items-center gap-2"><TrendingUp size={14}/> Performance por Faixa (Filtrado)</CardTitle></CardHeader>
                         <CardContent className="h-64 pt-6">
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={distributionData}>
@@ -190,7 +274,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                     </Card>
 
                     <Card className="border-none shadow-lg bg-white">
-                        <CardHeader className="pb-0"><CardTitle className="text-[10px] opacity-50 flex items-center gap-2"><CheckCircle size={14}/> Progresso de Avaliação</CardTitle></CardHeader>
+                        <CardHeader className="pb-0"><CardTitle className="text-[10px] opacity-50 flex items-center gap-2"><CheckCircle size={14}/> Cobertura de Avaliação</CardTitle></CardHeader>
                         <CardContent className="h-64 flex flex-col items-center justify-center pt-6">
                             <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
@@ -201,8 +285,8 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                 </PieChart>
                             </ResponsiveContainer>
                             <div className="text-center -mt-8">
-                                <p className="text-2xl font-black">{Math.round((scores.length / (teachers.length || 1)) * 100)}%</p>
-                                <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Docentes Avaliados</p>
+                                <p className="text-2xl font-black">{filteredData.displayTeachers.length > 0 ? Math.round((filteredData.displayScores.length / filteredData.displayTeachers.length) * 100) : 0}%</p>
+                                <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Docentes Alcançados</p>
                             </div>
                         </CardContent>
                     </Card>
@@ -210,26 +294,25 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             </div>
         )}
 
-        {/* Manteve as outras abas conforme solicitado, apenas garantindo que os relatórios sejam acessíveis */}
         {activeTab === 'reports' && (
             <div className="space-y-6 no-print">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl border shadow-sm">
                     <div className="flex items-center gap-3 bg-gray-50 border rounded-lg px-3 h-10 w-full md:w-64">
                         <Search size={16} className="text-gray-400" />
-                        <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Filtrar por nome..." className="bg-transparent border-none outline-none text-xs font-medium w-full" />
+                        <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Pesquisar por nome..." className="bg-transparent border-none outline-none text-xs font-medium w-full" />
                     </div>
                     <div className="flex gap-2 w-full md:w-auto">
                         <Button size="xs" variant="secondary" onClick={handleCalculate} disabled={isCalculating} className="h-10 flex-1">
-                           <Calculator size={14} className="mr-1"/> Recalcular Pauta
+                           <Calculator size={14} className="mr-1"/> Recalcular Dados
                         </Button>
                         <Button size="xs" variant="primary" onClick={() => window.print()} className="h-10 flex-1">
-                           <Printer size={14} className="mr-1"/> Exportar PDF
+                           <Printer size={14} className="mr-1"/> Imprimir Pauta
                         </Button>
                     </div>
                 </div>
 
                 <div className="grid gap-3">
-                    {filteredTeachers.map(t => {
+                    {finalTeachersList.length > 0 ? finalTeachersList.map(t => {
                         const s = scores.find(sc => sc.teacherId === t.id);
                         const finalNote = s?.finalScore || 0;
                         return (
@@ -275,8 +358,11 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                     </div>
                                 </CardContent>
                             </Card>
-                        );
-                    })}
+                        )) : (
+                            <div className="py-20 text-center bg-gray-50 rounded-2xl border border-dashed text-gray-400 font-bold uppercase tracking-widest text-xs">
+                                Nenhum docente encontrado para os filtros selecionados
+                            </div>
+                        )}
                 </div>
             </div>
         )}
@@ -291,7 +377,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   );
 };
 
-// Componentes auxiliares para manter ManagerDashboard limpo
+// Sub-componentes auxiliares (manteve-se a estrutura anterior para consistência)
 const QuestionnaireEditor = ({ qTarget, setQTarget, qTitle, setQTitle, editingQuestions, setEditingQuestions, institutionId }: any) => (
     <div className="grid md:grid-cols-3 gap-6 no-print animate-fade-in">
         <Card className="md:col-span-1 shadow-lg h-fit">
@@ -361,12 +447,24 @@ const StudentsTab = ({ students, institutionId, onUpdate }: any) => {
 };
 
 const SubjectsTab = ({ subjects, teachers, institutionId, onUpdate }: any) => {
-  const [f, setF] = useState({ name: '', tid: '', course: '', group: 'A' });
-  const add = async (e: any) => { e.preventDefault(); await BackendService.assignSubject({...f, institutionId, teacherId: f.tid, classGroup: f.group}); setF({name:'',tid:'',course:'',group:'A'}); onUpdate(); };
+  const [f, setF] = useState({ name: '', tid: '', course: '', group: '', year: '2024', sem: '1' });
+  const add = async (e: any) => { e.preventDefault(); await BackendService.assignSubject({...f, institutionId, teacherId: f.tid, classGroup: f.group, academicYear: f.year, semester: f.sem}); setF({name:'',tid:'',course:'',group:'',year:'2024',sem:'1'}); onUpdate(); };
   return (
       <div className="grid md:grid-cols-3 gap-6 no-print">
-          <Card className="md:col-span-1 shadow-md"><CardHeader><CardTitle className="text-xs">Criar Cadeira/Turma</CardTitle></CardHeader><CardContent><form onSubmit={add} className="space-y-4"><Input placeholder="Nome da Disciplina" value={f.name} onChange={e=>setF({...f,name:e.target.value})} /><Select value={f.tid} onChange={e=>setF({...f,tid:e.target.value})}><option value="">Responsável (Docente)</option>{teachers.map((t:any)=><option key={t.id} value={t.id}>{t.name}</option>)}</Select><Input placeholder="Curso" value={f.course} onChange={e=>setF({...f,course:e.target.value})} /><Button type="submit" className="w-full">Vincular Cadeira</Button></form></CardContent></Card>
-          <div className="md:col-span-2 space-y-2">{subjects.map((s:any)=>(<Card key={s.id} className="p-4 flex justify-between items-center bg-white shadow-sm"><div><p className="font-bold text-xs">{s.name}</p><p className="text-[9px] text-gray-400 font-bold uppercase">{s.course} • Turma {s.classGroup}</p></div><Button size="xs" variant="ghost" onClick={()=>BackendService.deleteSubject(s.id).then(onUpdate)} className="text-red-300 hover:text-red-600"><Trash2 size={14}/></Button></Card>))}</div>
+          <Card className="md:col-span-1 shadow-md"><CardHeader><CardTitle className="text-xs">Criar Cadeira/Turma</CardTitle></CardHeader><CardContent><form onSubmit={add} className="space-y-4">
+              <Input placeholder="Nome da Disciplina" value={f.name} onChange={e=>setF({...f,name:e.target.value})} />
+              <Select value={f.tid} onChange={e=>setF({...f,tid:e.target.value})}><option value="">Responsável (Docente)</option>{teachers.map((t:any)=><option key={t.id} value={t.id}>{t.name}</option>)}</Select>
+              <div className="grid grid-cols-2 gap-2">
+                <Input placeholder="Curso" value={f.course} onChange={e=>setF({...f,course:e.target.value})} />
+                <Input placeholder="Turma (A, B...)" value={f.group} onChange={e=>setF({...f,group:e.target.value})} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Input placeholder="Ano (2024)" value={f.year} onChange={e=>setF({...f,year:e.target.value})} />
+                <Select value={f.sem} onChange={e=>setF({...f,sem:e.target.value})}><option value="1">1º Sem</option><option value="2">2º Sem</option></Select>
+              </div>
+              <Button type="submit" className="w-full">Vincular Cadeira</Button>
+          </form></CardContent></Card>
+          <div className="md:col-span-2 space-y-2">{subjects.map((s:any)=>(<Card key={s.id} className="p-4 flex justify-between items-center bg-white shadow-sm"><div><p className="font-bold text-xs">{s.name}</p><p className="text-[9px] text-gray-400 font-bold uppercase">{s.course} • Turma {s.classGroup} • {s.academicYear}/{s.semester}º S</p></div><Button size="xs" variant="ghost" onClick={()=>BackendService.deleteSubject(s.id).then(onUpdate)} className="text-red-300 hover:text-red-600"><Trash2 size={14}/></Button></Card>))}</div>
       </div>
   );
 };
