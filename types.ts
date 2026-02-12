@@ -19,10 +19,13 @@ export interface User {
   mustChangePassword?: boolean;
   password?: string;
   course?: string;
-  level?: string; // 1 a 6
+  level?: string; // Ano de 1 a 6
+  semester?: '1' | '2';
+  studentCode?: string;
   shifts?: ('Diurno' | 'Noturno')[];
   classGroups?: string[];
   category?: TeacherCategory;
+  modality?: 'Presencial' | 'Online';
 }
 
 export interface Institution {
@@ -81,46 +84,6 @@ export interface StudentResponse {
   timestamp: string;
 }
 
-export interface InstitutionalEval {
-  teacherId: string;
-  institutionId: string;
-  score: number;
-  evaluatedAt: string;
-}
-
-export interface SelfEvaluation {
-  teacherId: string;
-  institutionId: string;
-  header: {
-    category: TeacherCategory;
-    function: string;
-    contractRegime: string;
-    workPeriod: string;
-    academicYear: string;
-  };
-  answers: {
-    gradSubjects?: number;
-    postGradSubjects?: number;
-    theoryHours?: number;
-    practicalHours?: number;
-    consultationHours?: number;
-    gradSupervision?: number;
-    postGradSupervision?: number;
-    regencySubjects?: number;
-  };
-  comments?: string; 
-}
-
-export interface QualitativeEval {
-  teacherId: string;
-  institutionId?: string;
-  deadlineCompliance?: number;
-  workQuality?: number;
-  score?: number;
-  evaluatedAt?: string;
-  comments?: string;
-}
-
 export interface CombinedScore {
   teacherId: string;
   studentScore: number; 
@@ -133,4 +96,36 @@ export interface CombinedScore {
 export interface Session {
   user: User | null;
   token: string | null;
+}
+
+// Added missing interfaces for TeacherDashboard
+export interface SelfEvaluation {
+  teacherId: string;
+  institutionId?: string;
+  header: {
+    category: TeacherCategory;
+    function: string;
+    contractRegime: string;
+    workPeriod: string;
+    academicYear: string;
+  };
+  answers: {
+    gradSubjects: number;
+    postGradSubjects: number;
+    theoryHours: number;
+    practicalHours: number;
+    consultationHours: number;
+    gradSupervision: number;
+    postGradSupervision: number;
+    regencySubjects: number;
+  };
+}
+
+export interface QualitativeEval {
+  teacherId: string;
+  recommendations: string;
+  strengths: string[];
+  // Added optional fields for saving management scores as used in dashboards
+  institutionId?: string;
+  score?: number;
 }
