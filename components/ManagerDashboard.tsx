@@ -4,7 +4,7 @@ import { BackendService } from '../services/backend';
 import { User, UserRole, Subject, Question, Institution, CombinedScore } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, cn } from './ui';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, CartesianGrid } from 'recharts';
-import { Users, BookOpen, Trash2, GraduationCap, Settings, Briefcase, FileText, Star, FileDown, Printer, Calculator, Download, CheckCircle, Search, ClipboardList, Save, TrendingUp, Activity } from 'lucide-react';
+import { Users, BookOpen, Trash2, GraduationCap, Settings, Briefcase, FileText, Star, FileDown, Printer, Calculator, Download, CheckCircle, Search, ClipboardList, Save, TrendingUp, Activity, FileSpreadsheet } from 'lucide-react';
 
 interface Props {
   institutionId: string;
@@ -47,7 +47,34 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     setIsCalculating(false);
   };
 
-  // Processamento de dados para os gráficos
+  const exportPautaExcel = () => {
+    const delimiter = ";";
+    const headers = ["Docente", "Email", "Nota Alunos (12%)", "Auto-Avaliação (80%)", "Avaliação Gestão (8%)", "Média Final (0-20)"];
+    
+    const rows = filteredTeachers.map(t => {
+      const s = scores.find(sc => sc.teacherId === t.id);
+      return [
+        t.name,
+        t.email,
+        s?.studentScore.toFixed(2) || "0.00",
+        s?.selfEvalScore.toFixed(2) || "0.00",
+        s?.institutionalScore.toFixed(2) || "0.00",
+        s?.finalScore.toFixed(2) || "0.00"
+      ];
+    });
+
+    // Inclusão do BOM (\uFEFF) para garantir que o Excel reconheça como UTF-8
+    const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(delimiter)).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `pauta_docentes_${institution?.code || 'instituicao'}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const distributionData = useMemo(() => {
     const bins = [
       { name: '0-10', count: 0, color: '#ef4444' },
@@ -78,12 +105,15 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const downloadTeacherInquiries = async (teacher: User) => {
     const resps = await BackendService.getDetailedTeacherResponses(teacher.id);
     if (resps.length === 0) return alert("Nenhum inquérito respondido para este docente.");
-    const csvRows = [["INQUÉRITOS DETALHADOS - " + teacher.name], ["Data", new Date().toLocaleString()], [], ["Timestamp", "Cadeira", "Pergunta", "Resposta"]];
+    const delimiter = ";";
+    const csvRows = [["\uFEFFINQUÉRITOS DETALHADOS - " + teacher.name], ["Data", new Date().toLocaleString()], [], ["Timestamp", "Cadeira", "Pergunta", "Resposta"]];
     resps.forEach((r: any) => r.answers.forEach((a: any) => csvRows.push([r.timestamp, r.subjectId || "N/A", a.questionId, a.value])));
-    const csvContent = "data:text/csv;charset=utf-8," + csvRows.map(e => e.join(",")).join("\n");
+    const csvContent = csvRows.map(e => e.join(delimiter)).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodeURI(csvContent));
-    link.setAttribute("download", `inqueritos_${teacher.name.replace(/\s/g, '_')}.csv`);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `detalhes_${teacher.name.replace(/\s/g, '_')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -126,7 +156,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-4 no-print">
           <div className="flex items-center gap-3">
               <div className="h-10 w-10 bg-black text-white rounded-xl flex items-center justify-center font-black text-sm">
-                  {institution?.code.slice(0,2)}
+                  {institution?.code.slice(0,2) || 'AD'}
               </div>
               <div>
                   <h1 className="text-sm font-black uppercase tracking-tighter leading-none mb-1">Painel do Gestor</h1>
@@ -210,7 +240,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             </div>
         )}
 
-        {/* Manteve as outras abas conforme solicitado, apenas garantindo que os relatórios sejam acessíveis */}
         {activeTab === 'reports' && (
             <div className="space-y-6 no-print">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl border shadow-sm">
@@ -221,6 +250,9 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                     <div className="flex gap-2 w-full md:w-auto">
                         <Button size="xs" variant="secondary" onClick={handleCalculate} disabled={isCalculating} className="h-10 flex-1">
                            <Calculator size={14} className="mr-1"/> Recalcular Pauta
+                        </Button>
+                        <Button size="xs" variant="outline" onClick={exportPautaExcel} className="h-10 flex-1 text-emerald-600 border-emerald-200 hover:bg-emerald-50">
+                           <FileSpreadsheet size={14} className="mr-2"/> Exportar Excel
                         </Button>
                         <Button size="xs" variant="primary" onClick={() => window.print()} className="h-10 flex-1">
                            <Printer size={14} className="mr-1"/> Exportar PDF
@@ -262,10 +294,10 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                             </div>
                                         </div>
                                         <div className="p-4 border-t md:border-t-0 md:border-l flex gap-2">
-                                            <Button size="xs" variant="ghost" onClick={() => downloadTeacherInquiries(t)} className="h-8 text-blue-600 hover:bg-blue-50">
+                                            <Button size="xs" variant="ghost" title="Download Inquéritos Detalhados" onClick={() => downloadTeacherInquiries(t)} className="h-8 text-blue-600 hover:bg-blue-50">
                                                 <Download size={14}/>
                                             </Button>
-                                            <Button size="xs" variant="ghost" onClick={() => {
+                                            <Button size="xs" variant="ghost" title="Lançar Avaliação Qualitativa" onClick={() => {
                                                 const val = prompt("Atribuir Nota de Gestão (0-20):", String(s?.institutionalScore ? s.institutionalScore / 0.4 : 10));
                                                 if (val) BackendService.saveQualitativeEval({ teacherId: t.id, institutionId, score: parseFloat(val) }).then(handleCalculate);
                                             }} className="h-8 text-amber-600 hover:bg-amber-50">
@@ -281,7 +313,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             </div>
         )}
 
-        {/* Outras abas permanecem com o layout padrão */}
         {activeTab === 'teachers' && <TeachersTab teachers={teachers} institutionId={institutionId} onUpdate={loadData} />}
         {activeTab === 'students' && <StudentsTab students={students} institutionId={institutionId} onUpdate={loadData} />}
         {activeTab === 'subjects' && <SubjectsTab subjects={subjects} teachers={teachers} institutionId={institutionId} onUpdate={loadData} />}
@@ -291,15 +322,15 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   );
 };
 
-// Componentes auxiliares para manter ManagerDashboard limpo
+// Componentes auxiliares (manteve-se o padrão da UI com pequenos ajustes de labels)
 const QuestionnaireEditor = ({ qTarget, setQTarget, qTitle, setQTitle, editingQuestions, setEditingQuestions, institutionId }: any) => (
     <div className="grid md:grid-cols-3 gap-6 no-print animate-fade-in">
         <Card className="md:col-span-1 shadow-lg h-fit">
-            <CardHeader><CardTitle className="text-xs">Configuração do Inquérito</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-xs uppercase font-black">Configuração do Inquérito</CardTitle></CardHeader>
             <CardContent className="space-y-4">
                 <div className="space-y-1"><Label>Público-Alvo</Label><Select value={qTarget} onChange={e => setQTarget(e.target.value as any)}><option value="student">Estudantes</option><option value="teacher">Auto-Avaliação</option></Select></div>
                 <div className="space-y-1"><Label>Nome do Formulário</Label><Input value={qTitle} onChange={e => setQTitle(e.target.value)} /></div>
-                <Button className="w-full h-11 bg-blue-600 hover:bg-blue-700 font-black shadow-lg" onClick={() => BackendService.saveQuestionnaire({id: 'q_'+qTarget+'_'+institutionId, institutionId, title: qTitle, targetRole: qTarget, questions: editingQuestions, active: true}).then(()=>alert("Inquérito publicado!"))}><Save size={14} className="mr-2"/> Publicar Alterações</Button>
+                <Button className="w-full h-11 bg-blue-600 hover:bg-blue-700 font-black shadow-lg rounded-xl" onClick={() => BackendService.saveQuestionnaire({id: 'q_'+qTarget+'_'+institutionId, institutionId, title: qTitle, targetRole: qTarget, questions: editingQuestions, active: true}).then(()=>alert("Inquérito publicado!"))}><Save size={14} className="mr-2"/> Publicar Alterações</Button>
             </CardContent>
         </Card>
         <div className="md:col-span-2 space-y-3">
@@ -315,24 +346,24 @@ const QuestionnaireEditor = ({ qTarget, setQTarget, qTitle, setQTitle, editingQu
                     </div>
                 </div>
             ))}
-            <Button onClick={() => setEditingQuestions([...editingQuestions, { id: Date.now().toString(), text: 'Nova pergunta do inquérito...', type: 'stars', weight: 5 }])} className="w-full h-12 border-dashed border-2 hover:bg-blue-50 hover:border-blue-200 text-blue-600" variant="outline">+ Adicionar Nova Pergunta</Button>
+            <Button onClick={() => setEditingQuestions([...editingQuestions, { id: Date.now().toString(), text: 'Nova pergunta do inquérito...', type: 'stars', weight: 5 }])} className="w-full h-12 border-dashed border-2 hover:bg-blue-50 hover:border-blue-200 text-blue-600 rounded-xl" variant="outline">+ Adicionar Nova Pergunta</Button>
         </div>
     </div>
 );
 
 const SettingsTab = ({ institution, institutionId, onUpdate }: any) => (
-    <Card className="max-w-md mx-auto no-print">
-        <CardHeader><CardTitle>Acesso e Período Académico</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+    <Card className="max-w-md mx-auto no-print shadow-xl rounded-3xl overflow-hidden border-none">
+        <CardHeader className="bg-gray-50 border-b p-6"><CardTitle className="uppercase font-black text-xs">Acesso e Período Académico</CardTitle></CardHeader>
+        <CardContent className="space-y-6 p-8">
+            <div className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100">
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Estado do Portal</span>
-                <Button size="xs" variant={institution?.isEvaluationOpen ? 'destructive' : 'primary'} onClick={() => BackendService.updateInstitution(institutionId, { isEvaluationOpen: !institution?.isEvaluationOpen }).then(onUpdate)}>
+                <Button size="xs" variant={institution?.isEvaluationOpen ? 'destructive' : 'primary'} onClick={() => BackendService.updateInstitution(institutionId, { isEvaluationOpen: !institution?.isEvaluationOpen }).then(onUpdate)} className="rounded-lg h-10 px-4">
                 {institution?.isEvaluationOpen ? 'Fechar Portal' : 'Abrir Portal'}
                 </Button>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-2">
                 <Label>Identificador do Semestre</Label>
-                <Input value={institution?.evaluationPeriodName} onBlur={e => BackendService.updateInstitution(institutionId, { evaluationPeriodName: e.target.value }).then(onUpdate)} />
+                <Input value={institution?.evaluationPeriodName} onBlur={e => BackendService.updateInstitution(institutionId, { evaluationPeriodName: e.target.value }).then(onUpdate)} className="h-11 font-bold rounded-xl" />
             </div>
         </CardContent>
     </Card>
@@ -343,8 +374,8 @@ const TeachersTab = ({ teachers, institutionId, onUpdate }: any) => {
     const add = async (e: any) => { e.preventDefault(); await BackendService.addTeacher(institutionId, f.name, f.email, '123456', '', f.cat); setF({ name: '', email: '', cat: 'assistente' }); onUpdate(); };
     return (
         <div className="grid md:grid-cols-3 gap-6 no-print">
-            <Card className="md:col-span-1 shadow-md"><CardHeader><CardTitle className="text-xs">Registar Novo Docente</CardTitle></CardHeader><CardContent><form onSubmit={add} className="space-y-4"><Input placeholder="Nome Completo" value={f.name} onChange={e=>setF({...f, name: e.target.value})} required /><Input type="email" placeholder="Email Institucional" value={f.email} onChange={e=>setF({...f, email: e.target.value})} required /><Select value={f.cat} onChange={e=>setF({...f, cat: e.target.value})}><option value="assistente">Assistente</option><option value="assistente_estagiario">Assistente Estagiário</option></Select><Button type="submit" className="w-full">Cadastrar Docente</Button></form></CardContent></Card>
-            <div className="md:col-span-2 space-y-2">{teachers.map((t: any) => (<Card key={t.id} className="p-4 flex justify-between items-center bg-white shadow-sm"><div><p className="font-bold text-xs">{t.name}</p><p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">{t.email}</p></div><Button size="xs" variant="ghost" onClick={() => BackendService.deleteUser(t.id).then(onUpdate)} className="text-red-300 hover:text-red-600"><Trash2 size={14}/></Button></Card>))}</div>
+            <Card className="md:col-span-1 shadow-md"><CardHeader><CardTitle className="text-xs uppercase font-black">Registar Novo Docente</CardTitle></CardHeader><CardContent><form onSubmit={add} className="space-y-4"><Input placeholder="Nome Completo" value={f.name} onChange={e=>setF({...f, name: e.target.value})} required /><Input type="email" placeholder="Email Institucional" value={f.email} onChange={e=>setF({...f, email: e.target.value})} required /><Select value={f.cat} onChange={e=>setF({...f, cat: e.target.value})}><option value="assistente">Assistente</option><option value="assistente_estagiario">Assistente Estagiário</option></Select><Button type="submit" className="w-full rounded-xl h-11">Cadastrar Docente</Button></form></CardContent></Card>
+            <div className="md:col-span-2 space-y-2">{teachers.map((t: any) => (<Card key={t.id} className="p-4 flex justify-between items-center bg-white shadow-sm border-l-4 border-l-purple-400"><div><p className="font-bold text-xs uppercase">{t.name}</p><p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">{t.email}</p></div><Button size="xs" variant="ghost" onClick={() => BackendService.deleteUser(t.id).then(onUpdate)} className="text-red-300 hover:text-red-600"><Trash2 size={14}/></Button></Card>))}</div>
         </div>
     );
 };
@@ -354,8 +385,8 @@ const StudentsTab = ({ students, institutionId, onUpdate }: any) => {
     const add = async (e: any) => { e.preventDefault(); await BackendService.addStudent(institutionId, f.name, f.email, '123456', f.course, '1'); setF({ name: '', email: '', course: '' }); onUpdate(); };
     return (
         <div className="grid md:grid-cols-3 gap-6 no-print">
-            <Card className="md:col-span-1 shadow-md"><CardHeader><CardTitle className="text-xs">Matricular Estudante</CardTitle></CardHeader><CardContent><form onSubmit={add} className="space-y-4"><Input placeholder="Nome do Estudante" value={f.name} onChange={e=>setF({...f, name: e.target.value})} /><Input placeholder="Email" value={f.email} onChange={e=>setF({...f, email: e.target.value})} /><Input placeholder="Curso" value={f.course} onChange={e=>setF({...f, course: e.target.value})} /><Button type="submit" className="w-full">Efectuar Matrícula</Button></form></CardContent></Card>
-            <div className="md:col-span-2 space-y-2">{students.map((s:any)=>(<Card key={s.id} className="p-4 flex justify-between items-center bg-white shadow-sm"><div><p className="font-bold text-xs">{s.name}</p><p className="text-[9px] text-gray-400 font-bold uppercase">{s.course}</p></div><Button size="xs" variant="ghost" onClick={()=>BackendService.deleteUser(s.id).then(onUpdate)} className="text-red-300 hover:text-red-600"><Trash2 size={14}/></Button></Card>))}</div>
+            <Card className="md:col-span-1 shadow-md"><CardHeader><CardTitle className="text-xs uppercase font-black">Matricular Estudante</CardTitle></CardHeader><CardContent><form onSubmit={add} className="space-y-4"><Input placeholder="Nome do Estudante" value={f.name} onChange={e=>setF({...f, name: e.target.value})} /><Input placeholder="Email" value={f.email} onChange={e=>setF({...f, email: e.target.value})} /><Input placeholder="Curso" value={f.course} onChange={e=>setF({...f, course: e.target.value})} /><Button type="submit" className="w-full rounded-xl h-11">Efectuar Matrícula</Button></form></CardContent></Card>
+            <div className="md:col-span-2 space-y-2">{students.map((s:any)=>(<Card key={s.id} className="p-4 flex justify-between items-center bg-white shadow-sm border-l-4 border-l-blue-400"><div><p className="font-bold text-xs uppercase">{s.name}</p><p className="text-[9px] text-gray-400 font-bold uppercase">{s.course}</p></div><Button size="xs" variant="ghost" onClick={()=>BackendService.deleteUser(s.id).then(onUpdate)} className="text-red-300 hover:text-red-600"><Trash2 size={14}/></Button></Card>))}</div>
         </div>
     );
 };
@@ -365,8 +396,8 @@ const SubjectsTab = ({ subjects, teachers, institutionId, onUpdate }: any) => {
   const add = async (e: any) => { e.preventDefault(); await BackendService.assignSubject({...f, institutionId, teacherId: f.tid, classGroup: f.group}); setF({name:'',tid:'',course:'',group:'A'}); onUpdate(); };
   return (
       <div className="grid md:grid-cols-3 gap-6 no-print">
-          <Card className="md:col-span-1 shadow-md"><CardHeader><CardTitle className="text-xs">Criar Cadeira/Turma</CardTitle></CardHeader><CardContent><form onSubmit={add} className="space-y-4"><Input placeholder="Nome da Disciplina" value={f.name} onChange={e=>setF({...f,name:e.target.value})} /><Select value={f.tid} onChange={e=>setF({...f,tid:e.target.value})}><option value="">Responsável (Docente)</option>{teachers.map((t:any)=><option key={t.id} value={t.id}>{t.name}</option>)}</Select><Input placeholder="Curso" value={f.course} onChange={e=>setF({...f,course:e.target.value})} /><Button type="submit" className="w-full">Vincular Cadeira</Button></form></CardContent></Card>
-          <div className="md:col-span-2 space-y-2">{subjects.map((s:any)=>(<Card key={s.id} className="p-4 flex justify-between items-center bg-white shadow-sm"><div><p className="font-bold text-xs">{s.name}</p><p className="text-[9px] text-gray-400 font-bold uppercase">{s.course} • Turma {s.classGroup}</p></div><Button size="xs" variant="ghost" onClick={()=>BackendService.deleteSubject(s.id).then(onUpdate)} className="text-red-300 hover:text-red-600"><Trash2 size={14}/></Button></Card>))}</div>
+          <Card className="md:col-span-1 shadow-md"><CardHeader><CardTitle className="text-xs uppercase font-black">Criar Cadeira/Turma</CardTitle></CardHeader><CardContent><form onSubmit={add} className="space-y-4"><Input placeholder="Nome da Disciplina" value={f.name} onChange={e=>setF({...f,name:e.target.value})} /><Select value={f.tid} onChange={e=>setF({...f,tid:e.target.value})}><option value="">Responsável (Docente)</option>{teachers.map((t:any)=><option key={t.id} value={t.id}>{t.name}</option>)}</Select><Input placeholder="Curso" value={f.course} onChange={e=>setF({...f,course:e.target.value})} /><Button type="submit" className="w-full rounded-xl h-11">Vincular Cadeira</Button></form></CardContent></Card>
+          <div className="md:col-span-2 space-y-2">{subjects.map((s:any)=>(<Card key={s.id} className="p-4 flex justify-between items-center bg-white shadow-sm border-l-4 border-l-emerald-400"><div><p className="font-bold text-xs uppercase">{s.name}</p><p className="text-[9px] text-gray-400 font-bold uppercase">{s.course} • Turma {s.classGroup}</p></div><Button size="xs" variant="ghost" onClick={()=>BackendService.deleteSubject(s.id).then(onUpdate)} className="text-red-300 hover:text-red-600"><Trash2 size={14}/></Button></Card>))}</div>
       </div>
   );
 };

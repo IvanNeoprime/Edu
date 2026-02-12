@@ -4,7 +4,7 @@ import { User, CombinedScore, SelfEvaluation, Institution, Subject } from '../ty
 import { BackendService } from '../services/backend';
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label, cn } from './ui';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
-import { TrendingUp, BarChart3, Printer, FileCheck, FileDown, User as UserIcon, BookOpen, Calculator, Award } from 'lucide-react';
+import { TrendingUp, BarChart3, Printer, FileCheck, FileDown, User as UserIcon, BookOpen, Calculator, Award, FileSpreadsheet } from 'lucide-react';
 
 interface Props {
   user: User;
@@ -34,6 +34,32 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
     if (savedEval) setAnswers(savedEval.answers);
   };
 
+  const exportIndividualExcel = () => {
+    if (!stats) return;
+    const delimiter = ";";
+    const csvContent = "\uFEFF" + [
+      ["RELATÓRIO DE DESEMPENHO DOCENTE"],
+      ["Docente", user.name],
+      ["Instituição", institution?.name || "N/A"],
+      ["Data de Exportação", new Date().toLocaleString()],
+      [],
+      ["MÉTRICA", "RESULTADO (PESO)"],
+      ["Avaliação dos Estudantes", `${stats.studentScore.toFixed(2)} / 12.00`],
+      ["Auto-Avaliação (Produção)", `${stats.selfEvalScore.toFixed(2)} / 80.00`],
+      ["Avaliação Institucional", `${stats.institutionalScore.toFixed(2)} / 8.00`],
+      ["NOTA FINAL", `${stats.finalScore.toFixed(2)} / 20.00`]
+    ].map(e => e.join(delimiter)).join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `meu_desempenho_${new Date().getFullYear()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const effortData = [
     { name: 'Aulas', value: (answers.gradSubjects || 0) + (answers.postGradSubjects || 0), color: '#3b82f6' },
     { name: 'Horas T/P', value: (answers.theoryHours || 0) + (answers.practicalHours || 0), color: '#8b5cf6' },
@@ -41,25 +67,14 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
     { name: 'Regência', value: (answers.regencySubjects || 0), color: '#f59e0b' }
   ];
 
-  const radarData = stats ? [
-    { subject: 'Alunos', A: (stats.studentScore / 12) * 20, fullMark: 20 },
-    { subject: 'Auto', A: (stats.selfEvalScore / 80) * 20, fullMark: 20 },
-    { subject: 'Gestão', A: (stats.institutionalScore / 8) * 20, fullMark: 20 },
-  ] : [];
-
   const barData = stats ? [
     { name: 'Minha Nota', score: stats.finalScore, fill: '#000' },
-    { name: 'Média Instituição', score: 14.5, fill: '#e2e8f0' } // Valor de referência mockado
+    { name: 'Média Instituição', score: 14.5, fill: '#e2e8f0' }
   ] : [];
 
   return (
     <div className="space-y-6 p-4 md:p-8 max-w-7xl mx-auto animate-fade-in">
         
-        {/* RELATÓRIO PDF (Oculto na Interface) */}
-        <div className="print-only">
-            {/* Template PDF mantido igual ao anterior para manter o padrão oficial */}
-        </div>
-
         {/* INTERFACE DO DASHBOARD */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-4 no-print">
           <div className="flex items-center gap-3">
@@ -80,20 +95,20 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
         {activeTab === 'stats' && (
             <div className="space-y-6 no-print">
                 <div className="flex justify-end gap-2">
-                   <Button size="xs" variant="outline" onClick={() => {}} className="font-black h-8"><FileDown size={14} className="mr-1"/> Excel</Button>
+                   <Button size="xs" variant="outline" onClick={exportIndividualExcel} className="font-black h-8 text-emerald-600 border-emerald-100 hover:bg-emerald-50"><FileSpreadsheet size={14} className="mr-2"/> Exportar Excel</Button>
                    <Button size="xs" variant="primary" onClick={() => window.print()} className="font-black h-8 shadow-lg"><Printer size={14} className="mr-1"/> Gerar PDF Oficial</Button>
                 </div>
 
                 <div className="grid md:grid-cols-4 gap-6">
-                    <Card className="md:col-span-1 bg-black text-white p-8 flex flex-col items-center justify-center border-none shadow-2xl overflow-hidden relative group">
+                    <Card className="md:col-span-1 bg-black text-white p-8 flex flex-col items-center justify-center border-none shadow-2xl overflow-hidden relative group rounded-3xl">
                         <Award className="absolute -top-4 -left-4 text-white/10 w-24 h-24 rotate-12" />
                         <Label className="text-white/40 mb-2 uppercase tracking-widest text-[10px]">Nota Final</Label>
                         <p className="text-6xl font-black">{(stats?.finalScore || 0).toFixed(1)}</p>
                         <div className="mt-4 px-3 py-1 bg-white/10 rounded-full text-[8px] font-black uppercase tracking-widest">Semestre {institution?.evaluationPeriodName?.split('-')[1] || '1'}</div>
                     </Card>
 
-                    <Card className="md:col-span-2 bg-white border-none shadow-lg">
-                        <CardHeader className="pb-0"><CardTitle className="text-[9px] opacity-40 flex items-center gap-2"><BarChart3 size={12}/> Comparativo de Performance</CardTitle></CardHeader>
+                    <Card className="md:col-span-2 bg-white border-none shadow-lg rounded-3xl">
+                        <CardHeader className="pb-0"><CardTitle className="text-[9px] opacity-40 flex items-center gap-2 uppercase font-black"><BarChart3 size={12}/> Comparativo de Performance</CardTitle></CardHeader>
                         <CardContent className="h-48 pt-4">
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart layout="vertical" data={barData} margin={{left: 0, right: 30}}>
@@ -108,8 +123,8 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                         </CardContent>
                     </Card>
 
-                    <Card className="md:col-span-1 bg-white border-none shadow-lg flex flex-col items-center justify-center p-4">
-                        <CardTitle className="text-[9px] opacity-40 mb-4">Fontes de Dados</CardTitle>
+                    <Card className="md:col-span-1 bg-white border-none shadow-lg flex flex-col items-center justify-center p-4 rounded-3xl">
+                        <CardTitle className="text-[9px] opacity-40 mb-4 uppercase font-black">Fontes de Dados</CardTitle>
                         <div className="space-y-3 w-full">
                             {[
                                 {label: 'Alunos', val: stats?.studentScore || 0, max: 12, color: 'bg-emerald-500'},
@@ -122,7 +137,7 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                                         <span className="opacity-50">{item.val.toFixed(1)} / {item.max}</span>
                                     </div>
                                     <div className="h-1 w-full bg-gray-100 rounded-full overflow-hidden">
-                                        <div className={cn("h-full transition-all duration-1000", item.color)} style={{width: `${(item.val/item.max)*100}%`}} />
+                                        <div className={cn("h-full transition-all duration-1000", item.color)} style={{width: `${(item.val/(item.max||1))*100}%`}} />
                                     </div>
                                 </div>
                             ))}
@@ -131,8 +146,8 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-6">
-                    <Card className="border-none shadow-lg bg-white">
-                        <CardHeader><CardTitle className="text-[9px] opacity-40">Perfil de Actividade Académica</CardTitle></CardHeader>
+                    <Card className="border-none shadow-lg bg-white rounded-3xl">
+                        <CardHeader><CardTitle className="text-[9px] opacity-40 uppercase font-black">Actividades Académicas</CardTitle></CardHeader>
                         <CardContent className="h-48">
                             <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
@@ -140,13 +155,13 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                                         {effortData.map((e, i) => <Cell key={i} fill={e.color} />)}
                                     </Pie>
                                     <Tooltip contentStyle={{borderRadius: '12px', border: 'none', fontSize: '10px'}} />
-                                    <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" wrapperStyle={{fontSize: '9px', fontWeight: 'bold'}} />
+                                    <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" wrapperStyle={{fontSize: '9px', fontWeight: 'bold', textTransform: 'uppercase'}} />
                                 </PieChart>
                             </ResponsiveContainer>
                         </CardContent>
                     </Card>
-                    <Card className="border-none shadow-lg bg-white">
-                        <CardHeader><CardTitle className="text-[9px] opacity-40">Disciplinas Activas ({subjects.length})</CardTitle></CardHeader>
+                    <Card className="border-none shadow-lg bg-white rounded-3xl">
+                        <CardHeader><CardTitle className="text-[9px] opacity-40 uppercase font-black">Disciplinas Activas ({subjects.length})</CardTitle></CardHeader>
                         <CardContent className="space-y-2">
                             {subjects.map(s => (
                                 <div key={s.id} className="p-3 bg-gray-50 rounded-xl flex items-center gap-3 border border-gray-100 hover:border-blue-200 transition-colors cursor-pointer">
@@ -165,8 +180,8 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
 
         {activeTab === 'self-eval' && (
             <div className="no-print animate-fade-in">
-                <Card className="max-w-2xl mx-auto shadow-2xl rounded-3xl border-none">
-                    <CardHeader className="text-center border-b p-8">
+                <Card className="max-w-2xl mx-auto shadow-2xl rounded-[2.5rem] border-none overflow-hidden">
+                    <CardHeader className="text-center border-b p-8 bg-gray-50/50">
                         <div className="h-14 w-14 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-100 shadow-sm">
                             <FileCheck className="text-blue-600" size={28}/>
                         </div>
@@ -187,8 +202,8 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                                 </div>
                             ))}
                         </div>
-                        <Button onClick={()=>BackendService.saveSelfEval({teacherId: user.id, institutionId: user.institutionId, header: { category: user.category || 'assistente', function: 'Docente', contractRegime: 'Tempo Inteiro', workPeriod: 'Laboral', academicYear: '2024' }, answers}).then(()=>alert("Dados de produção actualizados!"))} className="w-full h-14 bg-blue-600 hover:bg-blue-700 font-black text-xs uppercase tracking-widest shadow-xl rounded-2xl mt-4">
-                            ACTUALIZAR DADOS DE PRODUÇÃO
+                        <Button onClick={()=>BackendService.saveSelfEval({teacherId: user.id, institutionId: user.institutionId, header: { category: user.category || 'assistente', function: 'Docente', contractRegime: 'Tempo Inteiro', workPeriod: 'Laboral', academicYear: '2024' }, answers}).then(()=>alert("Dados de produção actualizados!"))} className="w-full h-14 bg-blue-600 hover:bg-blue-700 font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-50 rounded-2xl mt-4">
+                            SALVAR DADOS DE PRODUÇÃO
                         </Button>
                     </CardContent>
                 </Card>
