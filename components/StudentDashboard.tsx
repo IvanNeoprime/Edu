@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { User, Questionnaire, Question } from '../types';
+import { User, Questionnaire, Question, Institution } from '../types';
 import { BackendService, SubjectWithTeacher } from '../services/backend';
 import { Card, CardContent, CardHeader, CardTitle, Button, Select, Label, Input } from './ui';
 import { Lock, Send, CheckCircle2, AlertCircle, Star, User as UserIcon, BookOpen, PieChart as PieChartIcon, Check, CalendarClock } from 'lucide-react';
@@ -13,6 +13,7 @@ interface Props {
 export const StudentDashboard: React.FC<Props> = ({ user }) => {
   const [activeTab, setActiveTab] = useState<'survey' | 'stats'>('survey');
   const [data, setData] = useState<{questionnaire: Questionnaire, subjects: SubjectWithTeacher[]} | null>(null);
+  const [institution, setInstitution] = useState<Institution | null>(null);
   const [progress, setProgress] = useState<{completed: number, pending: number}>({ completed: 0, pending: 0 });
   
   // Estados para seleção em duas etapas
@@ -26,6 +27,7 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
 
   useEffect(() => {
     if (user.institutionId) {
+        BackendService.getInstitution(user.institutionId).then(setInstitution);
         BackendService.getAvailableSurveys(user.institutionId).then(d => {
             setData(d);
             if(d) {
@@ -86,7 +88,7 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
   };
 
   const handleSubmit = async () => {
-    if (!data || !selectedSubjectId) return;
+    if (!data || !selectedSubjectId || !user.institutionId) return;
     
     const qCount = data.questionnaire.questions.length;
     const aCount = Object.keys(answers).length;
@@ -102,6 +104,7 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
         if (!subject) throw new Error("Disciplina inválida");
 
         await BackendService.submitAnonymousResponse(user.id, {
+            institutionId: user.institutionId,
             questionnaireId: data.questionnaire.id,
             subjectId: selectedSubjectId,
             teacherId: subject.teacherId,
@@ -230,6 +233,8 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
       { name: 'Avaliado', value: progress.completed, color: '#22c55e' },
       { name: 'Pendente', value: progress.pending, color: '#e5e7eb' },
   ];
+  
+  const isEvaluationOpen = institution?.isEvaluationOpen ?? true; // Assume aberto se não definido
 
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-8 animate-in fade-in duration-500">
@@ -313,6 +318,14 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                         <CheckCircle2 className="h-16 w-16 mb-4" />
                         <h2 className="text-xl font-bold">Obrigado!</h2>
                         <p>Sua avaliação foi registrada com sucesso.</p>
+                    </CardContent>
+                </Card>
+            ) : !isEvaluationOpen ? (
+                <Card className="bg-yellow-50 border-yellow-200">
+                    <CardContent className="flex flex-col items-center justify-center py-12 text-yellow-800">
+                        <Lock className="h-12 w-12 mb-4" />
+                        <h2 className="text-xl font-bold">Período de Avaliação Fechado</h2>
+                        <p className="text-center">O período para submissão de avaliações ("{institution?.evaluationPeriodName || 'Atual'}") foi encerrado pela instituição.</p>
                     </CardContent>
                 </Card>
             ) : (

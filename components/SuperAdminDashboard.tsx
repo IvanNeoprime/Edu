@@ -72,6 +72,19 @@ export const SuperAdminDashboard: React.FC = () => {
     }
   };
 
+  const handleDeleteInstitution = async (instId: string, instName: string) => {
+      const confirmText = `Tem a certeza que quer eliminar a instituição "${instName}"? Esta ação é IRREVERSÍVEL e irá apagar todos os docentes, alunos, disciplinas e avaliações associadas.`;
+      if (window.confirm(confirmText)) {
+          try {
+              await BackendService.deleteInstitution(instId);
+              alert("Instituição eliminada com sucesso.");
+              loadData();
+          } catch (e: any) {
+              alert("Erro ao eliminar instituição: " + e.message);
+          }
+      }
+  };
+
   const handleReset = async () => {
       const confirm1 = window.confirm("⚠️ PERIGO: Isso apagará TODOS os dados (Instituições, Docentes, Alunos, Notas) do sistema.\n\nApenas a sua conta de Super Admin será mantida.\n\nTem certeza?");
       if (!confirm1) return;
@@ -140,7 +153,7 @@ export const SuperAdminDashboard: React.FC = () => {
                                 <p>Gestores:</p>
                                 {inst.managerEmails.map(e => <div key={e}>{e}</div>)}
                             </div>
-                            <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50">
+                            <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => handleDeleteInstitution(inst.id, inst.name)}>
                                 <Trash2 className="h-4 w-4" />
                             </Button>
                         </div>

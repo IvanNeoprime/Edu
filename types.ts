@@ -17,6 +17,8 @@ export interface User {
   approved?: boolean; // For teachers
   avatar?: string; // Base64 ou URL da foto de perfil
   mustChangePassword?: boolean; // Adicionado para controle de troca de senha
+  // Fix: Added password property for authentication logic in backend services
+  password?: string;
   // Novos campos para alunos
   course?: string;
   level?: string; // Ano curricular (ex: 1, 2, 3)
@@ -34,6 +36,9 @@ export interface Institution {
   createdAt: string;
   managerEmails: string[];
   inviteCode?: string;
+  // Novos campos para gestão de período
+  isEvaluationOpen?: boolean;
+  evaluationPeriodName?: string;
 }
 
 export interface Subject {
@@ -75,6 +80,7 @@ export interface Questionnaire {
 
 export interface StudentResponse {
   id: string;
+  institutionId: string; // Adicionado para validação de período
   questionnaireId: string;
   teacherId?: string; // Opcional se for um inquérito geral para docentes
   subjectId?: string; // Opcional se for um inquérito geral
@@ -91,6 +97,7 @@ export interface InstitutionalEval {
 
 export interface SelfEvaluation {
   teacherId: string;
+  institutionId: string; // Adicionado para validação
   // Cabeçalho
   header: {
     category: TeacherCategory;

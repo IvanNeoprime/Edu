@@ -138,7 +138,7 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
 
   const handleSaveSelfEval = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (lastSaved) return;
+      if (!user.institutionId) return;
 
       setSaving(true);
       
@@ -148,26 +148,32 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
           cleanAnswers.postGradSupervision = 0;
           cleanAnswers.regencySubjects = 0;
       }
-
-      await BackendService.saveSelfEval({
-          teacherId: user.id,
-          header,
-          answers: cleanAnswers,
-          comments: selfComments
-      });
-      setSaving(false);
-      setLastSaved(new Date());
-      alert("Auto-avaliação submetida com sucesso! O formulário foi fechado para edição.");
-      loadData();
+      try {
+        await BackendService.saveSelfEval({
+            teacherId: user.id,
+            institutionId: user.institutionId,
+            header,
+            answers: cleanAnswers,
+            comments: selfComments
+        });
+        setSaving(false);
+        setLastSaved(new Date());
+        alert("Auto-avaliação submetida com sucesso! O formulário foi fechado para edição.");
+        loadData();
+      } catch (error: any) {
+        alert("Erro ao salvar: " + error.message);
+        setSaving(false);
+      }
   };
 
   const handleDownloadPDF = () => { window.print(); };
 
   const handleSubmitSurvey = async () => {
-    if (!availableSurvey) return;
+    if (!availableSurvey || !user.institutionId) return;
     setSurveySubmitting(true);
     try {
         await BackendService.submitAnonymousResponse(user.id, {
+            institutionId: user.institutionId,
             questionnaireId: availableSurvey.questionnaire.id,
             subjectId: 'general',
             teacherId: user.id,
@@ -193,7 +199,8 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
       }
   };
 
-  const isFormLocked = !!lastSaved;
+  const isEvaluationOpen = institution?.isEvaluationOpen ?? true;
+  const isFormLocked = !!lastSaved || !isEvaluationOpen;
   const isIntern = header.category === 'assistente_estagiario';
   
   const scoreChartData = stats ? [
@@ -339,7 +346,7 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
           <div className="grid gap-6 lg:grid-cols-12 animate-in slide-in-from-right-4 fade-in duration-300">
               <div className="lg:col-span-8">
                   {isFormLocked && (
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-4 flex items-start gap-3"><Lock className="h-5 w-5 text-yellow-600 mt-0.5" /><div><h4 className="font-bold text-yellow-800 text-sm">Formulário Bloqueado</h4><p className="text-sm text-yellow-700">Você já submeteu sua auto-avaliação. Para fazer alterações, entre em contato com o Gestor Institucional.</p></div></div>
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-4 flex items-start gap-3"><Lock className="h-5 w-5 text-yellow-600 mt-0.5" /><div><h4 className="font-bold text-yellow-800 text-sm">Formulário Bloqueado</h4><p className="text-sm text-yellow-700">{!isEvaluationOpen ? `O período de avaliação ("${institution?.evaluationPeriodName || 'Atual'}") está fechado.` : 'Você já submeteu sua auto-avaliação. Para fazer alterações, entre em contato com o Gestor Institucional.'}</p></div></div>
                   )}
 
                   <form onSubmit={handleSaveSelfEval} className="space-y-6">
@@ -421,7 +428,7 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                           <Button type="submit" size="lg" className={`w-full h-12 text-lg shadow-md ${isFormLocked ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`} disabled={saving || isFormLocked}>
                               {isFormLocked ? <><Lock className="mr-2 h-5 w-5" /> Submetido e Bloqueado</> : (saving ? 'Salvando...' : <><Save className="mr-2 h-5 w-5" /> Salvar Auto-Avaliação Completa</>)}
                           </Button>
-                          {!isFormLocked && (<p className="text-center text-xs text-gray-500">Atenção: Após salvar, o formulário será bloqueado para edição.</p>)}
+                          {!isFormLocked && isEvaluationOpen && (<p className="text-center text-xs text-gray-500">Atenção: Após salvar, o formulário será bloqueado para edição.</p>)}
                       </div>
                   </form>
               </div>
@@ -449,6 +456,11 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                     <CardContent>
                         {!availableSurvey ? (
                             <p className="text-center text-gray-500 py-8">Nenhum inquérito ativo no momento.</p>
+                        ) : !isEvaluationOpen ? (
+                           <div className="text-center py-8 text-yellow-800">
+                               <Lock className="mx-auto h-8 w-8 mb-2" />
+                               <p>O período para submissão de inquéritos está fechado.</p>
+                           </div>
                         ) : (
                             <div className="space-y-6">
                                 <h3 className="text-lg font-semibold text-center">{availableSurvey.questionnaire.title}</h3>
