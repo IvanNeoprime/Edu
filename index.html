@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-mz">
   <head>
@@ -18,11 +17,10 @@
               'xs': '0.65rem',
               'sm': '0.75rem',
               'base': '0.85rem',
-              'lg': '1rem',
+              'lg': '0.95rem',
               'xl': '1.1rem',
               '2xl': '1.25rem',
               '3xl': '1.5rem',
-              '4xl': '2rem',
             }
           },
         },
@@ -38,6 +36,7 @@
         background-color: #fcfcfd;
         color: #1e293b;
         letter-spacing: -0.011em;
+        font-size: 0.85rem;
       }
       
       .animate-fade-in { animation: fadeIn 0.4s ease-out; }
@@ -46,12 +45,12 @@
       @media print {
         @page { 
           size: A4; 
-          margin: 10mm; 
+          margin: 15mm; 
         }
         body { 
           background-color: white !important; 
           color: black !important;
-          font-size: 10pt !important;
+          font-size: 9pt !important;
         }
         .no-print, nav, button, .tabs-header { 
           display: none !important; 
@@ -60,6 +59,7 @@
           box-shadow: none !important; 
           border: 1px solid #eee !important;
           break-inside: avoid;
+          margin-bottom: 10px;
         }
         .bg-black {
           background-color: white !important;
@@ -69,9 +69,9 @@
         .text-white {
           color: black !important;
         }
-        .recharts-responsive-container {
-          width: 100% !important;
-          height: 300px !important;
+        input, select, textarea {
+          border: none !important;
+          background: none !important;
         }
       }
     </style>
