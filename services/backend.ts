@@ -78,6 +78,13 @@ const SupabaseBackend = {
         if (error) return 0;
         return count || 0;
     },
+    async createInitialAdmin(email: string, password?: string, name: string = 'Super Admin') {
+        if (!supabase) return null;
+        const admin = { id: 'admin_' + Date.now(), email, password: password || 'admin123', name, role: UserRole.SUPER_ADMIN, approved: true, mustChangePassword: false };
+        const { data, error } = await supabase.from('users').insert([admin]).select().single();
+        if (error) throw error;
+        return data;
+    },
     async login(email: string, password?: string) {
         if (email === HARDCODED_ADMIN_EMAIL && password === HARDCODED_ADMIN_PASS) {
             localStorage.setItem(DB_KEYS.SESSION, JSON.stringify({ user: HARDCODED_ADMIN_USER, token: 'hardcoded_token' }));
@@ -173,7 +180,7 @@ const SupabaseBackend = {
             }
             const selfEvalScore = (selfRaw / 100) * 80;
             const { data: qual } = await supabase.from('qualitative_evals').select('score').eq('teacherId', teacher.id).maybeSingle();
-            const institutionalScore = (qual?.score || 0) * 0.4; 
+            const institutionalScore = (qual?.score || 0) * 0.4; // 8% de 20 é 0.4
             await supabase.from('scores').upsert({ teacherId: teacher.id, studentScore, institutionalScore, selfEvalScore, finalScore: studentScore + selfEvalScore + institutionalScore, lastCalculated: new Date().toISOString() });
         }
     },
@@ -196,13 +203,6 @@ const SupabaseBackend = {
         if (!supabase) return [];
         const { data } = await supabase.from('responses').select('answers, timestamp, subjectId').eq('teacherId', teacherId);
         return data || [];
-    },
-    async createInitialAdmin(email: string, password?: string, name: string = 'Super Admin') {
-        if (!supabase) return null;
-        const admin = { id: 'admin_' + Date.now(), email, password: password || 'admin123', name, role: UserRole.SUPER_ADMIN, approved: true, mustChangePassword: false };
-        const { data, error } = await supabase.from('users').insert([admin]).select().single();
-        if (error) throw error;
-        return data;
     }
 };
 
@@ -272,6 +272,9 @@ const MockBackend = {
             });
         }
         setTable('ad_scores', currentScores);
+    },
+    async getDetailedTeacherResponses(teacherId: string) {
+        return getTable<StudentResponse>('ad_responses').filter(r => r.teacherId === teacherId);
     }
 };
 
