@@ -1,10 +1,10 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { BackendService } from '../services/backend';
 import { User, UserRole, Subject, Question, Institution, CombinedScore } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, cn } from './ui';
-// Added 'Save' to the lucide-react imports
-import { Users, BookOpen, Trash2, GraduationCap, Settings, Briefcase, FileText, Star, FileDown, Printer, Calculator, Download, CheckCircle, Search, ClipboardList, Save } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, CartesianGrid } from 'recharts';
+import { Users, BookOpen, Trash2, GraduationCap, Settings, Briefcase, FileText, Star, FileDown, Printer, Calculator, Download, CheckCircle, Search, ClipboardList, Save, TrendingUp, Activity } from 'lucide-react';
 
 interface Props {
   institutionId: string;
@@ -47,6 +47,28 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     setIsCalculating(false);
   };
 
+  // Processamento de dados para os gráficos
+  const distributionData = useMemo(() => {
+    const bins = [
+      { name: '0-10', count: 0, color: '#ef4444' },
+      { name: '10-14', count: 0, color: '#f59e0b' },
+      { name: '14-17', count: 0, color: '#3b82f6' },
+      { name: '17-20', count: 0, color: '#10b981' }
+    ];
+    scores.forEach(s => {
+      if (s.finalScore < 10) bins[0].count++;
+      else if (s.finalScore < 14) bins[1].count++;
+      else if (s.finalScore < 17) bins[2].count++;
+      else bins[3].count++;
+    });
+    return bins;
+  }, [scores]);
+
+  const participationData = [
+    { name: 'Concluído', value: scores.length, color: '#10b981' },
+    { name: 'Pendente', value: Math.max(0, teachers.length - scores.length), color: '#e2e8f0' }
+  ];
+
   const loadCurrentQuestionnaire = async () => {
     const q = await BackendService.getInstitutionQuestionnaire(institutionId, qTarget);
     if (q) { setEditingQuestions(q.questions); setQTitle(q.title); }
@@ -56,20 +78,8 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const downloadTeacherInquiries = async (teacher: User) => {
     const resps = await BackendService.getDetailedTeacherResponses(teacher.id);
     if (resps.length === 0) return alert("Nenhum inquérito respondido para este docente.");
-
-    const csvRows = [
-        ["INQUÉRITOS DETALHADOS - " + teacher.name],
-        ["Data da Extração", new Date().toLocaleString()],
-        [],
-        ["Timestamp", "Cadeira ID", "Pergunta ID", "Resposta"]
-    ];
-
-    resps.forEach((r: any) => {
-        r.answers.forEach((a: any) => {
-            csvRows.push([r.timestamp, r.subjectId || "N/A", a.questionId, a.value]);
-        });
-    });
-
+    const csvRows = [["INQUÉRITOS DETALHADOS - " + teacher.name], ["Data", new Date().toLocaleString()], [], ["Timestamp", "Cadeira", "Pergunta", "Resposta"]];
+    resps.forEach((r: any) => r.answers.forEach((a: any) => csvRows.push([r.timestamp, r.subjectId || "N/A", a.questionId, a.value])));
     const csvContent = "data:text/csv;charset=utf-8," + csvRows.map(e => e.join(",")).join("\n");
     const link = document.createElement("a");
     link.setAttribute("href", encodeURI(csvContent));
@@ -129,7 +139,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                   {id: 'teachers', label: 'Docentes', icon: Users},
                   {id: 'students', label: 'Alunos', icon: GraduationCap},
                   {id: 'subjects', label: 'Cadeiras', icon: BookOpen},
-                  {id: 'reports', label: 'Relatórios', icon: ClipboardList},
+                  {id: 'reports', label: 'Pautas', icon: ClipboardList},
                   {id: 'questionnaire', label: 'Inquéritos', icon: FileText},
                   {id: 'settings', label: 'Config', icon: Settings},
               ].map(tab => (
@@ -140,64 +150,126 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           </div>
         </header>
 
+        {activeTab === 'overview' && (
+            <div className="space-y-6 no-print">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <Card className="bg-white border-none shadow-sm p-4 flex items-center gap-4">
+                        <div className="h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center"><Users size={20}/></div>
+                        <div><Label className="text-[8px] mb-1 block">Docentes</Label><p className="text-xl font-black">{teachers.length}</p></div>
+                    </Card>
+                    <Card className="bg-white border-none shadow-sm p-4 flex items-center gap-4">
+                        <div className="h-10 w-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center"><GraduationCap size={20}/></div>
+                        <div><Label className="text-[8px] mb-1 block">Estudantes</Label><p className="text-xl font-black">{students.length}</p></div>
+                    </Card>
+                    <Card className="bg-white border-none shadow-sm p-4 flex items-center gap-4">
+                        <div className="h-10 w-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center"><Activity size={20}/></div>
+                        <div><Label className="text-[8px] mb-1 block">Inquéritos</Label><p className="text-xl font-black">{scores.length}</p></div>
+                    </Card>
+                    <Card className="bg-black text-white p-4 flex items-center gap-4 border-none shadow-xl">
+                        <div className="h-10 w-10 rounded-lg bg-white/10 text-white flex items-center justify-center"><TrendingUp size={20}/></div>
+                        <div><Label className="text-white/40 text-[8px] mb-1 block">Status</Label><p className="text-[10px] font-black uppercase">{institution?.isEvaluationOpen ? 'Em Aberto' : 'Finalizado'}</p></div>
+                    </Card>
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-6">
+                    <Card className="md:col-span-2 border-none shadow-lg bg-white">
+                        <CardHeader className="pb-0"><CardTitle className="text-[10px] opacity-50 flex items-center gap-2"><TrendingUp size={14}/> Distribuição de Notas (Docentes)</CardTitle></CardHeader>
+                        <CardContent className="h-64 pt-6">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={distributionData}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 700, fill: '#94a3b8'}} />
+                                    <YAxis hide />
+                                    <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '10px'}} />
+                                    <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={50}>
+                                        {distributionData.map((entry, index) => <Cell key={index} fill={entry.color} />)}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="border-none shadow-lg bg-white">
+                        <CardHeader className="pb-0"><CardTitle className="text-[10px] opacity-50 flex items-center gap-2"><CheckCircle size={14}/> Progresso de Avaliação</CardTitle></CardHeader>
+                        <CardContent className="h-64 flex flex-col items-center justify-center pt-6">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie data={participationData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" stroke="none">
+                                        {participationData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                                    </Pie>
+                                    <Tooltip />
+                                </PieChart>
+                            </ResponsiveContainer>
+                            <div className="text-center -mt-8">
+                                <p className="text-2xl font-black">{Math.round((scores.length / (teachers.length || 1)) * 100)}%</p>
+                                <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Docentes Avaliados</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        )}
+
+        {/* Manteve as outras abas conforme solicitado, apenas garantindo que os relatórios sejam acessíveis */}
         {activeTab === 'reports' && (
             <div className="space-y-6 no-print">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl border shadow-sm">
                     <div className="flex items-center gap-3 bg-gray-50 border rounded-lg px-3 h-10 w-full md:w-64">
                         <Search size={16} className="text-gray-400" />
-                        <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Pesquisar docente..." className="bg-transparent border-none outline-none text-xs font-medium w-full" />
+                        <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Filtrar por nome..." className="bg-transparent border-none outline-none text-xs font-medium w-full" />
                     </div>
                     <div className="flex gap-2 w-full md:w-auto">
                         <Button size="xs" variant="secondary" onClick={handleCalculate} disabled={isCalculating} className="h-10 flex-1">
-                           <Calculator size={14} className="mr-1"/> {isCalculating ? 'Processando...' : 'Recalcular Pauta'}
+                           <Calculator size={14} className="mr-1"/> Recalcular Pauta
                         </Button>
                         <Button size="xs" variant="primary" onClick={() => window.print()} className="h-10 flex-1">
-                           <Printer size={14} className="mr-1"/> Gerar PDF Geral
+                           <Printer size={14} className="mr-1"/> Exportar PDF
                         </Button>
                     </div>
                 </div>
 
-                <div className="grid gap-4">
+                <div className="grid gap-3">
                     {filteredTeachers.map(t => {
                         const s = scores.find(sc => sc.teacherId === t.id);
+                        const finalNote = s?.finalScore || 0;
                         return (
-                            <Card key={t.id} className="overflow-hidden border-none shadow-md hover:shadow-lg transition-all group">
+                            <Card key={t.id} className="overflow-hidden border-none shadow-sm hover:shadow-md transition-all">
                                 <CardContent className="p-0">
                                     <div className="flex flex-col md:flex-row items-center">
-                                        <div className="p-4 flex-1 flex items-center gap-4">
-                                            <div className="h-10 w-10 bg-gray-50 rounded-lg flex items-center justify-center font-black text-blue-600 border uppercase">{t.name[0]}</div>
+                                        <div className="p-4 flex-1 flex items-center gap-3">
+                                            <div className={cn("h-1.5 w-1.5 rounded-full", finalNote >= 14 ? 'bg-emerald-500' : finalNote >= 10 ? 'bg-amber-500' : 'bg-red-500')} />
                                             <div>
-                                                <p className="font-black text-xs uppercase tracking-tight">{t.name}</p>
-                                                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">{t.category || 'Docente'}</p>
+                                                <p className="font-black text-xs uppercase">{t.name}</p>
+                                                <p className="text-[9px] text-gray-400 font-bold">{t.email}</p>
                                             </div>
                                         </div>
-                                        <div className="grid grid-cols-4 border-t md:border-t-0 md:border-l flex-[1.5] bg-gray-50/50">
+                                        <div className="grid grid-cols-4 border-t md:border-t-0 md:border-l flex-[1.5] bg-gray-50/30">
                                             <div className="p-4 text-center border-r">
-                                                <p className="text-[8px] font-black text-gray-400 uppercase mb-1">Alunos</p>
-                                                <p className="text-xs font-black text-emerald-600">{s?.studentScore.toFixed(2) || '0.00'}</p>
+                                                <p className="text-[7px] font-black text-gray-400 uppercase">Alunos</p>
+                                                <p className="text-xs font-bold">{s?.studentScore.toFixed(2) || '0.00'}</p>
                                             </div>
                                             <div className="p-4 text-center border-r">
-                                                <p className="text-[8px] font-black text-gray-400 uppercase mb-1">Auto</p>
-                                                <p className="text-xs font-black text-purple-600">{s?.selfEvalScore.toFixed(2) || '0.00'}</p>
+                                                <p className="text-[7px] font-black text-gray-400 uppercase">Auto</p>
+                                                <p className="text-xs font-bold">{s?.selfEvalScore.toFixed(2) || '0.00'}</p>
                                             </div>
                                             <div className="p-4 text-center border-r">
-                                                <p className="text-[8px] font-black text-gray-400 uppercase mb-1">Gestão</p>
-                                                <p className="text-xs font-black text-blue-600">{s?.institutionalScore.toFixed(2) || '0.00'}</p>
+                                                <p className="text-[7px] font-black text-gray-400 uppercase">Gestão</p>
+                                                <p className="text-xs font-bold">{s?.institutionalScore.toFixed(2) || '0.00'}</p>
                                             </div>
-                                            <div className="p-4 text-center bg-black text-white">
-                                                <p className="text-[8px] font-black opacity-50 uppercase mb-1">Média</p>
-                                                <p className="text-xs font-black">{s?.finalScore.toFixed(2) || '0.00'}</p>
+                                            <div className="p-4 text-center bg-gray-900 text-white">
+                                                <p className="text-[7px] font-black opacity-50 uppercase">Final</p>
+                                                <p className="text-xs font-black">{finalNote.toFixed(2)}</p>
                                             </div>
                                         </div>
                                         <div className="p-4 border-t md:border-t-0 md:border-l flex gap-2">
-                                            <Button size="xs" variant="outline" onClick={() => {
+                                            <Button size="xs" variant="ghost" onClick={() => downloadTeacherInquiries(t)} className="h-8 text-blue-600 hover:bg-blue-50">
+                                                <Download size={14}/>
+                                            </Button>
+                                            <Button size="xs" variant="ghost" onClick={() => {
                                                 const val = prompt("Atribuir Nota de Gestão (0-20):", String(s?.institutionalScore ? s.institutionalScore / 0.4 : 10));
                                                 if (val) BackendService.saveQualitativeEval({ teacherId: t.id, institutionId, score: parseFloat(val) }).then(handleCalculate);
-                                            }} className="h-8 shadow-sm">
-                                                <Star size={12} className="mr-1 text-yellow-500 fill-yellow-500" /> Nota
-                                            </Button>
-                                            <Button size="xs" variant="secondary" onClick={() => downloadTeacherInquiries(t)} className="h-8 shadow-sm">
-                                                <Download size={12} className="mr-1" /> Inquéritos
+                                            }} className="h-8 text-amber-600 hover:bg-amber-50">
+                                                <Star size={14}/>
                                             </Button>
                                         </div>
                                     </div>
@@ -209,59 +281,63 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             </div>
         )}
 
-        {/* Abas de Gestão */}
+        {/* Outras abas permanecem com o layout padrão */}
         {activeTab === 'teachers' && <TeachersTab teachers={teachers} institutionId={institutionId} onUpdate={loadData} />}
         {activeTab === 'students' && <StudentsTab students={students} institutionId={institutionId} onUpdate={loadData} />}
         {activeTab === 'subjects' && <SubjectsTab subjects={subjects} teachers={teachers} institutionId={institutionId} onUpdate={loadData} />}
-        
-        {activeTab === 'overview' && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 no-print">
-                <Card className="bg-white border-none shadow-sm p-6"><Label className="text-[9px] mb-2 block">Total de Docentes</Label><p className="text-4xl font-black">{teachers.length}</p></Card>
-                <Card className="bg-white border-none shadow-sm p-6"><Label className="text-[9px] mb-2 block">Alunos Ativos</Label><p className="text-4xl font-black">{students.length}</p></Card>
-                <Card className="bg-white border-none shadow-sm p-6"><Label className="text-[9px] mb-2 block">Cadeiras Ativas</Label><p className="text-4xl font-black">{subjects.length}</p></Card>
-                <Card className="bg-black text-white p-6 rounded-2xl shadow-xl flex flex-col justify-between">
-                    <Label className="text-white/40 text-[9px] block">Portal {institution?.isEvaluationOpen ? 'Aberto' : 'Fechado'}</Label>
-                    <div className="mt-4 flex items-center gap-2">
-                        <CheckCircle size={14} className="text-emerald-400" />
-                        <span className="text-[10px] font-black uppercase tracking-widest">Calculadora Pronta</span>
-                    </div>
-                </Card>
-            </div>
-        )}
-
-        {activeTab === 'questionnaire' && (
-             <div className="grid md:grid-cols-3 gap-6 no-print animate-fade-in">
-                <Card className="md:col-span-1 shadow-lg h-fit">
-                    <CardHeader><CardTitle className="text-xs">Estrutura do Inquérito</CardTitle></CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="space-y-1"><Label>Público-Alvo</Label><Select value={qTarget} onChange={e => setQTarget(e.target.value as any)}><option value="student">Estudantes</option><option value="teacher">Auto-Avaliação</option></Select></div>
-                        <div className="space-y-1"><Label>Nome do Formulário</Label><Input value={qTitle} onChange={e => setQTitle(e.target.value)} /></div>
-                        {/* Fix: Use 'Save' which is now imported from 'lucide-react' */}
-                        <Button className="w-full h-11 bg-blue-600 hover:bg-blue-700 font-black shadow-lg" onClick={() => BackendService.saveQuestionnaire({id: 'q_'+qTarget+'_'+institutionId, institutionId, title: qTitle, targetRole: qTarget, questions: editingQuestions, active: true}).then(()=>alert("Inquérito publicado!"))}><Save size={14} className="mr-2"/> Publicar Alterações</Button>
-                    </CardContent>
-                </Card>
-                <div className="md:col-span-2 space-y-3">
-                    {editingQuestions.map((q, idx) => (
-                        <div key={q.id} className="bg-white p-4 rounded-xl border shadow-sm flex gap-4 group transition-all hover:border-blue-200">
-                            <div className="text-xs font-black text-gray-200 pt-3 group-hover:text-blue-500">{idx + 1}</div>
-                            <div className="flex-1 space-y-3">
-                                <Input value={q.text} className="border-none bg-gray-50 font-bold" onChange={e => { const n = [...editingQuestions]; n[idx].text = e.target.value; setEditingQuestions(n); }} />
-                                <div className="flex gap-2">
-                                    <Select className="h-8 text-[10px]" value={q.type} onChange={e => { const n = [...editingQuestions]; n[idx].type = e.target.value as any; setEditingQuestions(n); }}><option value="stars">Escala de Estrelas (1-5)</option><option value="binary">Sim ou Não</option><option value="scale_10">Escala Numérica (1-10)</option></Select>
-                                    <Button variant="ghost" size="xs" onClick={() => setEditingQuestions(editingQuestions.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600 hover:bg-red-50"><Trash2 size={14}/></Button>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                    <Button onClick={() => setEditingQuestions([...editingQuestions, { id: Date.now().toString(), text: 'Nova pergunta do inquérito...', type: 'stars', weight: 5 }])} className="w-full h-12 border-dashed border-2 hover:bg-blue-50 hover:border-blue-200 text-blue-600" variant="outline">+ Adicionar Nova Pergunta</Button>
-                </div>
-             </div>
-        )}
+        {activeTab === 'questionnaire' && <QuestionnaireEditor qTarget={qTarget} setQTarget={setQTarget} qTitle={qTitle} setQTitle={setQTitle} editingQuestions={editingQuestions} setEditingQuestions={setEditingQuestions} institutionId={institutionId} />}
+        {activeTab === 'settings' && <SettingsTab institution={institution} institutionId={institutionId} onUpdate={loadData} />}
     </div>
   );
 };
 
-// Componentes auxiliares simplificados para clareza
+// Componentes auxiliares para manter ManagerDashboard limpo
+const QuestionnaireEditor = ({ qTarget, setQTarget, qTitle, setQTitle, editingQuestions, setEditingQuestions, institutionId }: any) => (
+    <div className="grid md:grid-cols-3 gap-6 no-print animate-fade-in">
+        <Card className="md:col-span-1 shadow-lg h-fit">
+            <CardHeader><CardTitle className="text-xs">Configuração do Inquérito</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+                <div className="space-y-1"><Label>Público-Alvo</Label><Select value={qTarget} onChange={e => setQTarget(e.target.value as any)}><option value="student">Estudantes</option><option value="teacher">Auto-Avaliação</option></Select></div>
+                <div className="space-y-1"><Label>Nome do Formulário</Label><Input value={qTitle} onChange={e => setQTitle(e.target.value)} /></div>
+                <Button className="w-full h-11 bg-blue-600 hover:bg-blue-700 font-black shadow-lg" onClick={() => BackendService.saveQuestionnaire({id: 'q_'+qTarget+'_'+institutionId, institutionId, title: qTitle, targetRole: qTarget, questions: editingQuestions, active: true}).then(()=>alert("Inquérito publicado!"))}><Save size={14} className="mr-2"/> Publicar Alterações</Button>
+            </CardContent>
+        </Card>
+        <div className="md:col-span-2 space-y-3">
+            {editingQuestions.map((q: any, idx: number) => (
+                <div key={q.id} className="bg-white p-4 rounded-xl border shadow-sm flex gap-4 group transition-all hover:border-blue-200">
+                    <div className="text-xs font-black text-gray-200 pt-3 group-hover:text-blue-500">{idx + 1}</div>
+                    <div className="flex-1 space-y-3">
+                        <Input value={q.text} className="border-none bg-gray-50 font-bold" onChange={e => { const n = [...editingQuestions]; n[idx].text = e.target.value; setEditingQuestions(n); }} />
+                        <div className="flex gap-2">
+                            <Select className="h-8 text-[10px]" value={q.type} onChange={e => { const n = [...editingQuestions]; n[idx].type = e.target.value as any; setEditingQuestions(n); }}><option value="stars">Escala de Estrelas (1-5)</option><option value="binary">Sim ou Não</option><option value="scale_10">Escala Numérica (1-10)</option></Select>
+                            <Button variant="ghost" size="xs" onClick={() => setEditingQuestions(editingQuestions.filter((_: any, i: number) => i !== idx))} className="text-red-400 hover:text-red-600 hover:bg-red-50"><Trash2 size={14}/></Button>
+                        </div>
+                    </div>
+                </div>
+            ))}
+            <Button onClick={() => setEditingQuestions([...editingQuestions, { id: Date.now().toString(), text: 'Nova pergunta do inquérito...', type: 'stars', weight: 5 }])} className="w-full h-12 border-dashed border-2 hover:bg-blue-50 hover:border-blue-200 text-blue-600" variant="outline">+ Adicionar Nova Pergunta</Button>
+        </div>
+    </div>
+);
+
+const SettingsTab = ({ institution, institutionId, onUpdate }: any) => (
+    <Card className="max-w-md mx-auto no-print">
+        <CardHeader><CardTitle>Acesso e Período Académico</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Estado do Portal</span>
+                <Button size="xs" variant={institution?.isEvaluationOpen ? 'destructive' : 'primary'} onClick={() => BackendService.updateInstitution(institutionId, { isEvaluationOpen: !institution?.isEvaluationOpen }).then(onUpdate)}>
+                {institution?.isEvaluationOpen ? 'Fechar Portal' : 'Abrir Portal'}
+                </Button>
+            </div>
+            <div className="space-y-1">
+                <Label>Identificador do Semestre</Label>
+                <Input value={institution?.evaluationPeriodName} onBlur={e => BackendService.updateInstitution(institutionId, { evaluationPeriodName: e.target.value }).then(onUpdate)} />
+            </div>
+        </CardContent>
+    </Card>
+);
+
 const TeachersTab = ({ teachers, institutionId, onUpdate }: any) => {
     const [f, setF] = useState({ name: '', email: '', cat: 'assistente' as any });
     const add = async (e: any) => { e.preventDefault(); await BackendService.addTeacher(institutionId, f.name, f.email, '123456', '', f.cat); setF({ name: '', email: '', cat: 'assistente' }); onUpdate(); };
