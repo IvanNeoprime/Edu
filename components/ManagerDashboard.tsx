@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { BackendService } from '../services/backend';
-import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, Question, Institution, QualitativeEval } from '../types';
+import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, Question, Institution } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, cn } from './ui';
-import { Users, BookOpen, Plus, Trash2, GraduationCap, Settings, Briefcase, CalendarClock, Eye, FileText, X, Lock, Unlock, MessageSquare, Star, Hash, CheckSquare, Save, PieChart as PieIcon, BarChart3, TrendingUp, ClipboardCheck, Calculator, AlertCircle } from 'lucide-react';
+import { Users, BookOpen, Plus, Trash2, GraduationCap, Settings, Briefcase, CalendarClock, Eye, FileText, X, Lock, Unlock, MessageSquare, Star, Hash, CheckSquare, Save, PieChart as PieIcon, BarChart3, TrendingUp } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, LineChart, Line, CartesianGrid } from 'recharts';
 
 interface Props {
@@ -17,12 +17,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [students, setStudents] = useState<User[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(false);
-  const [processingScores, setProcessingScores] = useState(false);
   
-  // Qualitative Evaluation State
-  const [evaluatingTeacher, setEvaluatingTeacher] = useState<User | null>(null);
-  const [qualForm, setQualForm] = useState({ deadline: 0, quality: 0, comments: '' });
-
   const [qTarget, setQTarget] = useState<'student' | 'teacher'>('student');
   const [editingQuestions, setEditingQuestions] = useState<Question[]>([]);
   const [qTitle, setQTitle] = useState('');
@@ -51,47 +46,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     else { setEditingQuestions([]); setQTitle(qTarget === 'student' ? 'Avaliação do Desempenho Docente' : 'Avaliação das Condições Institucionais'); }
   };
 
-  const handleCalculateGlobalScores = async () => {
-      setProcessingScores(true);
-      try {
-          await BackendService.calculateScores(institutionId);
-          alert("Scores calculados com sucesso para todos os docentes!");
-      } catch (e) {
-          alert("Erro ao calcular scores.");
-      } finally {
-          setProcessingScores(false);
-      }
-  };
-
-  const openEvalModal = async (teacher: User) => {
-      setEvaluatingTeacher(teacher);
-      const existing = await BackendService.getQualitativeEval(teacher.id);
-      if (existing) {
-          setQualForm({ 
-              deadline: existing.deadlineCompliance || 0, 
-              quality: existing.workQuality || 0, 
-              comments: existing.comments || '' 
-          });
-      } else {
-          setQualForm({ deadline: 0, quality: 0, comments: '' });
-      }
-  };
-
-  const handleSaveQualitative = async () => {
-      if (!evaluatingTeacher) return;
-      const score = (qualForm.deadline + qualForm.quality) / 2; // Média simples 0-10
-      await BackendService.saveQualitativeEval({
-          teacherId: evaluatingTeacher.id,
-          institutionId,
-          deadlineCompliance: qualForm.deadline,
-          workQuality: qualForm.quality,
-          comments: qualForm.comments,
-          score: score
-      });
-      alert(`Avaliação de ${evaluatingTeacher.name} salva!`);
-      setEvaluatingTeacher(null);
-  };
-
   const handleSaveQuestionnaire = async () => {
     try {
         await BackendService.saveQuestionnaire({
@@ -109,55 +63,26 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     loadData();
   };
 
-  // Charts data
+  // Mocked Analytics Data
   const participationData = [
     { name: 'Avaliaram', value: Math.round(students.length * 0.65), color: '#10b981' },
     { name: 'Pendentes', value: Math.round(students.length * 0.35), color: '#f59e0b' }
   ];
 
+  const performanceByCourse = [
+    { name: 'Engenharia', score: 4.2 },
+    { name: 'Direito', score: 3.8 },
+    { name: 'Economia', score: 4.5 },
+    { name: 'Medicina', score: 4.1 },
+  ];
+
+  const trendData = [
+    { period: '2022/1', score: 3.5 }, { period: '2022/2', score: 3.7 },
+    { period: '2023/1', score: 3.9 }, { period: '2023/2', score: 4.2 },
+  ];
+
   return (
     <div className="space-y-8 p-4 md:p-8 max-w-7xl mx-auto animate-fade-in relative min-h-screen">
-        
-        {/* Modal de Avaliação Qualitativa */}
-        {evaluatingTeacher && (
-            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                <Card className="w-full max-w-lg animate-in zoom-in-95">
-                    <CardHeader className="border-b">
-                        <CardTitle className="flex items-center gap-2">
-                            <ClipboardCheck className="text-blue-600" />
-                            Avaliar: {evaluatingTeacher.name}
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6 space-y-6">
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <Label className="flex justify-between">
-                                    <span>Cumprimento de Prazos (0-10)</span>
-                                    <span className="font-black text-blue-600">{qualForm.deadline}</span>
-                                </Label>
-                                <input type="range" min="0" max="10" step="1" value={qualForm.deadline} onChange={e=>setQualForm({...qualForm, deadline: parseInt(e.target.value)})} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="flex justify-between">
-                                    <span>Qualidade do Trabalho (0-10)</span>
-                                    <span className="font-black text-blue-600">{qualForm.quality}</span>
-                                </Label>
-                                <input type="range" min="0" max="10" step="1" value={qualForm.quality} onChange={e=>setQualForm({...qualForm, quality: parseInt(e.target.value)})} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Observações do Gestor</Label>
-                                <textarea className="w-full p-3 border rounded-xl text-sm h-24 outline-none focus:ring-2 focus:ring-blue-500" value={qualForm.comments} onChange={e=>setQualForm({...qualForm, comments: e.target.value})} placeholder="Ex: Demonstra proatividade mas atrasou pautas do 1º teste." />
-                            </div>
-                        </div>
-                        <div className="flex gap-3">
-                            <Button variant="outline" className="flex-1" onClick={() => setEvaluatingTeacher(null)}>Cancelar</Button>
-                            <Button className="flex-1 bg-blue-600 hover:bg-blue-700 text-white" onClick={handleSaveQualitative}>Salvar Avaliação</Button>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-        )}
-
         <header className="border-b pb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex items-center gap-4">
               {institution?.logo && <img src={institution.logo} className="h-16 w-16 object-contain" alt="Logo" />}
@@ -184,98 +109,88 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         </header>
 
         {activeTab === 'overview' && (
-            <div className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <Card className="bg-blue-50 border-blue-100"><CardContent className="pt-6"><p className="text-[10px] text-blue-600 uppercase font-black mb-1">Docentes</p><p className="text-4xl font-black">{teachers.length}</p></CardContent></Card>
-                    <Card className="bg-indigo-50 border-indigo-100"><CardContent className="pt-6"><p className="text-[10px] text-indigo-600 uppercase font-black mb-1">Alunos</p><p className="text-4xl font-black">{students.length}</p></CardContent></Card>
-                    <Card className="bg-purple-50 border-purple-100"><CardContent className="pt-6"><p className="text-[10px] text-purple-600 uppercase font-black mb-1">Cadeiras</p><p className="text-4xl font-black">{subjects.length}</p></CardContent></Card>
-                    <Card className={cn(institution?.isEvaluationOpen ? 'bg-green-50' : 'bg-red-50')}><CardContent className="pt-6"><p className="text-[10px] uppercase font-black mb-1">Estado</p><p className="text-xl font-black">{institution?.isEvaluationOpen ? 'ABERTO' : 'FECHADO'}</p></CardContent></Card>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-8">
-                    <Card className="border-2 border-indigo-100 shadow-xl overflow-hidden">
-                        <CardHeader className="bg-indigo-600 text-white">
-                            <CardTitle className="flex items-center gap-2 uppercase tracking-tighter">
-                                <Calculator /> Fecho de Semestre
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-8 space-y-6">
-                            <p className="text-gray-600 font-medium">Ao clicar abaixo, o sistema irá consolidar as avaliações dos alunos, auto-avaliações e suas notas qualitativas para gerar o score final de cada docente.</p>
-                            <div className="flex items-start gap-3 p-4 bg-amber-50 rounded-xl border border-amber-200 text-amber-800 text-sm">
-                                <AlertCircle className="shrink-0 mt-0.5" />
-                                <p>Certifique-se de que realizou a <strong>Avaliação Qualitativa</strong> de todos os docentes na aba "Docentes" antes de processar.</p>
-                            </div>
-                            <Button className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-lg rounded-2xl shadow-lg" onClick={handleCalculateGlobalScores} disabled={processingScores}>
-                                {processingScores ? 'PROCESSANDO...' : 'CALCULAR SCORES FINAIS'}
-                            </Button>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader><CardTitle className="text-sm uppercase font-black text-gray-400">Participação Atual</CardTitle></CardHeader>
-                        <CardContent className="h-64">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie data={participationData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                                        {participationData.map((e, i) => <Cell key={i} fill={e.color} />)}
-                                    </Pie>
-                                    <Tooltip />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </CardContent>
-                    </Card>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <Card className="bg-blue-50 border-blue-100"><CardContent className="pt-6"><p className="text-[10px] text-blue-600 uppercase font-black mb-1">Docentes</p><p className="text-4xl font-black">{teachers.length}</p></CardContent></Card>
+                <Card className="bg-indigo-50 border-indigo-100"><CardContent className="pt-6"><p className="text-[10px] text-indigo-600 uppercase font-black mb-1">Alunos</p><p className="text-4xl font-black">{students.length}</p></CardContent></Card>
+                <Card className="bg-purple-50 border-purple-100"><CardContent className="pt-6"><p className="text-[10px] text-purple-600 uppercase font-black mb-1">Cadeiras</p><p className="text-4xl font-black">{subjects.length}</p></CardContent></Card>
+                <Card className={cn(institution?.isEvaluationOpen ? 'bg-green-50' : 'bg-red-50')}><CardContent className="pt-6"><p className="text-[10px] uppercase font-black mb-1">Estado</p><p className="text-xl font-black">{institution?.isEvaluationOpen ? 'ABERTO' : 'FECHADO'}</p></CardContent></Card>
             </div>
         )}
 
-        {activeTab === 'teachers' && (
-            <div className="grid lg:grid-cols-12 gap-8 animate-in fade-in">
-                <div className="lg:col-span-4">
-                    <Card><CardHeader><CardTitle>Novo Docente</CardTitle></CardHeader>
-                    <CardContent>
-                        <form onSubmit={(e) => { e.preventDefault(); /* ... add teacher logic already in subcomponent ... */ }} className="space-y-4">
-                            <Input placeholder="Nome" />
-                            <Input placeholder="Email" />
-                            <Input placeholder="Senha" type="password" />
-                            <Button type="submit" className="w-full h-12 rounded-xl">CADASTRAR</Button>
-                        </form>
-                    </CardContent></Card>
-                </div>
-                <div className="lg:col-span-8">
-                    <Card>
-                        <CardContent className="pt-6 space-y-3 max-h-[70vh] overflow-y-auto custom-scrollbar">
-                            {teachers.map((t)=>(
-                                <div key={t.id} className="p-5 border border-gray-100 rounded-2xl flex justify-between items-center bg-gray-50/50 hover:bg-white hover:shadow-md transition-all">
-                                    <div className="flex items-center gap-4">
-                                        <div className="h-10 w-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-black">{t.name[0]}</div>
-                                        <div>
-                                            <p className="font-bold text-gray-900">{t.name}</p>
-                                            <p className="text-xs text-gray-500 uppercase font-bold tracking-widest">{t.category}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <Button size="sm" variant="outline" className="rounded-xl font-bold flex gap-2 border-blue-200 text-blue-600 hover:bg-blue-50" onClick={() => openEvalModal(t)}>
-                                            <ClipboardCheck size={16}/> AVALIAR
-                                        </Button>
-                                        <Button size="sm" variant="ghost" className="text-red-300 hover:text-red-600" onClick={()=>BackendService.deleteUser(t.id).then(loadData)}>
-                                            <Trash2 size={16}/>
-                                        </Button>
-                                    </div>
-                                </div>
-                            ))}
-                        </CardContent>
-                    </Card>
-                </div>
+        {activeTab === 'analytics' && (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                <Card>
+                    <CardHeader><CardTitle className="text-sm uppercase flex items-center gap-2"><PieIcon size={16}/> Participação dos Alunos</CardTitle></CardHeader>
+                    <CardContent className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie data={participationData} cx="50%" cy="50%" outerRadius={70} paddingAngle={10} dataKey="value">
+                                    {participationData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                                </Pie>
+                                <Tooltip />
+                                <Legend />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </CardContent>
+                </Card>
+
+                <Card className="lg:col-span-2">
+                    <CardHeader><CardTitle className="text-sm uppercase flex items-center gap-2"><BarChart3 size={16}/> Performance por Faculdade/Curso</CardTitle></CardHeader>
+                    <CardContent className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={performanceByCourse}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} />
+                                <YAxis domain={[0, 5]} axisLine={false} tickLine={false} />
+                                <Tooltip cursor={{fill: '#f1f5f9'}} />
+                                <Bar dataKey="score" fill="#6366f1" radius={[10, 10, 0, 0]} barSize={40} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </CardContent>
+                </Card>
+
+                <Card className="lg:col-span-3">
+                    <CardHeader><CardTitle className="text-sm uppercase flex items-center gap-2"><TrendingUp size={16}/> Evolução do Score Médio Global</CardTitle></CardHeader>
+                    <CardContent className="h-72">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={trendData}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                <XAxis dataKey="period" axisLine={false} tickLine={false} />
+                                <YAxis domain={[0, 5]} axisLine={false} tickLine={false} />
+                                <Tooltip />
+                                <Line type="stepAfter" dataKey="score" stroke="#3b82f6" strokeWidth={5} dot={{r: 8, fill: '#3b82f6'}} />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </CardContent>
+                </Card>
             </div>
         )}
 
-        {/* Mantendo as outras abas sem alterações de lógica, apenas garantindo compatibilidade */}
-        {activeTab === 'analytics' && <div className="p-12 text-center text-gray-400 font-black uppercase tracking-widest border-2 border-dashed rounded-3xl">Visualização de Analytics Disponível</div>}
-        {activeTab === 'subjects' && <div className="p-12 text-center text-gray-400 font-black uppercase tracking-widest border-2 border-dashed rounded-3xl">Gestão de Cadeiras Disponível</div>}
-        {activeTab === 'questionnaire' && <div className="p-12 text-center text-gray-400 font-black uppercase tracking-widest border-2 border-dashed rounded-3xl">Construtor de Inquéritos Disponível</div>}
+        {/* Mantendo as outras abas existentes */}
+        {activeTab === 'teachers' && <TeachersTab teachers={teachers} institutionId={institutionId} onUpdate={loadData} />}
+        {activeTab === 'students' && <StudentsTab students={students} institutionId={institutionId} onUpdate={loadData} />}
+        {activeTab === 'subjects' && <div className="grid lg:grid-cols-12 gap-8"><div className="lg:col-span-5"><Card><CardHeader><CardTitle>Add Cadeira</CardTitle></CardHeader><CardContent><form onSubmit={handleAddSubject} className="space-y-4"><Input placeholder="Nome" value={subForm.name} onChange={e=>setSubForm({...subForm, name: e.target.value})} /><Input placeholder="Código" value={subForm.code} onChange={e=>setSubForm({...subForm, code: e.target.value})} /><Select value={subForm.tId} onChange={e=>setSubForm({...subForm, tId: e.target.value})}><option value="">Docente...</option>{teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</Select><Button type="submit" className="w-full">Criar</Button></form></CardContent></Card></div><div className="lg:col-span-7 space-y-3">{subjects.map(s=><div key={s.id} className="p-4 border rounded-xl flex justify-between"><div><p className="font-bold">{s.name}</p><p className="text-xs text-gray-400">{s.code}</p></div><Button size="sm" variant="ghost" className="text-red-500" onClick={()=>BackendService.deleteSubject(s.id).then(loadData)}><Trash2 size={16}/></Button></div>)}</div></div>}
+        {activeTab === 'questionnaire' && (
+            <div className="grid lg:grid-cols-12 gap-8">
+                <div className="lg:col-span-4"><Card><CardHeader><CardTitle>Opções</CardTitle></CardHeader><CardContent className="space-y-4"><Select value={qTarget} onChange={e=>setQTarget(e.target.value as any)}><option value="student">Alunos</option><option value="teacher">Docentes</option></Select><Input value={qTitle} onChange={e=>setQTitle(e.target.value)} /><Button className="w-full" onClick={handleSaveQuestionnaire}>Salvar</Button></CardContent></Card></div>
+                <div className="lg:col-span-8 space-y-4"><Button onClick={() => setEditingQuestions([...editingQuestions, {id:'q'+Date.now(), text:'', type:'stars', weight:1}])}>+ Pergunta</Button>{editingQuestions.map((q,i)=>(<Card key={q.id}><CardContent className="pt-6 flex gap-4"><Input value={q.text} onChange={e=>{const n=[...editingQuestions]; n[i].text=e.target.value; setEditingQuestions(n);}} /><Select value={q.type} onChange={e=>{const n=[...editingQuestions]; n[i].type=e.target.value as any; setEditingQuestions(n);}}><option value="stars">Estrelas</option><option value="binary">Sim/Não</option><option value="text">Texto</option></Select><Button variant="ghost" onClick={()=>{const n=editingQuestions.filter((_,idx)=>idx!==i); setEditingQuestions(n);}}><Trash2/></Button></CardContent></Card>))}</div>
+            </div>
+        )}
         {activeTab === 'settings' && institution && <SettingsTab institution={institution} onUpdate={loadData} />}
     </div>
   );
+};
+
+const TeachersTab = ({ teachers, institutionId, onUpdate }: any) => {
+    const [f, setF] = useState({ name: '', email: '', pwd: '', cat: 'assistente' });
+    const add = async (e: any) => { e.preventDefault(); await BackendService.addTeacher(institutionId, f.name, f.email, f.pwd, '', f.cat as any); setF({ name: '', email: '', pwd: '', cat: 'assistente' }); onUpdate(); };
+    return (<div className="grid lg:grid-cols-12 gap-8"><div className="lg:col-span-4"><Card><CardHeader><CardTitle>Add Docente</CardTitle></CardHeader><CardContent><form onSubmit={add} className="space-y-4"><Input placeholder="Nome" value={f.name} onChange={e=>setF({...f, name: e.target.value})} /><Input placeholder="Email" value={f.email} onChange={e=>setF({...f, email: e.target.value})} /><Input placeholder="Senha" type="password" value={f.pwd} onChange={e=>setF({...f, pwd: e.target.value})} /><Button type="submit" className="w-full">Cadastrar</Button></form></CardContent></Card></div><div className="lg:col-span-8 space-y-2">{teachers.map((t:any)=>(<div key={t.id} className="p-3 border rounded-lg flex justify-between"><div><p className="font-bold">{t.name}</p><p className="text-xs">{t.email}</p></div><Button size="sm" variant="ghost" onClick={()=>BackendService.deleteUser(t.id).then(onUpdate)}><Trash2 size={16}/></Button></div>))}</div></div>);
+};
+
+const StudentsTab = ({ students, institutionId, onUpdate }: any) => {
+    const [f, setF] = useState({ name: '', email: '', pwd: '', course: '', level: '1' });
+    const add = async (e: any) => { e.preventDefault(); await BackendService.addStudent(institutionId, f.name, f.email, f.pwd, f.course, f.level, '', ['Diurno'], ['A']); setF({ name: '', email: '', pwd: '', course: '', level: '1' }); onUpdate(); };
+    return (<div className="grid lg:grid-cols-12 gap-8"><div className="lg:col-span-4"><Card><CardHeader><CardTitle>Add Aluno</CardTitle></CardHeader><CardContent><form onSubmit={add} className="space-y-4"><Input placeholder="Nome" value={f.name} onChange={e=>setF({...f, name: e.target.value})} /><Input placeholder="Email" value={f.email} onChange={e=>setF({...f, email: e.target.value})} /><Input placeholder="Curso" value={f.course} onChange={e=>setF({...f, course: e.target.value})} /><Button type="submit" className="w-full">Cadastrar</Button></form></CardContent></Card></div><div className="lg:col-span-8 space-y-2">{students.map((t:any)=>(<div key={t.id} className="p-3 border rounded-lg flex justify-between"><div><p className="font-bold">{t.name}</p><p className="text-xs">{t.course}</p></div><Button size="sm" variant="ghost" onClick={()=>BackendService.deleteUser(t.id).then(onUpdate)}><Trash2 size={16}/></Button></div>))}</div></div>);
 };
 
 const SettingsTab = ({ institution, onUpdate }: any) => (
