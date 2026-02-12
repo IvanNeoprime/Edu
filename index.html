@@ -14,6 +14,11 @@
             fontFamily: {
               sans: ['Inter', 'sans-serif'],
             },
+            fontSize: {
+              'xs': '0.7rem',
+              'sm': '0.825rem',
+              'base': '0.925rem',
+            }
           },
         },
       }
@@ -25,19 +30,19 @@
     <style>
       body {
         font-family: 'Inter', sans-serif;
-        background-color: #f8fafc;
-        color: #0f172a;
+        background-color: #fcfcfd;
+        color: #1e293b;
+        letter-spacing: -0.011em;
       }
       
+      .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
       @media print {
         @page { size: A4; margin: 15mm; }
-        body { background-color: white !important; font-size: 10pt; color: black !important; }
+        body { background-color: white !important; font-size: 9pt; color: black !important; }
         .no-print { display: none !important; }
       }
-
-      .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-      .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-      .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
   <script type="importmap">
 {
