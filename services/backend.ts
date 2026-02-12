@@ -113,7 +113,6 @@ const SupabaseBackend = {
     },
 
     async login(email: string, password?: string) {
-        // 🛠 BYPASS HARDCODED PARA TESTE RÁPIDO
         if (email === HARDCODED_ADMIN_EMAIL && password === HARDCODED_ADMIN_PASS) {
             localStorage.setItem(DB_KEYS.SESSION, JSON.stringify({ user: HARDCODED_ADMIN_USER, token: 'hardcoded_token' }));
             return { user: HARDCODED_ADMIN_USER, token: 'hardcoded' };
@@ -158,23 +157,52 @@ const SupabaseBackend = {
     async getInstitutions() {
         if (!supabase) return [];
         try {
-            const { data } = await supabase.from('institutions').select('*').order('created_at', { ascending: false });
-            return (data || []).map((i: any) => ({ ...i, createdAt: i.created_at })) as Institution[];
+            // Buscamos colunas explícitas para evitar que o cliente tente buscar 'createdAt'
+            const { data } = await supabase
+                .from('institutions')
+                .select('id, name, code, managerEmails, logo, isEvaluationOpen, evaluationPeriodName, created_at')
+                .order('created_at', { ascending: false });
+                
+            return (data || []).map((i: any) => ({
+                id: i.id,
+                name: i.name,
+                code: i.code,
+                managerEmails: i.managerEmails,
+                logo: i.logo,
+                isEvaluationOpen: i.isEvaluationOpen,
+                evaluationPeriodName: i.evaluationPeriodName,
+                createdAt: i.created_at // Mapeamos snake_case para camelCase aqui
+            })) as Institution[];
         } catch (e) { return []; }
     },
 
     async getInstitution(id: string) {
         if (!supabase) return undefined;
         try {
-            const { data } = await supabase.from('institutions').select('*').eq('id', id).single();
+            const { data } = await supabase
+                .from('institutions')
+                .select('id, name, code, managerEmails, logo, isEvaluationOpen, evaluationPeriodName, created_at')
+                .eq('id', id)
+                .single();
+                
             if (!data) return undefined;
-            return { ...data, createdAt: data.created_at } as Institution;
+            return {
+                id: data.id,
+                name: data.name,
+                code: data.code,
+                managerEmails: data.managerEmails,
+                logo: data.logo,
+                isEvaluationOpen: data.isEvaluationOpen,
+                evaluationPeriodName: data.evaluationPeriodName,
+                createdAt: data.created_at
+            } as Institution;
         } catch (e) { return undefined; }
     },
 
     async createInstitution(data: any) {
         if (!supabase) return null as any;
-        // Removido createdAt manual para usar o default do DB (created_at)
+        
+        // Criamos o payload apenas com o que o banco espera (sem 'createdAt')
         const payload = {
             id: 'inst_' + Date.now(),
             name: data.name,
@@ -184,9 +212,26 @@ const SupabaseBackend = {
             isEvaluationOpen: true,
             evaluationPeriodName: 'Semestre 1 - 2024'
         };
-        const { data: res, error } = await supabase.from('institutions').insert([payload]).select().single();
+        
+        // Especificamos explicitamente o select para não vir 'createdAt' inexistente
+        const { data: res, error } = await supabase
+            .from('institutions')
+            .insert([payload])
+            .select('id, name, code, managerEmails, logo, isEvaluationOpen, evaluationPeriodName, created_at')
+            .single();
+            
         if (error) throw error;
-        return { ...res, createdAt: res.created_at } as Institution;
+        
+        return {
+            id: res.id,
+            name: res.name,
+            code: res.code,
+            managerEmails: res.managerEmails,
+            logo: res.logo,
+            isEvaluationOpen: res.isEvaluationOpen,
+            evaluationPeriodName: res.evaluationPeriodName,
+            createdAt: res.created_at
+        } as Institution;
     },
 
     async deleteInstitution(id: string) {
@@ -198,7 +243,13 @@ const SupabaseBackend = {
 
     async updateInstitution(id: string, data: any) {
         if (!supabase) return;
-        await supabase.from('institutions').update(data).eq('id', id);
+        // Filtramos campos para garantir que nada estranho vá para o banco
+        const updateData: any = {};
+        if (data.name !== undefined) updateData.name = data.name;
+        if (data.isEvaluationOpen !== undefined) updateData.isEvaluationOpen = data.isEvaluationOpen;
+        if (data.evaluationPeriodName !== undefined) updateData.evaluationPeriodName = data.evaluationPeriodName;
+        
+        await supabase.from('institutions').update(updateData).eq('id', id);
     },
 
     async addTeacher(instId: string, name: string, email: string, pwd?: string, av?: string, cat?: TeacherCategory) {
