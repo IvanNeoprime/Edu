@@ -50,30 +50,42 @@
         body { 
           background-color: white !important; 
           color: black !important;
-          font-size: 9pt !important;
+          font-size: 10pt !important;
         }
-        .no-print, nav, button, .tabs-header { 
+        .no-print, nav, button, .tabs-header, header { 
           display: none !important; 
+        }
+        .print-only {
+          display: block !important;
         }
         .card { 
           box-shadow: none !important; 
-          border: 1px solid #eee !important;
+          border: 1px solid #000 !important;
           break-inside: avoid;
-          margin-bottom: 10px;
+          margin-bottom: 20px;
+          padding: 15px !important;
         }
         .bg-black {
           background-color: white !important;
           color: black !important;
-          border: 1px solid #000 !important;
+          border: 2px solid #000 !important;
         }
-        .text-white {
-          color: black !important;
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-bottom: 20px;
         }
-        input, select, textarea {
-          border: none !important;
-          background: none !important;
+        th, td {
+          border: 1px solid #000;
+          padding: 8px;
+          text-align: left;
+        }
+        th {
+          background-color: #f3f4f6 !important;
+          font-weight: bold;
         }
       }
+      .print-only { display: none; }
     </style>
   <script type="importmap">
 {
