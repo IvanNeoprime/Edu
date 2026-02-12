@@ -20,8 +20,6 @@ export interface User {
   password?: string;
   course?: string;
   level?: string; // 1 a 6
-  studentCode?: string;
-  semester?: '1' | '2';
   shifts?: ('Diurno' | 'Noturno')[];
   classGroups?: string[];
   category?: TeacherCategory;
