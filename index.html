@@ -15,9 +15,14 @@
               sans: ['Inter', 'sans-serif'],
             },
             fontSize: {
-              'xs': '0.7rem',
-              'sm': '0.825rem',
-              'base': '0.925rem',
+              'xs': '0.65rem',
+              'sm': '0.75rem',
+              'base': '0.85rem',
+              'lg': '1rem',
+              'xl': '1.1rem',
+              '2xl': '1.25rem',
+              '3xl': '1.5rem',
+              '4xl': '2rem',
             }
           },
         },
@@ -39,9 +44,35 @@
       @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
       @media print {
-        @page { size: A4; margin: 15mm; }
-        body { background-color: white !important; font-size: 9pt; color: black !important; }
-        .no-print { display: none !important; }
+        @page { 
+          size: A4; 
+          margin: 10mm; 
+        }
+        body { 
+          background-color: white !important; 
+          color: black !important;
+          font-size: 10pt !important;
+        }
+        .no-print, nav, button, .tabs-header { 
+          display: none !important; 
+        }
+        .card { 
+          box-shadow: none !important; 
+          border: 1px solid #eee !important;
+          break-inside: avoid;
+        }
+        .bg-black {
+          background-color: white !important;
+          color: black !important;
+          border: 1px solid #000 !important;
+        }
+        .text-white {
+          color: black !important;
+        }
+        .recharts-responsive-container {
+          width: 100% !important;
+          height: 300px !important;
+        }
       }
     </style>
   <script type="importmap">
