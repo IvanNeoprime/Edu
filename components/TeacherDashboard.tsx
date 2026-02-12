@@ -4,7 +4,7 @@ import { User, CombinedScore, SelfEvaluation, TeacherCategory, Questionnaire, Us
 import { BackendService } from '../services/backend';
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label, Select } from './ui';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, LineChart, Line } from 'recharts';
-import { Download, TrendingUp, FileText, BarChart3, Save, FileQuestion, Star, CheckCircle2, Lock, Printer, AlertCircle, Info, Calculator, FileCheck, ClipboardList, Shield, PieChart as PieIcon } from 'lucide-react';
+import { Download, TrendingUp, FileText, BarChart3, Save, FileQuestion, Star, CheckCircle2, Lock, Printer, AlertCircle, Info, Calculator, FileCheck, ClipboardList, Shield, PieChart as PieIcon, MessageSquareQuote, Target } from 'lucide-react';
 
 interface Props {
   user: User;
@@ -68,66 +68,90 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
         </header>
         
         {activeTab === 'stats' && (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                <Card className="md:col-span-2 lg:col-span-1 bg-black text-white">
-                    <CardContent className="pt-10 text-center space-y-4">
-                        <p className="text-xs uppercase font-black tracking-widest opacity-60">Score Semestral</p>
-                        <p className="text-8xl font-black tracking-tighter">{stats?.finalScore.toFixed(1) || '0.0'}</p>
-                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-xs">
-                            <TrendingUp size={14}/> +12% em relação ao semestre anterior
-                        </div>
-                    </CardContent>
-                </Card>
+            <div className="space-y-6">
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    <Card className="md:col-span-2 lg:col-span-1 bg-black text-white">
+                        <CardContent className="pt-10 text-center space-y-4">
+                            <p className="text-xs uppercase font-black tracking-widest opacity-60">Score Semestral</p>
+                            <p className="text-8xl font-black tracking-tighter">{stats?.finalScore.toFixed(1) || '0.0'}</p>
+                            <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-xs">
+                                <TrendingUp size={14}/> +12% em relação ao semestre anterior
+                            </div>
+                        </CardContent>
+                    </Card>
 
-                <Card className="lg:col-span-2">
-                    <CardHeader><CardTitle className="text-sm uppercase flex items-center gap-2"><BarChart3 size={16}/> Comparativo de Notas</CardTitle></CardHeader>
-                    <CardContent className="h-56">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={scoreComparison} margin={{top: 20, right: 30, left: 20, bottom: 5}}>
-                                <XAxis dataKey="label" axisLine={false} tickLine={false} />
-                                <YAxis hide />
-                                <Tooltip cursor={{fill: '#f8fafc'}} />
-                                <Bar dataKey="value" radius={[10, 10, 0, 0]} barSize={50}>
-                                    {scoreComparison.map((entry, index) => <Cell key={index} fill={entry.fill} />)}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </CardContent>
-                </Card>
+                    <Card className="lg:col-span-2">
+                        <CardHeader><CardTitle className="text-sm uppercase flex items-center gap-2"><BarChart3 size={16}/> Comparativo de Notas</CardTitle></CardHeader>
+                        <CardContent className="h-56">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={scoreComparison} margin={{top: 20, right: 30, left: 20, bottom: 5}}>
+                                    <XAxis dataKey="label" axisLine={false} tickLine={false} />
+                                    <YAxis hide />
+                                    <Tooltip cursor={{fill: '#f8fafc'}} />
+                                    <Bar dataKey="value" radius={[10, 10, 0, 0]} barSize={50}>
+                                        {scoreComparison.map((entry, index) => <Cell key={index} fill={entry.fill} />)}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </CardContent>
+                    </Card>
+                </div>
 
-                <Card>
-                    <CardHeader><CardTitle className="text-sm uppercase flex items-center gap-2"><PieIcon size={16}/> Distribuição de Esforço</CardTitle></CardHeader>
-                    <CardContent className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie data={effortData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={5} dataKey="value">
-                                    {effortData.map((e, i) => <Cell key={i} fill={e.color} />)}
-                                </Pie>
-                                <Tooltip />
-                                <Legend verticalAlign="bottom" height={36}/>
-                            </PieChart>
-                        </ResponsiveContainer>
-                    </CardContent>
-                </Card>
+                <div className="grid gap-6 md:grid-cols-3">
+                    <Card className="md:col-span-2">
+                        <CardHeader className="border-b pb-4">
+                            <CardTitle className="text-sm uppercase flex items-center gap-2">
+                                <MessageSquareQuote size={18} className="text-amber-500"/> Feedback Qualitativo da Gestão
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-6">
+                            {qualEval?.recommendations ? (
+                                <div className="space-y-6">
+                                    <div className="bg-amber-50 border-l-4 border-amber-400 p-6 rounded-r-2xl">
+                                        <p className="text-amber-900 font-medium leading-relaxed italic text-lg">
+                                            "{qualEval.recommendations}"
+                                        </p>
+                                    </div>
+                                    <div className="grid md:grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label className="text-[10px] uppercase font-black text-gray-400">Pontos Fortes Identificados</Label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {qualEval.strengths?.map(s => (
+                                                    <span key={s} className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-black uppercase flex items-center gap-1">
+                                                        <Target size={12}/> {s}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="py-12 text-center space-y-4">
+                                    <AlertCircle className="mx-auto text-gray-300" size={48}/>
+                                    <p className="text-gray-400 font-bold uppercase text-xs tracking-widest">Aguardando parecer da gestão para este período</p>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
 
-                <Card className="md:col-span-2">
-                    <CardHeader><CardTitle className="text-sm uppercase flex items-center gap-2"><TrendingUp size={16}/> Evolução Histórica (Score Final)</CardTitle></CardHeader>
-                    <CardContent className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={historicalData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                <XAxis dataKey="period" axisLine={false} tickLine={false} />
-                                <YAxis axisLine={false} tickLine={false} />
-                                <Tooltip />
-                                <Line type="monotone" dataKey="score" stroke="#3b82f6" strokeWidth={4} dot={{r: 6, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff'}} activeDot={{r: 10}} />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    </CardContent>
-                </Card>
+                    <Card>
+                        <CardHeader><CardTitle className="text-sm uppercase flex items-center gap-2"><PieIcon size={16}/> Esforço Académico</CardTitle></CardHeader>
+                        <CardContent className="h-64">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie data={effortData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={5} dataKey="value">
+                                        {effortData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                                    </Pie>
+                                    <Tooltip />
+                                    <Legend verticalAlign="bottom" height={36}/>
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
         )}
 
-        {/* Mantendo as abas de formulário existentes */}
         {activeTab === 'self-eval' && (
             <Card className="max-w-4xl mx-auto"><CardHeader><CardTitle>Auto-Avaliação</CardTitle></CardHeader><CardContent><p className="text-sm text-gray-500 mb-8 italic">Preencha os indicadores de atividade académica para o semestre atual.</p>
             <div className="space-y-6"><div className="grid grid-cols-2 gap-4"><div><Label>Disciplinas Graduação</Label><Input type="number" value={answers.gradSubjects} onChange={e=>setAnswers({...answers, gradSubjects: parseInt(e.target.value)||0})} /></div><div><Label>Horas Teóricas/Sem</Label><Input type="number" value={answers.theoryHours} onChange={e=>setAnswers({...answers, theoryHours: parseInt(e.target.value)||0})} /></div></div><Button onClick={()=>BackendService.saveSelfEval({teacherId: user.id, institutionId: user.institutionId, header, answers}).then(()=>alert("Salvo!"))} className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700">Submeter Auto-Avaliação</Button></div></CardContent></Card>
