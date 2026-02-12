@@ -2,16 +2,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, Questionnaire, Question, Institution } from '../types';
 import { BackendService, SubjectWithTeacher } from '../services/backend';
-import { Card, CardContent, CardHeader, CardTitle, Button, Select, Label, Input } from './ui';
-import { Lock, Send, CheckCircle2, AlertCircle, Star, User as UserIcon, BookOpen, Check, CalendarClock } from 'lucide-react';
-import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts';
+import { Card, CardContent, CardHeader, CardTitle, Button, Select, Label } from './ui';
+import { Lock, CheckCircle2, Star, User as UserIcon, BookOpen } from 'lucide-react';
 
 interface Props {
   user: User;
 }
 
 export const StudentDashboard: React.FC<Props> = ({ user }) => {
-  const [activeTab, setActiveTab] = useState<'survey' | 'stats'>('survey');
   const [data, setData] = useState<{questionnaire: Questionnaire, subjects: SubjectWithTeacher[]} | null>(null);
   const [institution, setInstitution] = useState<Institution | null>(null);
   const [progress, setProgress] = useState<{completed: number, pending: number}>({ completed: 0, pending: 0 });
@@ -37,26 +35,15 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
     }
   }, [user.institutionId, user.id]);
 
-  // FILTRO INTELIGENTE DE DISCIPLINAS
   const mySubjects = useMemo(() => {
       if (!data) return [];
       return data.subjects.filter(s => {
-          // Normalização para comparação
           const studentCourse = user.course?.trim().toLowerCase();
           const subjectCourse = s.course?.trim().toLowerCase();
-          
-          // 1. Curso: Deve bater exatamente ou ser compatível
           const courseMatch = !studentCourse || !subjectCourse || subjectCourse === studentCourse;
-          
-          // 2. Nível: Deve ser o mesmo ano curricular
           const levelMatch = !user.level || !s.level || String(user.level) === String(s.level);
-          
-          // 3. Turno: Deve estar na lista de turnos do aluno
           const shiftMatch = !s.shift || !user.shifts || user.shifts.includes(s.shift);
-          
-          // 4. Turma: Aluno deve pertencer à turma da disciplina
           const groupMatch = !s.classGroup || !user.classGroups || user.classGroups.includes(s.classGroup);
-          
           return courseMatch && levelMatch && shiftMatch && groupMatch;
       });
   }, [data, user]);
@@ -138,18 +125,23 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
       }
   };
 
-  if (!data) return <div className="p-8 text-center animate-pulse">Carregando questionários...</div>;
+  if (!data) return <div className="p-8 text-center animate-pulse text-gray-400">Carregando portal do estudante...</div>;
 
   const isEvaluationOpen = institution?.isEvaluationOpen ?? true;
 
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-8 animate-fade-in">
-      <header className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-        <div>
-            <h1 className="text-3xl font-bold text-gray-900">{data.questionnaire.title}</h1>
-            <p className="text-gray-500 mt-1 flex items-center gap-2">
-                Avaliação Académica • {user.course} • {user.level}º Ano
-            </p>
+      <header className="flex flex-col md:flex-row justify-between md:items-center gap-4 border-b pb-6">
+        <div className="flex items-center gap-4">
+            <div className="h-12 w-12 bg-black rounded-xl flex items-center justify-center text-white">
+                <BookOpen size={24} />
+            </div>
+            <div>
+                <h1 className="text-3xl font-bold text-gray-900">Portal de Avaliação</h1>
+                <p className="text-gray-500 mt-1 flex items-center gap-2">
+                   {user.course} • {user.level}º Ano • {institution?.evaluationPeriodName || 'Período Atual'}
+                </p>
+            </div>
         </div>
       </header>
 
@@ -163,13 +155,13 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
           <Card className="bg-yellow-50 border-yellow-200 py-12 text-center">
               <Lock className="h-12 w-12 mx-auto mb-4 text-yellow-600" />
               <h2 className="text-xl font-bold">Período de Avaliação Fechado</h2>
-              <p>Contacte a secretaria para mais informações.</p>
+              <p className="text-gray-600">A sua instituição encerrou as submissões para este período.</p>
           </Card>
       ) : (
           <div className="space-y-6">
               <Card>
                   <CardHeader className="bg-gray-50 border-b">
-                      <CardTitle className="text-base">Dados da Cadeira</CardTitle>
+                      <CardTitle className="text-base">Selecione a Cadeira para Avaliar</CardTitle>
                   </CardHeader>
                   <CardContent className="pt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
@@ -183,7 +175,11 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                           <Label>Disciplina</Label>
                           <Select value={selectedSubjectId} onChange={e => setSelectedSubjectId(e.target.value)} disabled={!selectedTeacherId}>
                               <option value="">Escolher disciplina...</option>
-                              {availableSubjectsForTeacher.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code}) - Turma {s.classGroup}</option>)}
+                              {availableSubjectsForTeacher.map(s => (
+                                  <option key={s.id} value={s.id}>
+                                      {s.name} (Semestre {s.semester}) - Turma {s.classGroup}
+                                  </option>
+                              ))}
                           </Select>
                       </div>
                   </CardContent>
@@ -191,6 +187,10 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
 
               {selectedSubjectId && (
                   <div className="space-y-6 animate-in slide-in-from-bottom-4">
+                      <div className="flex items-center gap-3 p-4 bg-blue-50 text-blue-800 rounded-lg text-sm">
+                          <UserIcon size={18} className="shrink-0" />
+                          <p>Você está avaliando o desempenho do docente na disciplina selecionada. As respostas não podem ser editadas após o envio.</p>
+                      </div>
                       {data.questionnaire.questions.map((q, idx) => (
                           <Card key={q.id}>
                               <CardContent className="pt-6">
@@ -199,7 +199,7 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                               </CardContent>
                           </Card>
                       ))}
-                      <Button size="lg" className="w-full bg-black hover:bg-gray-800" onClick={handleSubmit} disabled={submitting}>
+                      <Button size="lg" className="w-full bg-black hover:bg-gray-800 h-12" onClick={handleSubmit} disabled={submitting}>
                           {submitting ? 'Enviando...' : 'Submeter Avaliação Anónima'}
                       </Button>
                   </div>

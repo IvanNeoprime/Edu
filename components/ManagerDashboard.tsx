@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { BackendService } from '../services/backend';
-import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution } from '../types';
+import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, Question, Institution } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select } from './ui';
-import { Users, BookOpen, Plus, Trash2, Key, GraduationCap, Image as ImageIcon, Settings, Save, Lock, Unlock, CalendarClock, Briefcase, Mail, UserPlus, Info, CheckCircle2 } from 'lucide-react';
+// Added Lock and Unlock to resolve missing icons and JSX type mismatch with global types
+import { Users, BookOpen, Plus, Trash2, GraduationCap, Settings, Briefcase, CalendarClock, Eye, FileText, X, Lock, Unlock } from 'lucide-react';
 
 interface Props {
   institutionId: string;
@@ -16,6 +17,9 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [students, setStudents] = useState<User[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(false);
+  
+  // Preview States
+  const [previewModal, setPreviewModal] = useState<{ open: boolean; type: 'standard' | 'custom'; data?: Questionnaire | null }>({ open: false, type: 'standard' });
 
   // New Teacher Form
   const [tName, setTName] = useState('');
@@ -54,6 +58,14 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         setStudents(allUsers.filter(u => u.role === UserRole.STUDENT && u.institutionId === institutionId));
         setSubjects(await BackendService.getInstitutionSubjects(institutionId));
     } catch (e) { console.error(e); } finally { setLoading(false); }
+  };
+
+  const handlePreview = async (type: 'standard' | 'custom') => {
+      let data: any = null;
+      if (type === 'custom') {
+          data = await BackendService.getInstitutionQuestionnaire(institutionId, 'student');
+      }
+      setPreviewModal({ open: true, type, data });
   };
 
   const handleAddTeacher = async (e: React.FormEvent) => {
@@ -109,7 +121,58 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   };
 
   return (
-    <div className="space-y-8 p-4 md:p-8 max-w-7xl mx-auto animate-fade-in">
+    <div className="space-y-8 p-4 md:p-8 max-w-7xl mx-auto animate-fade-in relative">
+        {/* Preview Modal */}
+        {previewModal.open && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto relative animate-in zoom-in-95 duration-200">
+                    <button onClick={() => setPreviewModal({ ...previewModal, open: false })} className="absolute right-4 top-4 p-2 hover:bg-gray-100 rounded-full">
+                        <X size={20} />
+                    </button>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Eye className="text-blue-600" />
+                            {previewModal.type === 'standard' ? 'Pré-visualização: Questionário Padrão' : 'Pré-visualização: Questionário Atual'}
+                        </CardTitle>
+                        <p className="text-sm text-gray-500">Esta é a visualização que os estudantes terão no portal.</p>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        {(previewModal.type === 'standard' || !previewModal.data) ? (
+                            <div className="space-y-4">
+                                <div className="p-4 bg-blue-50 border-l-4 border-blue-500 text-sm text-blue-700">
+                                    Exibindo questões baseadas no formulário padrão do Ministério.
+                                </div>
+                                {[
+                                    "O docente apresentou o programa temático ou analítico da disciplina?",
+                                    "O docente apresentou os objetivos da disciplina?",
+                                    "O docente foi acessível aos estudantes?",
+                                    "O docente avaliou os estudantes dentro dos prazos?"
+                                ].map((q, i) => (
+                                    <div key={i} className="p-4 border rounded-lg bg-gray-50">
+                                        <p className="font-medium text-sm">{i+1}. {q}</p>
+                                        <div className="mt-2 flex gap-2">
+                                            <div className="h-8 w-20 bg-white border rounded"></div>
+                                            <div className="h-8 w-20 bg-white border rounded"></div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {previewModal.data.questions.map((q, i) => (
+                                    <div key={i} className="p-4 border rounded-lg bg-gray-50">
+                                        <p className="font-medium text-sm">{i+1}. {q.text}</p>
+                                        <p className="text-xs text-gray-400 mt-1 uppercase">Tipo: {q.type}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        <Button onClick={() => setPreviewModal({ ...previewModal, open: false })} className="w-full">Fechar Visualização</Button>
+                    </CardContent>
+                </Card>
+            </div>
+        )}
+
         <header className="border-b pb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex items-center gap-4">
               {institution?.logo && <img src={institution.logo} className="h-16 w-16 object-contain" alt="Logo" />}
@@ -124,6 +187,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                   {id: 'teachers', label: 'Docentes', icon: Users},
                   {id: 'students', label: 'Estudantes', icon: GraduationCap},
                   {id: 'subjects', label: 'Disciplinas', icon: BookOpen},
+                  {id: 'questionnaire', label: 'Inquérito', icon: FileText},
                   {id: 'settings', label: 'Definições', icon: Settings},
               ].map(tab => (
                   <button 
@@ -202,7 +266,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                     <div className="col-span-2"><Label>Email</Label><Input type="email" value={sEmail} onChange={e=>setSEmail(e.target.value)} /></div>
                                     <div className="col-span-2"><Label>Senha Inicial</Label><Input type="password" value={sPwd} onChange={e=>setSPwd(e.target.value)} /></div>
                                     <div><Label>Curso</Label><Input value={sCourse} onChange={e=>setSCourse(e.target.value)} placeholder="Ex: Informática" /></div>
-                                    <div><Label>Ano de Frequência</Label><Select value={sLevel} onChange={e=>setSLevel(e.target.value)}><option value="1">1º Ano</option><option value="2">2º Ano</option><option value="3">3º Ano</option><option value="4">4º Ano</option><option value="5">5º Ano</option></Select></div>
+                                    <div><Label>Ano de Frequência</Label><Select value={sLevel} onChange={e=>setSLevel(e.target.value)}><option value="1">1º Ano</option><option value="2">2º Ano</option><option value="3">3º Ano</option><option value="4">4º Ano</option><option value="5">5º Ano</option><option value="6">6º Ano</option></Select></div>
                                     <div><Label>Turno</Label><Select value={sShifts[0]} onChange={e=>setSShifts([e.target.value])}><option value="Diurno">Diurno</option><option value="Noturno">Noturno</option></Select></div>
                                     <div><Label>Turmas (Ex: A, B)</Label><Input value={sGroups} onChange={e=>setSGroups(e.target.value)} placeholder="Separar por vírgula" /></div>
                                 </div>
@@ -248,7 +312,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                         </Select>
                                     </div>
                                     <div><Label>Curso Destino</Label><Input value={subCourse} onChange={e=>setSubCourse(e.target.value)} placeholder="Ex: Informática" /></div>
-                                    <div><Label>Ano Curricular</Label><Select value={subLevel} onChange={e=>setSubLevel(e.target.value)}><option value="1">1º Ano</option><option value="2">2º Ano</option><option value="3">3º Ano</option><option value="4">4º Ano</option><option value="5">5º Ano</option></Select></div>
+                                    <div><Label>Ano Curricular</Label><Select value={subLevel} onChange={e=>setSubLevel(e.target.value)}><option value="1">1º Ano</option><option value="2">2º Ano</option><option value="3">3º Ano</option><option value="4">4º Ano</option><option value="5">5º Ano</option><option value="6">6º Ano</option></Select></div>
                                     <div><Label>Turno</Label><Select value={subShift} onChange={e=>setSubShift(e.target.value as any)}><option value="Diurno">Diurno</option><option value="Noturno">Noturno</option></Select></div>
                                     <div><Label>Turma</Label><Input value={subGroup} onChange={e=>setSubGroup(e.target.value)} placeholder="Ex: A" /></div>
                                     <div><Label>Semestre</Label><Select value={subSemester} onChange={e=>setSubSemester(e.target.value)}><option value="1">1º Semestre</option><option value="2">2º Semestre</option></Select></div>
@@ -269,7 +333,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                         <div>
                                             <p className="font-bold text-sm">{s.name} <span className="text-gray-400 font-normal">({s.code})</span></p>
                                             <p className="text-xs text-blue-700 font-medium">Docente: {teacher?.name || 'Não vinculado'}</p>
-                                            <p className="text-xs text-gray-500 mt-1">{s.course} • {s.level}º Ano • Turma {s.classGroup} ({s.shift})</p>
+                                            <p className="text-xs text-gray-500 mt-1">{s.course} • {s.level}º Ano • Semestre {s.semester} • Turma {s.classGroup}</p>
                                         </div>
                                         <Button variant="ghost" size="sm" onClick={()=>handleDeleteSubject(s.id)} className="text-red-500"><Trash2 size={16}/></Button>
                                     </div>
@@ -278,6 +342,44 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                         </CardContent>
                     </Card>
                 </div>
+            </div>
+        )}
+
+        {activeTab === 'questionnaire' && (
+            <div className="space-y-6">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Configuração de Questionários</CardTitle>
+                        <p className="text-sm text-gray-500">Visualize os inquéritos antes de liberar para os estudantes.</p>
+                    </CardHeader>
+                    <CardContent className="grid gap-6 md:grid-cols-2">
+                        <div className="p-6 border rounded-xl bg-slate-50 flex flex-col items-center text-center space-y-4">
+                            <div className="h-12 w-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
+                                <FileText size={24} />
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-lg">Modelo Padrão (MECES)</h4>
+                                <p className="text-sm text-gray-500">Questionário oficial pré-definido pelo Ministério.</p>
+                            </div>
+                            <Button variant="outline" className="w-full" onClick={() => handlePreview('standard')}>
+                                <Eye className="mr-2 h-4 w-4" /> Pré-visualizar Padrão
+                            </Button>
+                        </div>
+
+                        <div className="p-6 border rounded-xl bg-indigo-50 flex flex-col items-center text-center space-y-4">
+                            <div className="h-12 w-12 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center">
+                                <Settings size={24} />
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-lg">Modelo Personalizado</h4>
+                                <p className="text-sm text-gray-500">Inquérito customizado pela sua instituição.</p>
+                            </div>
+                            <Button variant="outline" className="w-full" onClick={() => handlePreview('custom')}>
+                                <Eye className="mr-2 h-4 w-4" /> Pré-visualizar Atual
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
         )}
 
