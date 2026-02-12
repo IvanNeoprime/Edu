@@ -106,12 +106,12 @@ const SupabaseBackend = {
           institutionId: instId, 
           approved: true, 
           course, 
-          level, 
+          level: String(level), 
           studentCode, 
-          semester, 
+          semester: semester as any, 
           classGroups: groups, 
-          shifts: shift ? [shift] : [],
-          modality,
+          shifts: shift ? [shift as any] : [],
+          modality: modality as any,
           password: pwd || '123456', 
           mustChangePassword: true 
         };

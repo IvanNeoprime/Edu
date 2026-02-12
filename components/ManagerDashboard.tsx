@@ -307,7 +307,7 @@ const StudentsTab = ({ studentsList, institutionId, onUpdate }: any) => {
                     <div className="space-y-1">
                       <Label>Ano Frequência</Label>
                       <Select value={f.level} onChange={e=>setF({...f, level: e.target.value})} className="h-11 rounded-xl">
-                        {[1,2,3,4,5,6].map(l=><option key={l} value={l}>{l}º Ano</option>)}
+                        {[1,2,3,4,5,6].map(l=><option key={l} value={String(l)}>{l}º Ano</option>)}
                       </Select>
                     </div>
                     <div className="space-y-1">
@@ -370,7 +370,7 @@ const StudentsTab = ({ studentsList, institutionId, onUpdate }: any) => {
                                     {s.level}º ANO • S{s.semester} • {s.classGroups?.[0]}
                                   </span>
                                   <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[8px] font-black uppercase flex items-center gap-1">
-                                    <Clock size={8}/> {s.shifts?.[0]}
+                                    <Clock size={8}/> {s.shifts?.[0] || 'Diurno'}
                                   </span>
                                   <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[8px] font-black uppercase flex items-center gap-1">
                                     <Globe size={8}/> {s.modality || 'Presencial'}
