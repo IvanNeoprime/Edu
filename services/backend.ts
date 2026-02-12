@@ -134,8 +134,6 @@ const SupabaseBackend = {
             localStorage.setItem(DB_KEYS.SESSION, JSON.stringify({ user, token: 'supa_' + Date.now() }));
             return { user, token: 'supa' };
         } catch (e) {
-            // Se der erro de tabela, mas os dados baterem com o hardcoded (já tratado acima), 
-            // ou se houver outro erro, retornamos null.
             return null;
         }
     },
@@ -161,7 +159,7 @@ const SupabaseBackend = {
         if (!supabase) return [];
         try {
             const { data } = await supabase.from('institutions').select('*').order('created_at', { ascending: false });
-            return (data || []) as Institution[];
+            return (data || []).map((i: any) => ({ ...i, createdAt: i.created_at })) as Institution[];
         } catch (e) { return []; }
     },
 
@@ -169,16 +167,26 @@ const SupabaseBackend = {
         if (!supabase) return undefined;
         try {
             const { data } = await supabase.from('institutions').select('*').eq('id', id).single();
-            return (data || undefined) as Institution | undefined;
+            if (!data) return undefined;
+            return { ...data, createdAt: data.created_at } as Institution;
         } catch (e) { return undefined; }
     },
 
     async createInstitution(data: any) {
         if (!supabase) return null as any;
-        const newInst = { ...data, id: 'inst_' + Date.now(), createdAt: new Date().toISOString() };
-        const { data: res, error } = await supabase.from('institutions').insert([newInst]).select().single();
+        // Removido createdAt manual para usar o default do DB (created_at)
+        const payload = {
+            id: 'inst_' + Date.now(),
+            name: data.name,
+            code: data.code,
+            managerEmails: data.managerEmails,
+            logo: data.logo,
+            isEvaluationOpen: true,
+            evaluationPeriodName: 'Semestre 1 - 2024'
+        };
+        const { data: res, error } = await supabase.from('institutions').insert([payload]).select().single();
         if (error) throw error;
-        return res as Institution;
+        return { ...res, createdAt: res.created_at } as Institution;
     },
 
     async deleteInstitution(id: string) {
@@ -469,7 +477,6 @@ const MockBackend = {
       users.push(newUser as any); setTable(ukey, users); return newUser as any;
   },
   async login(email: string, password?: string) {
-    // BYPASS NO MOCK TAMBÉM
     if (email === HARDCODED_ADMIN_EMAIL && password === HARDCODED_ADMIN_PASS) {
         const sessionData = { user: HARDCODED_ADMIN_USER, token: 'hardcoded_' + Date.now() };
         localStorage.setItem(DB_KEYS.SESSION, JSON.stringify(sessionData));
