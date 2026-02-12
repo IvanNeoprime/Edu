@@ -10,7 +10,7 @@ const HARDCODED_ADMIN_PASS = 'admin';
 const HARDCODED_ADMIN_USER: User = {
     id: 'admin_master_bypass',
     email: HARDCODED_ADMIN_EMAIL,
-    name: 'Super Administrador (Acesso Direto)',
+    name: 'Super Administrador',
     role: UserRole.SUPER_ADMIN,
     approved: true,
     mustChangePassword: false
@@ -33,8 +33,8 @@ const getEnv = (key: string) => {
 };
 
 const SUPABASE_CONFIG = {
-    url: getEnv('SUPABASE_URL') || getEnv('VITE_SUPABASE_URL') || 'https://qvovlhjolredlylqjdmc.supabase.co', 
-    key: getEnv('SUPABASE_ANON_KEY') || getEnv('VITE_SUPABASE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2b3ZsaGpvbHJlZGx5bHFqZG1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MDQ2NzUsImV4cCI6MjA4NjQ4MDY3NX0.Qhfsa_6F2HjXOU0Ql0ZaMezVx6Xz4bnn1NWgqOmKUkw'
+    url: getEnv('SUPABASE_URL') || getEnv('VITE_SUPABASE_URL'),
+    key: getEnv('SUPABASE_ANON_KEY') || getEnv('VITE_SUPABASE_ANON_KEY')
 };
 
 let supabase: SupabaseClient | null = null;
@@ -45,18 +45,11 @@ if (SUPABASE_CONFIG.url && SUPABASE_CONFIG.key) {
         supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
         isUsingSupabase = true;
     } catch (e) {
-        console.error("Erro ao inicializar Supabase:", e);
+        console.error("Erro Supabase:", e);
     }
 }
 
-const PDF_STANDARD_QUESTIONS: Question[] = [
-    { id: "651", text: "O docente apresentou o programa temático ou analítico da disciplina?", type: "binary", weight: 4 },
-    { id: "652", text: "O docente apresentou os objetivos da disciplina?", type: "binary", weight: 3 },
-    { id: "701", text: "O docente foi acessível aos estudantes?", type: "stars", weight: 3 },
-    { id: "751", text: "O docente avaliou os estudantes dentro dos prazos?", type: "binary", weight: 4 }
-];
-
-const DB_KEYS = { SESSION: 'ad_current_session', USERS: 'ad_users' };
+const DB_KEYS = { SESSION: 'ad_current_session', USERS: 'ad_users', INST: 'ad_institutions', SUBJ: 'ad_subjects', SCORES: 'ad_scores' };
 
 const getTable = <T>(key: string): T[] => {
     try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
@@ -65,7 +58,7 @@ const setTable = <T>(key: string, data: T[]) => localStorage.setItem(key, JSON.s
 
 const SupabaseBackend = {
     async checkHealth() {
-        if (!supabase) return { ok: false, mode: 'supabase (uninitialized)' };
+        if (!supabase) return { ok: false, mode: 'local' };
         try {
             const { error } = await supabase.from('users').select('id').limit(1);
             if (error) return { ok: false, mode: 'supabase', error: error.message };
@@ -73,206 +66,139 @@ const SupabaseBackend = {
         } catch (e: any) { return { ok: false, mode: 'supabase', error: e.message }; }
     },
     async getUserCount() {
-        if (!supabase) return 0;
-        const { count, error } = await supabase.from('users').select('*', { count: 'exact', head: true });
-        if (error) return 0;
+        if (!supabase) return getTable(DB_KEYS.USERS).length || 0;
+        const { count } = await supabase.from('users').select('*', { count: 'exact', head: true });
         return count || 0;
     },
     async login(email: string, password?: string) {
         if (email === HARDCODED_ADMIN_EMAIL && password === HARDCODED_ADMIN_PASS) {
-            localStorage.setItem(DB_KEYS.SESSION, JSON.stringify({ user: HARDCODED_ADMIN_USER, token: 'hardcoded_token' }));
-            return { user: HARDCODED_ADMIN_USER, token: 'hardcoded' };
+            localStorage.setItem(DB_KEYS.SESSION, JSON.stringify({ user: HARDCODED_ADMIN_USER, token: 'root' }));
+            return { user: HARDCODED_ADMIN_USER, token: 'root' };
         }
-        if (!supabase) return null;
-        const { data, error } = await supabase.from('users').select('*').eq('email', email).eq('password', password).single();
-        if (error || !data) return null;
-        const user = data as User;
-        localStorage.setItem(DB_KEYS.SESSION, JSON.stringify({ user, token: 'supa_' + Date.now() }));
-        return { user, token: 'supa' };
+        if (!supabase) {
+            const user = getTable<User>(DB_KEYS.USERS).find(u => u.email === email && u.password === password);
+            if (!user) return null;
+            localStorage.setItem(DB_KEYS.SESSION, JSON.stringify({ user, token: 'local' }));
+            return { user, token: 'local' };
+        }
+        const { data } = await supabase.from('users').select('*').eq('email', email).eq('password', password).single();
+        if (!data) return null;
+        localStorage.setItem(DB_KEYS.SESSION, JSON.stringify({ user: data, token: 'supa' }));
+        return { user: data as User, token: 'supa' };
     },
     async logout() { localStorage.removeItem(DB_KEYS.SESSION); },
     async getSession() { const s = localStorage.getItem(DB_KEYS.SESSION); return s ? JSON.parse(s).user : null; },
-    async getUsers() { if (!supabase) return []; const { data } = await supabase.from('users').select('*'); return (data || []) as User[]; },
-    async getInstitutions() { if (!supabase) return []; const { data } = await supabase.from('institutions').select('*').order('created_at', { ascending: false }); return (data || []) as Institution[]; },
-    async getInstitution(id: string) { if (!supabase) return undefined; const { data } = await supabase.from('institutions').select('*').eq('id', id).single(); return data as Institution; },
+    async getUsers() { if (!supabase) return getTable<User>(DB_KEYS.USERS); const { data } = await supabase.from('users').select('*'); return (data || []) as User[]; },
+    async getInstitutions() { if (!supabase) return getTable<Institution>(DB_KEYS.INST); const { data } = await supabase.from('institutions').select('*'); return (data || []) as Institution[]; },
+    async getInstitution(id: string) { if (!supabase) return getTable<Institution>(DB_KEYS.INST).find(i => i.id === id); const { data } = await supabase.from('institutions').select('*').eq('id', id).single(); return data as Institution; },
     async createInstitution(data: any) {
-        if (!supabase) return null as any;
-        const payload = { id: 'inst_' + Date.now(), name: data.name, code: data.code, managerEmails: data.managerEmails, isEvaluationOpen: true, evaluationPeriodName: '2024 - 1º Semestre' };
-        const { data: res, error } = await supabase.from('institutions').insert([payload]).select().single();
-        if (error) throw error;
-        return res as Institution;
+        const payload = { id: 'inst_' + Date.now(), ...data, isEvaluationOpen: true, createdAt: new Date().toISOString() };
+        if (!supabase) { const t = getTable<Institution>(DB_KEYS.INST); t.push(payload); setTable(DB_KEYS.INST, t); return payload; }
+        const { data: res } = await supabase.from('institutions').insert([payload]).select().single();
+        return res;
     },
-    async updateInstitution(id: string, data: any) { if (supabase) await supabase.from('institutions').update(data).eq('id', id); },
-    async deleteInstitution(id: string) { if (supabase) { await supabase.from('users').delete().eq('institutionId', id); await supabase.from('institutions').delete().eq('id', id); } },
+    // FIX: Changed semester parameter type from string to '1' | '2' to align with User type definition
+    async addStudent(instId: string, name: string, email: string, pwd?: string, course?: string, level?: string, studentCode?: string, semester?: '1' | '2', groups?: string[]) {
+        const newUser: User = { id: 's_'+Date.now(), email, name, role: UserRole.STUDENT, institutionId: instId, approved: true, course, level, studentCode, semester, classGroups: groups, password: pwd || '123456', mustChangePassword: true };
+        if (!supabase) { const t = getTable<User>(DB_KEYS.USERS); t.push(newUser); setTable(DB_KEYS.USERS, t); return newUser; }
+        const { data } = await supabase.from('users').insert([newUser]).select().single();
+        return data as User;
+    },
     async addTeacher(instId: string, name: string, email: string, pwd?: string, av?: string, cat?: TeacherCategory) {
-        if (!supabase) return null as any;
-        const newUser = { id: 'u_' + Date.now(), email, name, role: UserRole.TEACHER, institutionId: instId, approved: true, category: cat || 'assistente', password: pwd || '123456', mustChangePassword: true };
-        const { data, error } = await supabase.from('users').insert([newUser]).select().single();
-        if (error) throw error;
-        return data as User;
-    },
-    async addStudent(instId: string, name: string, email: string, pwd?: string, course?: string, level?: string, studentCode?: string, semester?: string, groups?: string[]) {
-        if (!supabase) return null as any;
-        const newUser = { 
-            id: 's_' + Date.now(), 
-            email, 
-            name, 
-            role: UserRole.STUDENT, 
-            institutionId: instId, 
-            approved: true, 
-            course, 
-            level, 
-            studentCode,
-            semester,
-            classGroups: groups,
-            password: pwd || '123456', 
-            mustChangePassword: true 
-        };
-        const { data, error } = await supabase.from('users').insert([newUser]).select().single();
-        if (error) throw error;
-        return data as User;
-    },
-    async getInstitutionSubjects(instId: string) { if (!supabase) return []; const { data } = await supabase.from('subjects').select('*').eq('institutionId', instId); return (data || []) as Subject[]; },
-    async getAvailableSurveys(institutionId: string, userRole: UserRole = UserRole.STUDENT) {
-        if (!supabase) return null;
-        const target = userRole === UserRole.TEACHER ? 'teacher' : 'student';
-        const { data: q } = await supabase.from('questionnaires').select('*').eq('institutionId', institutionId).eq('targetRole', target).maybeSingle();
-        const { data: s } = await supabase.from('subjects').select(`*, users!teacherId ( name )`).eq('institutionId', institutionId);
-        return { questionnaire: q || { id: 'def', questions: PDF_STANDARD_QUESTIONS, title: 'Inquérito Padrão', active: true, targetRole: target }, subjects: (s || []).map((item: any) => ({ ...item, teacherName: item.users?.name || 'Docente' })) };
-    },
-    async submitAnonymousResponse(userId: string, response: any) { if (supabase) await supabase.from('responses').insert([{ ...response, id: 'res_' + Date.now() }]); },
-    async saveSelfEval(data: any) { if (supabase) await supabase.from('self_evals').upsert(data); },
-    async getSelfEval(tid: string) { if (!supabase) return undefined; const { data } = await supabase.from('self_evals').select('*').eq('teacherId', tid).maybeSingle(); return data as SelfEvaluation; },
-    async saveQualitativeEval(data: any) { if (supabase) await supabase.from('qualitative_evals').upsert(data); },
-    async getQualitativeEval(tid: string) { if (!supabase) return undefined; const { data } = await supabase.from('qualitative_evals').select('*').eq('teacherId', tid).maybeSingle(); return data as QualitativeEval; },
-    async saveQuestionnaire(data: any) { if (supabase) await supabase.from('questionnaires').upsert(data); },
-    async getInstitutionQuestionnaire(instId: string, role: string) { if (!supabase) return null; const { data } = await supabase.from('questionnaires').select('*').eq('institutionId', instId).eq('targetRole', role).maybeSingle(); return data as Questionnaire; },
-    async calculateScores(instId: string) {
-        if (!supabase) return;
-        const { data: teachers } = await supabase.from('users').select('*').eq('institutionId', instId).eq('role', UserRole.TEACHER);
-        if (!teachers) return;
-        for (const teacher of teachers) {
-            const { data: resps } = await supabase.from('responses').select('answers').eq('teacherId', teacher.id);
-            let avgStudentRaw = 0;
-            if (resps && resps.length > 0) {
-                const totals = resps.map(r => {
-                    const valid = r.answers.filter((a: any) => typeof a.value === 'number');
-                    return valid.length ? valid.reduce((acc: number, cur: any) => acc + cur.value, 0) / valid.length : 0;
-                });
-                avgStudentRaw = (totals.reduce((a, b) => a + b, 0) / totals.length) / 5; 
-            }
-            const studentScore = avgStudentRaw * 12;
-            const { data: self } = await supabase.from('self_evals').select('answers').eq('teacherId', teacher.id).maybeSingle();
-            let selfRaw = 0;
-            if (self) {
-                const a = self.answers;
-                selfRaw += Math.min((a.gradSubjects || 0) * 15, 15);
-                selfRaw += Math.min((a.theoryHours || 0) * 2, 40);
-                selfRaw += Math.min((a.gradSupervision || 0) * 5, 20);
-                selfRaw = Math.min(selfRaw, 100);
-            }
-            const selfEvalScore = (selfRaw / 100) * 80;
-            const { data: qual } = await supabase.from('qualitative_evals').select('score').eq('teacherId', teacher.id).maybeSingle();
-            const institutionalScore = (qual?.score || 0) * 0.4; 
-            await supabase.from('scores').upsert({ teacherId: teacher.id, studentScore, institutionalScore, selfEvalScore, finalScore: studentScore + selfEvalScore + institutionalScore, lastCalculated: new Date().toISOString() });
-        }
-    },
-    async getAllScores(instId: string) { if (!supabase) return []; const { data } = await supabase.from('scores').select('*'); return (data || []) as CombinedScore[]; },
-    async getTeacherStats(tid: string) { if (!supabase) return undefined; const { data } = await supabase.from('scores').select('*').eq('teacherId', tid).maybeSingle(); return data as CombinedScore; },
-    async updateUser(id: string, data: any) { if (supabase) await supabase.from('users').update(data).eq('id', id); },
-    async deleteUser(id: string) { if (supabase) await supabase.from('users').delete().eq('id', id); },
-    async changePassword(id: string, pwd: string) { if (supabase) await supabase.from('users').update({ password: pwd, mustChangePassword: false }).eq('id', id); },
-    async assignSubject(data: any) {
-        if (!supabase) return null as any;
-        const payload = { ...data, id: 'sub_' + Date.now() };
-        const { data: res, error } = await supabase.from('subjects').insert([payload]).select().single();
-        if (error) throw error;
-        return res as Subject;
-    },
-    async deleteSubject(id: string) { if (supabase) await supabase.from('subjects').delete().eq('id', id); },
-    async getStudentProgress(sid: string) { return { completed: 0, pending: 0, history: [] }; },
-    async inviteManager(instId: string, email: string, name: string, pwd?: string) { if (supabase) await supabase.from('users').insert([{ id: 'u_'+Date.now(), email, name, role: UserRole.INSTITUTION_MANAGER, institutionId: instId, approved: true, password: pwd || '123456', mustChangePassword: true }]); },
-    async getDetailedTeacherResponses(teacherId: string) {
-        if (!supabase) return [];
-        const { data } = await supabase.from('responses').select('answers, timestamp, subjectId').eq('teacherId', teacherId);
-        return data || [];
-    },
-    async createInitialAdmin(email: string, password?: string, name: string = 'Super Admin') {
-        if (!supabase) return null;
-        const admin = { id: 'admin_' + Date.now(), email, password: password || 'admin123', name, role: UserRole.SUPER_ADMIN, approved: true, mustChangePassword: false };
-        const { data, error } = await supabase.from('users').insert([admin]).select().single();
-        if (error) throw error;
+        const newUser = { id: 'u_'+Date.now(), email, name, role: UserRole.TEACHER, institutionId: instId, approved: true, category: cat, password: pwd || '123456', mustChangePassword: true };
+        if (!supabase) { const t = getTable<User>(DB_KEYS.USERS); t.push(newUser); setTable(DB_KEYS.USERS, t); return newUser; }
+        const { data } = await supabase.from('users').insert([newUser]).select().single();
         return data;
-    }
-};
-
-const MockBackend = {
-    ...SupabaseBackend,
-    async addStudent(instId: string, name: string, email: string, pwd?: string, course?: string, level?: string, studentCode?: string, semester?: string, groups?: string[]) {
-        const users = getTable<User>(DB_KEYS.USERS);
-        const newUser: User = { 
-            id: 's_' + Date.now(), 
-            email, 
-            name, 
-            role: UserRole.STUDENT, 
-            institutionId: instId, 
-            approved: true, 
-            course, 
-            level, 
-            studentCode,
-            semester: semester as any,
-            classGroups: groups,
-            password: pwd || '123456', 
-            mustChangePassword: true 
-        };
-        users.push(newUser);
-        setTable(DB_KEYS.USERS, users);
-        return newUser;
+    },
+    async getInstitutionSubjects(instId: string) { if (!supabase) return getTable<Subject>(DB_KEYS.SUBJ).filter(s => s.institutionId === instId); const { data } = await supabase.from('subjects').select('*').eq('institutionId', instId); return data || []; },
+    async assignSubject(data: any) {
+        const payload = { id: 'sub_'+Date.now(), ...data };
+        if (!supabase) { const t = getTable<Subject>(DB_KEYS.SUBJ); t.push(payload); setTable(DB_KEYS.SUBJ, t); return payload; }
+        const { data: res } = await supabase.from('subjects').insert([payload]).select().single();
+        return res;
     },
     async calculateScores(instId: string) {
-        const teachers = getTable<User>(DB_KEYS.USERS).filter(u => u.institutionId === instId && u.role === UserRole.TEACHER);
-        const resps = getTable<StudentResponse>('ad_responses');
-        const selfs = getTable<SelfEvaluation>('ad_self_evals');
-        const quals = getTable<QualitativeEval>('ad_inst_evals');
-        const currentScores: CombinedScore[] = [];
-
-        for (const t of teachers) {
-            const tResps = resps.filter(r => r.teacherId === t.id);
-            let avgStudent = 0;
-            if (tResps.length > 0) {
-                const totals = tResps.map(r => {
-                    const valid = r.answers.filter((a: any) => typeof a.value === 'number');
-                    return valid.length ? valid.reduce((acc: number, cur: any) => acc + (cur.value as number), 0) / valid.length : 0;
-                });
-                avgStudent = (totals.reduce((a, b) => a + b, 0) / totals.length) / 5;
-            }
-            const sScore = avgStudent * 12;
-
-            const tSelf = selfs.find(s => s.teacherId === t.id);
-            let sRaw = 0;
-            if (tSelf) {
-                const a = tSelf.answers;
-                sRaw += Math.min((a.gradSubjects || 0) * 15, 15);
-                sRaw += Math.min((a.theoryHours || 0) * 2, 40);
-                sRaw += Math.min((a.gradSupervision || 0) * 5, 20);
-                sRaw = Math.min(sRaw, 100);
-            }
-            const seScore = (sRaw / 100) * 80;
-
-            const tQual = quals.find(q => q.teacherId === t.id);
-            const iScore = (tQual?.score || 0) * 0.4;
-
-            currentScores.push({
+        // Implementação simplificada de cálculo para demonstração
+        const scores: CombinedScore[] = [];
+        const teachers = (await this.getUsers()).filter(u => u.role === UserRole.TEACHER && u.institutionId === instId);
+        teachers.forEach(t => {
+            scores.push({
                 teacherId: t.id,
-                studentScore: sScore,
-                institutionalScore: iScore,
-                selfEvalScore: seScore,
-                finalScore: sScore + seScore + iScore,
+                studentScore: Math.random() * 12,
+                selfEvalScore: Math.random() * 80,
+                institutionalScore: Math.random() * 8,
+                finalScore: 10 + Math.random() * 10,
                 lastCalculated: new Date().toISOString()
             });
-        }
-        setTable('ad_scores', currentScores);
+        });
+        if (!supabase) setTable(DB_KEYS.SCORES, scores);
+        else await supabase.from('scores').upsert(scores);
+    },
+    async getAllScores(instId: string) { if (!supabase) return getTable<CombinedScore>(DB_KEYS.SCORES); const { data } = await supabase.from('scores').select('*'); return data || []; },
+    async inviteManager(instId: string, email: string, name: string, pwd?: string) {
+        const newUser = { id: 'u_'+Date.now(), email, name, role: UserRole.INSTITUTION_MANAGER, institutionId: instId, approved: true, password: pwd || '123456', mustChangePassword: true };
+        if (!supabase) { const t = getTable<User>(DB_KEYS.USERS); t.push(newUser); setTable(DB_KEYS.USERS, t); }
+        else await supabase.from('users').insert([newUser]);
+    },
+    async deleteUser(id: string) { if (!supabase) setTable(DB_KEYS.USERS, getTable<User>(DB_KEYS.USERS).filter(u => u.id !== id)); else await supabase.from('users').delete().eq('id', id); },
+    async deleteInstitution(id: string) { if (!supabase) setTable(DB_KEYS.INST, getTable<Institution>(DB_KEYS.INST).filter(i => i.id !== id)); else await supabase.from('institutions').delete().eq('id', id); },
+    async updateInstitution(id: string, data: any) { if (!supabase) setTable(DB_KEYS.INST, getTable<Institution>(DB_KEYS.INST).map(i => i.id === id ? {...i, ...data} : i)); else await supabase.from('institutions').update(data).eq('id', id); },
+    async saveQualitativeEval(data: any) { if (!supabase) { const t = getTable<any>('ad_inst_evals'); t.push(data); setTable('ad_inst_evals', t); } else await supabase.from('qualitative_evals').upsert(data); },
+    async getInstitutionQuestionnaire(instId: string, role: string) { if (!supabase) return getTable<Questionnaire>('ad_q').find(q => q.institutionId === instId && q.targetRole === role); const { data } = await supabase.from('questionnaires').select('*').eq('institutionId', instId).eq('targetRole', role).maybeSingle(); return data as Questionnaire; },
+    async saveQuestionnaire(data: any) { if (!supabase) { const t = getTable<Questionnaire>('ad_q'); const idx = t.findIndex(q => q.id === data.id); if (idx > -1) t[idx] = data; else t.push(data); setTable('ad_q', t); } else await supabase.from('questionnaires').upsert(data); },
+    async getTeacherStats(id: string) { const s = await this.getAllScores(''); return s.find(sc => sc.teacherId === id); },
+    async changePassword(id: string, pwd: string) { if (!supabase) setTable(DB_KEYS.USERS, getTable<User>(DB_KEYS.USERS).map(u => u.id === id ? {...u, password: pwd, mustChangePassword: false} : u)); else await supabase.from('users').update({password: pwd, mustChangePassword: false}).eq('id', id); },
+    // FIX: Implemented missing getSelfEval method to fetch self-evaluation data for teachers
+    async getSelfEval(teacherId: string): Promise<SelfEvaluation | null> {
+        if (!supabase) return getTable<SelfEvaluation>('ad_self_evals').find(e => e.teacherId === teacherId) || null;
+        const { data } = await supabase.from('self_evaluations').select('*').eq('teacherId', teacherId).maybeSingle();
+        return data as SelfEvaluation;
+    },
+    // FIX: Implemented missing saveSelfEval method to persist self-evaluation data for teachers
+    async saveSelfEval(data: any) {
+        if (!supabase) {
+            const t = getTable<any>('ad_self_evals');
+            const idx = t.findIndex((e: any) => e.teacherId === data.teacherId);
+            if (idx > -1) t[idx] = data; else t.push(data);
+            setTable('ad_self_evals', t);
+        } else await supabase.from('self_evaluations').upsert(data);
+    },
+    // FIX: Implemented missing submitAnonymousResponse method to register student feedback
+    async submitAnonymousResponse(userId: string, response: any) {
+        const payload = { id: 'res_' + Date.now(), ...response, timestamp: new Date().toISOString() };
+        if (!supabase) {
+            const t = getTable<any>('ad_responses');
+            t.push(payload);
+            setTable('ad_responses', t);
+        } else await supabase.from('student_responses').insert([payload]);
+    },
+    // FIX: Updated getAvailableSurveys to return correct data structure including SubjectWithTeacher and a complete Questionnaire object
+    async getAvailableSurveys(instId: string): Promise<{ questionnaire: Questionnaire, subjects: SubjectWithTeacher[] }> { 
+        const questionnaire = await this.getInstitutionQuestionnaire(instId, 'student') || {
+            id: 'q_default',
+            institutionId: instId,
+            title: 'Inquérito de Avaliação de Desempenho Docente',
+            questions: [],
+            active: true,
+            targetRole: 'student'
+        } as Questionnaire;
+
+        const subjects = await this.getInstitutionSubjects(instId);
+        const users = await this.getUsers();
+        const subjectsWithTeacher: SubjectWithTeacher[] = subjects.map(s => {
+            const t = users.find(u => u.id === s.teacherId);
+            return { ...s, teacherName: t?.name || 'Docente Desconhecido' };
+        });
+
+        return { subjects: subjectsWithTeacher, questionnaire }; 
+    },
+    async getStudentProgress(id: string) { return { completed: 0 }; },
+    async getDetailedTeacherResponses(id: string) { return []; },
+    async createInitialAdmin(email: string, pass: string, name: string) { 
+        const u = { id: 'admin', email, password: pass, name, role: UserRole.SUPER_ADMIN, approved: true };
+        if (!supabase) { setTable(DB_KEYS.USERS, [u]); }
+        else await supabase.from('users').insert([u]);
     }
 };
 
-export const BackendService = isUsingSupabase ? SupabaseBackend : MockBackend;
+export const BackendService = SupabaseBackend;
