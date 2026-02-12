@@ -6,8 +6,20 @@ import { User, UserRole, Institution, Subject, Questionnaire, StudentResponse, I
 export type SubjectWithTeacher = Subject & { teacherName: string };
 
 // ==================================================================================
-// 🚀 CONFIGURAÇÃO SUPABASE
+// 🚀 CONFIGURAÇÃO E CREDENCIAIS HARDCODED
 // ==================================================================================
+
+const HARDCODED_ADMIN_EMAIL = 'admin@avaliadocente.ac.mz';
+const HARDCODED_ADMIN_PASS = 'admin';
+
+const HARDCODED_ADMIN_USER: User = {
+    id: 'admin_master_bypass',
+    email: HARDCODED_ADMIN_EMAIL,
+    name: 'Super Administrador (Acesso Direto)',
+    role: UserRole.SUPER_ADMIN,
+    approved: true,
+    mustChangePassword: false
+};
 
 const getEnv = (key: string) => {
     try {
@@ -26,7 +38,6 @@ const getEnv = (key: string) => {
 };
 
 const SUPABASE_CONFIG = {
-    // Chaves fornecidas pelo utilizador integradas como fallback principal
     url: getEnv('SUPABASE_URL') || getEnv('VITE_SUPABASE_URL') || 'https://qvovlhjolredlylqjdmc.supabase.co', 
     key: getEnv('SUPABASE_ANON_KEY') || getEnv('VITE_SUPABASE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2b3ZsaGpvbHJlZGx5bHFqZG1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MDQ2NzUsImV4cCI6MjA4NjQ4MDY3NX0.Qhfsa_6F2HjXOU0Ql0ZaMezVx6Xz4bnn1NWgqOmKUkw'
 };
@@ -43,7 +54,6 @@ if (SUPABASE_CONFIG.url && SUPABASE_CONFIG.key) {
     }
 }
 
-// Questões Padrão (Fallback)
 const PDF_STANDARD_QUESTIONS: Question[] = [
     { id: "651", text: "O docente apresentou o programa temático ou analítico da disciplina?", type: "binary", weight: 4 },
     { id: "652", text: "O docente apresentou os objetivos da disciplina?", type: "binary", weight: 3 },
@@ -61,27 +71,73 @@ const SupabaseBackend = {
     async checkHealth() {
         if (!supabase) return { ok: false, mode: 'supabase (uninitialized)' };
         try {
-            const { error } = await supabase.from('institutions').select('id').limit(1);
-            return { ok: !error, mode: 'supabase', error: error?.message };
+            const { error } = await supabase.from('users').select('id').limit(1);
+            if (error) {
+                if (error.code === '42P01') return { ok: false, mode: 'supabase', error: 'TABELAS_NAO_EXISTEM' };
+                return { ok: false, mode: 'supabase', error: error.message };
+            }
+            return { ok: true, mode: 'supabase' };
         } catch (e: any) {
             return { ok: false, mode: 'supabase', error: e.message };
         }
     },
 
-    async login(email: string, password?: string) {
-        if (!supabase) return null;
-        const { data, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('email', email)
-            .eq('password', password)
-            .single();
+    async getUserCount() {
+        if (!supabase) return 0;
+        const { count, error } = await supabase.from('users').select('*', { count: 'exact', head: true });
+        if (error) {
+            if (error.code === '42P01') return -1;
+            return 0;
+        }
+        return count || 0;
+    },
 
-        if (error || !data) return null;
-        
-        const user = data as User;
-        localStorage.setItem(DB_KEYS.SESSION, JSON.stringify({ user, token: 'supa_' + Date.now() }));
-        return { user, token: 'supa' };
+    async createInitialAdmin(email: string, password?: string, name: string = 'Super Admin') {
+        if (!supabase) return null;
+        const count = await this.getUserCount();
+        if (count > 0) throw new Error("O sistema já possui usuários cadastrados.");
+
+        const admin = {
+            id: 'admin_' + Date.now(),
+            email,
+            password: password || 'admin123',
+            name,
+            role: UserRole.SUPER_ADMIN,
+            approved: true,
+            mustChangePassword: false
+        };
+
+        const { data, error } = await supabase.from('users').insert([admin]).select().single();
+        if (error) throw error;
+        return data;
+    },
+
+    async login(email: string, password?: string) {
+        // 🛠 BYPASS HARDCODED PARA TESTE RÁPIDO
+        if (email === HARDCODED_ADMIN_EMAIL && password === HARDCODED_ADMIN_PASS) {
+            localStorage.setItem(DB_KEYS.SESSION, JSON.stringify({ user: HARDCODED_ADMIN_USER, token: 'hardcoded_token' }));
+            return { user: HARDCODED_ADMIN_USER, token: 'hardcoded' };
+        }
+
+        if (!supabase) return null;
+        try {
+            const { data, error } = await supabase
+                .from('users')
+                .select('*')
+                .eq('email', email)
+                .eq('password', password)
+                .single();
+
+            if (error || !data) return null;
+            
+            const user = data as User;
+            localStorage.setItem(DB_KEYS.SESSION, JSON.stringify({ user, token: 'supa_' + Date.now() }));
+            return { user, token: 'supa' };
+        } catch (e) {
+            // Se der erro de tabela, mas os dados baterem com o hardcoded (já tratado acima), 
+            // ou se houver outro erro, retornamos null.
+            return null;
+        }
     },
 
     async logout() {
@@ -95,20 +151,26 @@ const SupabaseBackend = {
 
     async getUsers() {
         if (!supabase) return [];
-        const { data } = await supabase.from('users').select('*');
-        return (data || []) as User[];
+        try {
+            const { data } = await supabase.from('users').select('*');
+            return (data || []) as User[];
+        } catch (e) { return [HARDCODED_ADMIN_USER]; }
     },
 
     async getInstitutions() {
         if (!supabase) return [];
-        const { data } = await supabase.from('institutions').select('*').order('created_at', { ascending: false });
-        return (data || []) as Institution[];
+        try {
+            const { data } = await supabase.from('institutions').select('*').order('created_at', { ascending: false });
+            return (data || []) as Institution[];
+        } catch (e) { return []; }
     },
 
     async getInstitution(id: string) {
         if (!supabase) return undefined;
-        const { data } = await supabase.from('institutions').select('*').eq('id', id).single();
-        return (data || undefined) as Institution | undefined;
+        try {
+            const { data } = await supabase.from('institutions').select('*').eq('id', id).single();
+            return (data || undefined) as Institution | undefined;
+        } catch (e) { return undefined; }
     },
 
     async createInstitution(data: any) {
@@ -189,43 +251,49 @@ const SupabaseBackend = {
 
     async getInstitutionSubjects(instId: string) {
         if (!supabase) return [];
-        const { data } = await supabase.from('subjects').select('*').eq('institutionId', instId);
-        return (data || []) as Subject[];
+        try {
+            const { data } = await supabase.from('subjects').select('*').eq('institutionId', instId);
+            return (data || []) as Subject[];
+        } catch (e) { return []; }
     },
 
     async getUnapprovedTeachers(instId: string) {
         if (!supabase) return [];
-        const { data } = await supabase.from('users').select('*').eq('institutionId', instId).eq('role', UserRole.TEACHER).eq('approved', false);
-        return (data || []) as User[];
+        try {
+            const { data } = await supabase.from('users').select('*').eq('institutionId', instId).eq('role', UserRole.TEACHER).eq('approved', false);
+            return (data || []) as User[];
+        } catch (e) { return []; }
     },
 
     async getAvailableSurveys(institutionId: string, userRole: UserRole = UserRole.STUDENT): Promise<{ questionnaire: Questionnaire, subjects: SubjectWithTeacher[] } | null> {
         if (!supabase) return null;
         const target = userRole === UserRole.TEACHER ? 'teacher' : 'student';
         
-        const { data: q } = await supabase.from('questionnaires').select('*').eq('institutionId', institutionId).eq('targetRole', target).maybeSingle();
-        
-        const { data: s } = await supabase.from('subjects').select(`
-            *,
-            users!teacherId ( name )
-        `).eq('institutionId', institutionId);
-        
-        const subjectsWithTeacher: SubjectWithTeacher[] = (s || []).map((item: any) => ({
-            ...item,
-            teacherName: item.users?.name || 'Docente'
-        }));
+        try {
+            const { data: q } = await supabase.from('questionnaires').select('*').eq('institutionId', institutionId).eq('targetRole', target).maybeSingle();
+            
+            const { data: s } = await supabase.from('subjects').select(`
+                *,
+                users!teacherId ( name )
+            `).eq('institutionId', institutionId);
+            
+            const subjectsWithTeacher: SubjectWithTeacher[] = (s || []).map((item: any) => ({
+                ...item,
+                teacherName: item.users?.name || 'Docente'
+            }));
 
-        return { 
-            questionnaire: q || { 
-                id: 'def', 
-                institutionId,
-                questions: PDF_STANDARD_QUESTIONS, 
-                title: 'Questionário Padrão',
-                active: true,
-                targetRole: target
-            }, 
-            subjects: subjectsWithTeacher 
-        };
+            return { 
+                questionnaire: q || { 
+                    id: 'def', 
+                    institutionId,
+                    questions: PDF_STANDARD_QUESTIONS, 
+                    title: 'Questionário Padrão',
+                    active: true,
+                    targetRole: target
+                }, 
+                subjects: subjectsWithTeacher 
+            };
+        } catch (e) { return null; }
     },
 
     async submitAnonymousResponse(userId: string, response: any) {
@@ -245,8 +313,10 @@ const SupabaseBackend = {
 
     async getSelfEval(tid: string) {
         if (!supabase) return undefined;
-        const { data } = await supabase.from('self_evals').select('*').eq('teacherId', tid).maybeSingle();
-        return data as SelfEvaluation | undefined;
+        try {
+            const { data } = await supabase.from('self_evals').select('*').eq('teacherId', tid).maybeSingle();
+            return data as SelfEvaluation | undefined;
+        } catch (e) { return undefined; }
     },
 
     async saveQualitativeEval(data: any) {
@@ -257,8 +327,10 @@ const SupabaseBackend = {
 
     async getQualitativeEval(tid: string) {
         if (!supabase) return undefined;
-        const { data } = await supabase.from('qualitative_evals').select('*').eq('teacherId', tid).maybeSingle();
-        return data as QualitativeEval | undefined;
+        try {
+            const { data } = await supabase.from('qualitative_evals').select('*').eq('teacherId', tid).maybeSingle();
+            return data as QualitativeEval | undefined;
+        } catch (e) { return undefined; }
     },
 
     async saveQuestionnaire(data: any) {
@@ -269,67 +341,75 @@ const SupabaseBackend = {
 
     async getInstitutionQuestionnaire(instId: string, role: string) {
         if (!supabase) return null;
-        const { data } = await supabase.from('questionnaires').select('*').eq('institutionId', instId).eq('targetRole', role).maybeSingle();
-        return data as Questionnaire | null;
+        try {
+            const { data } = await supabase.from('questionnaires').select('*').eq('institutionId', instId).eq('targetRole', role).maybeSingle();
+            return data as Questionnaire | null;
+        } catch (e) { return null; }
     },
 
     async calculateScores(instId: string) {
         if (!supabase) return;
-        const { data: teachers } = await supabase.from('users').select('*').eq('institutionId', instId).eq('role', UserRole.TEACHER);
-        if (!teachers) return;
+        try {
+            const { data: teachers } = await supabase.from('users').select('*').eq('institutionId', instId).eq('role', UserRole.TEACHER);
+            if (!teachers) return;
 
-        for (const teacher of teachers) {
-            const { data: resps } = await supabase.from('responses').select('answers').eq('teacherId', teacher.id);
-            let avgStudentRaw = 0;
-            if (resps && resps.length > 0) {
-                const totals = resps.map(r => {
-                    const validAnswers = r.answers.filter((a: any) => typeof a.value === 'number');
-                    if (validAnswers.length === 0) return 0;
-                    return validAnswers.reduce((acc: number, cur: any) => acc + cur.value, 0) / validAnswers.length;
+            for (const teacher of teachers) {
+                const { data: resps } = await supabase.from('responses').select('answers').eq('teacherId', teacher.id);
+                let avgStudentRaw = 0;
+                if (resps && resps.length > 0) {
+                    const totals = resps.map(r => {
+                        const validAnswers = r.answers.filter((a: any) => typeof a.value === 'number');
+                        if (validAnswers.length === 0) return 0;
+                        return validAnswers.reduce((acc: number, cur: any) => acc + cur.value, 0) / validAnswers.length;
+                    });
+                    avgStudentRaw = (totals.reduce((a, b) => a + b, 0) / totals.length) / 5; 
+                }
+                const studentScore = avgStudentRaw * 12;
+
+                const { data: self } = await supabase.from('self_evals').select('answers').eq('teacherId', teacher.id).maybeSingle();
+                let selfRaw = 0;
+                if (self) {
+                    const a = self.answers;
+                    selfRaw += Math.min((a.gradSubjects || 0) * 15, 15);
+                    selfRaw += Math.min((a.postGradSubjects || 0) * 5, 5);
+                    selfRaw += Math.min((a.theoryHours || 0) * 1, 16);
+                    selfRaw += Math.min((a.practicalHours || 0) * 1, 14);
+                    selfRaw += Math.min((a.consultationHours || 0) * 1, 5);
+                    selfRaw = Math.min(selfRaw, 100);
+                }
+                const selfEvalScore = (selfRaw / 100) * 80;
+
+                const { data: qual } = await supabase.from('qualitative_evals').select('score').eq('teacherId', teacher.id).maybeSingle();
+                const institutionalScore = (qual?.score || 0) * 0.8;
+
+                const finalScore = studentScore + selfEvalScore + institutionalScore;
+
+                await supabase.from('scores').upsert({
+                    teacherId: teacher.id,
+                    studentScore,
+                    institutionalScore,
+                    selfEvalScore,
+                    finalScore,
+                    lastCalculated: new Date().toISOString()
                 });
-                avgStudentRaw = (totals.reduce((a, b) => a + b, 0) / totals.length) / 5; 
             }
-            const studentScore = avgStudentRaw * 12;
-
-            const { data: self } = await supabase.from('self_evals').select('answers').eq('teacherId', teacher.id).maybeSingle();
-            let selfRaw = 0;
-            if (self) {
-                const a = self.answers;
-                selfRaw += Math.min((a.gradSubjects || 0) * 15, 15);
-                selfRaw += Math.min((a.postGradSubjects || 0) * 5, 5);
-                selfRaw += Math.min((a.theoryHours || 0) * 1, 16);
-                selfRaw += Math.min((a.practicalHours || 0) * 1, 14);
-                selfRaw += Math.min((a.consultationHours || 0) * 1, 5);
-                selfRaw = Math.min(selfRaw, 100);
-            }
-            const selfEvalScore = (selfRaw / 100) * 80;
-
-            const { data: qual } = await supabase.from('qualitative_evals').select('score').eq('teacherId', teacher.id).maybeSingle();
-            const institutionalScore = (qual?.score || 0) * 0.8;
-
-            const finalScore = studentScore + selfEvalScore + institutionalScore;
-
-            await supabase.from('scores').upsert({
-                teacherId: teacher.id,
-                studentScore,
-                institutionalScore,
-                selfEvalScore,
-                finalScore,
-                lastCalculated: new Date().toISOString()
-            });
-        }
+        } catch (e) { console.error("Erro no calculo:", e); }
     },
 
     async getAllScores(instId: string) {
         if (!supabase) return [];
-        const { data } = await supabase.from('scores').select('*');
-        return (data || []) as CombinedScore[];
+        try {
+            const { data } = await supabase.from('scores').select('*');
+            return (data || []) as CombinedScore[];
+        } catch (e) { return []; }
     },
 
     async getTeacherStats(tid: string) {
         if (!supabase) return undefined;
-        const { data } = await supabase.from('scores').select('*').eq('teacherId', tid).maybeSingle();
-        return data as CombinedScore | undefined;
+        try {
+            const { data } = await supabase.from('scores').select('*').eq('teacherId', tid).maybeSingle();
+            return data as CombinedScore | undefined;
+        } catch (e) { return undefined; }
     },
 
     async updateUser(id: string, data: any) {
@@ -356,14 +436,20 @@ const SupabaseBackend = {
 
     async getStudentProgress(sid: string) {
         if (!supabase) return { completed: 0, pending: 0, history: [] };
-        const { count } = await supabase.from('responses').select('*', { count: 'exact', head: true }).eq('id', sid);
-        return { completed: count || 0, pending: 0, history: [] };
+        try {
+            const { count } = await supabase.from('responses').select('*', { count: 'exact', head: true }).eq('id', sid);
+            return { completed: count || 0, pending: 0, history: [] };
+        } catch (e) { return { completed: 0, pending: 0, history: [] }; }
     },
 
     async resetSystem() {
         alert("O reset de sistema real deve ser feito via painel do Supabase por segurança.");
     }
 };
+
+// ==================================================================================
+// 📦 MOCK IMPLEMENTATION (LOCAL STORAGE FALLBACK)
+// ==================================================================================
 
 const getTable = <T>(key: string): T[] => {
     try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
@@ -372,7 +458,24 @@ const setTable = <T>(key: string, data: T[]) => localStorage.setItem(key, JSON.s
 
 const MockBackend = {
   async checkHealth() { return { ok: true, mode: 'local' }; },
+  async getUserCount() { 
+      const users = getTable<User>(DB_KEYS.USERS || 'ad_users');
+      return users.length; 
+  },
+  async createInitialAdmin(email: string, password?: string, name: string = 'Super Admin') {
+      const ukey = 'ad_users';
+      const users = getTable<User>(ukey);
+      const newUser = { id: 'admin_'+Date.now(), email, name, role: UserRole.SUPER_ADMIN, approved: true, password: password || 'admin123' };
+      users.push(newUser as any); setTable(ukey, users); return newUser as any;
+  },
   async login(email: string, password?: string) {
+    // BYPASS NO MOCK TAMBÉM
+    if (email === HARDCODED_ADMIN_EMAIL && password === HARDCODED_ADMIN_PASS) {
+        const sessionData = { user: HARDCODED_ADMIN_USER, token: 'hardcoded_' + Date.now() };
+        localStorage.setItem(DB_KEYS.SESSION, JSON.stringify(sessionData));
+        return sessionData;
+    }
+
     const users = getTable<User>(DB_KEYS.USERS || 'ad_users');
     const user = users.find(u => u.email === email && (password ? u.password === password : true));
     if (!user) return null;
@@ -434,7 +537,11 @@ const MockBackend = {
         subjects: subjectsWithTeacher 
     };
   },
-  async getUsers() { return getTable<User>('ad_users'); },
+  async getUsers() { 
+      const users = getTable<User>('ad_users');
+      if (users.length === 0) return [HARDCODED_ADMIN_USER];
+      return users;
+  },
   async getInstitutionSubjects(instId: string) { return getTable<Subject>('ad_subjects').filter(s => s.institutionId === instId); },
   async getUnapprovedTeachers(instId: string) { return getTable<User>('ad_users').filter(u => u.institutionId === instId && u.role === UserRole.TEACHER && !u.approved); },
   async getQualitativeEval(tid: string) { return getTable<QualitativeEval>('ad_inst_evals').find(e => e.teacherId === tid); },
