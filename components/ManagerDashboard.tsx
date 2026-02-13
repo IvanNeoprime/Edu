@@ -1,10 +1,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { BackendService, PDF_STANDARD_QUESTIONS } from '../services/backend';
-// import { AIService } from '../services/ai'; // Removed AI Service
 import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution, SelfEvaluation, Course } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, cn } from './ui';
-import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, GraduationCap, PieChart as PieIcon, Download, Printer, Image as ImageIcon, Sparkles, RefreshCw, ScanText, Eye, Settings, Building2, Save, FileText, X, TrendingUp, ClipboardList, CheckCircle2, Lock, Shield, Edit, Table2, Award, Scale } from 'lucide-react';
+import { Users, BookOpen, Calculator, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, Star, BarChartHorizontal, GraduationCap, Download, Printer, Image as ImageIcon, RefreshCw, Settings, Save, X, Edit, Scale, Award } from 'lucide-react';
 
 interface Props {
   institutionId: string;
@@ -24,7 +23,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [institution, setInstitution] = useState<Institution | null>(null);
   const [teachers, setTeachers] = useState<User[]>([]);
   const [students, setStudents] = useState<User[]>([]);
-  const [unapproved, setUnapproved] = useState<User[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [allScores, setAllScores] = useState<CombinedScore[]>([]);
@@ -45,21 +43,20 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [newCourseName, setNewCourseName] = useState('');
   const [newCourseCode, setNewCourseCode] = useState('');
   const [newCourseDuration, setNewCourseDuration] = useState('4');
-  const [newCourseSemester, setNewCourseSemester] = useState('1'); // Novo
-  const [newCourseModality, setNewCourseModality] = useState<'Presencial' | 'Online'>('Presencial'); // Novo
+  const [newCourseSemester, setNewCourseSemester] = useState('1'); 
+  const [newCourseModality, setNewCourseModality] = useState<'Presencial' | 'Online'>('Presencial');
 
   // Edit User State
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [editJobTitle, setEditJobTitle] = useState('');
 
   // Questionnaire State
   const [questionnaire, setQuestionnaire] = useState<Questionnaire | null>(null);
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false); // New Preview State
   
   // Form Builder State
   const [newQText, setNewQText] = useState('');
-  // Force default to binary as per requirement "os questionarios default so se respondem sim ou nao"
   const [newQType, setNewQType] = useState<QuestionType>('binary'); 
   const [newQWeight, setNewQWeight] = useState(1);
   const [newQOptions, setNewQOptions] = useState(''); // Comma separated
@@ -96,10 +93,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
   useEffect(() => {
     loadData();
-  }, [institutionId]);
-
-  useEffect(() => {
-      loadQuestionnaire();
+    loadQuestionnaire();
   }, [institutionId]);
 
   useEffect(() => {
@@ -126,16 +120,12 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         
         const instStudents = allUsers.filter(u => u.role === UserRole.STUDENT && u.institutionId === institutionId);
         setStudents(instStudents);
-
-        setUnapproved(await BackendService.getUnapprovedTeachers(institutionId));
         
         const instSubjects = await BackendService.getInstitutionSubjects(institutionId);
         setSubjects(instSubjects);
 
         const instCourses = await BackendService.getInstitutionCourses(institutionId);
         setCourses(instCourses);
-
-        loadQuestionnaire();
         
         const loadedQualEvals: Record<string, { deadlines: number, quality: number, comments: string }> = {};
         const loadedSelfEvals: Record<string, SelfEvaluation> = {};
@@ -164,14 +154,17 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     setEditingUser(user);
     setEditName(user.name);
     setEditEmail(user.email);
+    setEditJobTitle(user.jobTitle || '');
   };
 
-  const handleSaveEditUser = async () => {
+  const handleSaveEditUser = async (e: React.FormEvent) => {
+      e.preventDefault();
       if (!editingUser) return;
       try {
           await BackendService.updateUser(editingUser.id, {
               name: editName,
-              email: editEmail
+              email: editEmail,
+              jobTitle: editJobTitle
           });
           alert("Dados atualizados com sucesso!");
           setEditingUser(null);
@@ -230,7 +223,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           setNewCourseModality('Presencial');
           alert("Curso adicionado com sucesso!");
       } catch(e: any) {
-          alert("Erro ao adicionar curso: " + e.message + "\n\nSe estiver usando Supabase, verifique se a tabela 'courses' foi criada e atualizada no banco de dados.");
+          alert("Erro ao adicionar curso: " + e.message);
       }
   };
 
@@ -251,7 +244,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           return;
       }
       setNewTeacherSubjects([...newTeacherSubjects, tempSubject]);
-      setTempSubject({ name: '', code: '', course: '', level: '', classGroup: '', shift: 'Diurno' }); // Reset form
+      setTempSubject({ name: '', code: '', course: '', level: '', classGroup: '', shift: 'Diurno'}); // Reset form
   };
   
   const handleRemoveTempSubject = (index: number) => {
@@ -285,7 +278,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
               newTeacherPwd, 
               newTeacherAvatar,
               newTeacherCategory,
-              newTeacherCourses // Passando a lista de cursos
+              newTeacherCourses
           );
           
           if (newTeacherSubjects.length > 0) {
@@ -320,7 +313,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           await loadData();
           alert(`Docente e ${newTeacherSubjects.length} disciplinas cadastrados com sucesso!`);
       } catch (error: any) {
-          console.error("Erro ao adicionar docente:", error);
           alert("Erro ao cadastrar docente: " + error.message);
       }
   };
@@ -377,7 +369,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           await loadData();
           alert(`Estudante cadastrado com sucesso!`);
       } catch (error: any) {
-          console.error("Erro ao adicionar estudante:", error);
           alert("Erro ao cadastrar estudante: " + error.message);
       }
   };
@@ -448,24 +439,9 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       await BackendService.saveQuestionnaire(updatedQ);
   };
 
-  const handleUpdateTitle = async (title: string) => {
-    if (!questionnaire) return;
-    
-    // Optimistic UI update
-    const updatedQ = { ...questionnaire, title };
-    setQuestionnaire(updatedQ);
-    
-    // Debounced save would be ideal here, but for now we save directly
-    await BackendService.saveQuestionnaire(updatedQ);
-  };
-
   const handleResetDefaults = async () => {
     if(!confirm("Tem certeza? Isso substituirá as perguntas atuais pelas padrão do sistema.")) return;
-    
-    // Select defaults based on active role
     const defaults = PDF_STANDARD_QUESTIONS;
-    
-    // Create updated questionnaire object
     const updatedQ: Questionnaire = questionnaire 
         ? { ...questionnaire, questions: defaults }
         : {
@@ -518,58 +494,8 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     }
   };
 
-  const handleExportCSV = () => {
-    if (allScores.length === 0) return alert("Sem dados para exportar.");
-    let csv = "Docente,Avaliação Estudante,Auto-Avaliação,Avaliação Qualitativa,Classificação Final,Data\n";
-    allScores.forEach(s => {
-        const t = teachers.find(u => u.id === s.teacherId);
-        csv += `"${t?.name || 'Desconhecido'}",${s.studentScore},${s.selfEvalScore},${s.institutionalScore},${s.finalScore},${new Date(s.lastCalculated).toLocaleDateString()}\n`;
-    });
-    const encodedUri = encodeURI("data:text/csv;charset=utf-8," + csv);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `relatorio_global_${new Date().toISOString().slice(0,10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-  
-  const handlePrintSummaryReport = () => {
-      setPrintingTeacher(null); // Garantir que o relatório individual não seja impresso
-      setTimeout(() => window.print(), 100);
-  };
-
-  const handlePrintTeacherReport = (teacher: User) => {
-      const score = allScores.find(s => s.teacherId === teacher.id);
-      const selfEval = allSelfEvals[teacher.id];
-
-      if (!score) {
-        alert("Este docente ainda não tem uma pontuação final calculada para gerar o relatório.");
-        return;
-      }
-      
-      setPrintingTeacher(teacher);
-      setPrintingScore(score);
-      setPrintingSelfEval(selfEval || null);
-
-      setTimeout(() => {
-        window.print();
-      }, 100);
-  };
-
-
-  const groupedStudents = useMemo(() => students.reduce((acc, student) => {
-      const course = student.course || 'Sem Curso Atribuído';
-      const level = student.level ? `${student.level}º Ano` : 'Sem Ano';
-      if (!acc[course]) acc[course] = {};
-      if (!acc[course][level]) acc[course][level] = [];
-      acc[course][level].push(student);
-      return acc;
-  }, {} as Record<string, Record<string, User[]>>), [students]);
-
+  // Calculations for Stats
   const avgScore = allScores.length > 0 ? (allScores.reduce((acc, curr) => acc + curr.finalScore, 0) / allScores.length).toFixed(1) : '0';
-
-  // --- DATA PREPARATION FOR TABLES ---
 
   const sortedScores = useMemo(() => {
       return [...allScores].sort((a,b) => b.finalScore - a.finalScore).map(score => {
@@ -600,9 +526,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       return dist;
   }, [allScores]);
 
-
-  // Funções de cálculo para o relatório individual
-  const MAX_SCORE_FOR_CONVERSION = 130; // Ponto máximo teórico
+  const MAX_SCORE_FOR_CONVERSION = 130; 
   const calculateClassification20 = (finalScore: number) => (finalScore / MAX_SCORE_FOR_CONVERSION) * 20;
   const calculatePercentage = (finalScore: number) => (finalScore / MAX_SCORE_FOR_CONVERSION) * 100;
   const getAppreciation = (classification20: number) => {
@@ -612,12 +536,60 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       return 'Insuficiente';
   };
 
+  const handlePrintReport = (teacher: User) => {
+      const score = allScores.find(s => s.teacherId === teacher.id);
+      const selfEval = allSelfEvals[teacher.id];
+
+      if (!score) {
+        alert("Este docente ainda não tem uma pontuação final calculada.");
+        return;
+      }
+      
+      setPrintingTeacher(teacher);
+      setPrintingScore(score);
+      setPrintingSelfEval(selfEval || null);
+
+      setTimeout(() => {
+        window.print();
+      }, 100);
+  };
+
   return (
-    <>
+    <div className="min-h-screen bg-gray-50/50">
+      {/* Modal de Edição de Usuário */}
+      {editingUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in">
+            <Card className="w-full max-w-md shadow-2xl">
+                <CardHeader>
+                    <CardTitle>Editar Usuário</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <form onSubmit={handleSaveEditUser} className="space-y-4">
+                        <div className="space-y-2">
+                            <Label>Nome Completo</Label>
+                            <Input value={editName} onChange={e => setEditName(e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Email Institucional</Label>
+                            <Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Função/Cargo (Job Title)</Label>
+                            <Input value={editJobTitle} onChange={e => setEditJobTitle(e.target.value)} placeholder="Ex: Diretor, Regente, Docente..." />
+                        </div>
+                        <div className="flex justify-end gap-2 pt-2">
+                            <Button type="button" variant="ghost" onClick={() => setEditingUser(null)}>Cancelar</Button>
+                            <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">Salvar Alterações</Button>
+                        </div>
+                    </form>
+                </CardContent>
+            </Card>
+        </div>
+      )}
+
       {/* --- INÍCIO DO CONTEÚDO PARA IMPRESSÃO --- */}
       <div className="hidden print:block font-serif">
         {printingTeacher && printingScore ? (
-            // --- NOVO RELATÓRIO INDIVIDUAL (FOLHA DE CLASSIFICAÇÃO) ---
             <div className="p-4 text-sm">
                 <main>
                     <header className="flex justify-between items-start mb-6">
@@ -632,326 +604,240 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                             <p className="mt-8">Data: ___/___/_____</p>
                         </div>
                     </header>
-
                     <div className="text-center font-bold my-6">
                         <p>Divisão Pedagógica</p>
-                        <h2 className="text-base">FOLHA DE CLASSIFICAÇÃO ANUAL DE DOCENTES E INVESTIGADORES</h2>
+                        <h2 className="text-base">FOLHA DE CLASSIFICAÇÃO ANUAL DE DOCENTES</h2>
                     </div>
                     
                     <div className="space-y-1 mb-6">
-                        <p><strong>Unidade orgânica (UO):</strong> Divisão Pedagógica</p>
-                        <p><strong>Departamento:</strong> Graduação</p>
-                    </div>
-
-                    <div className="space-y-1 mb-6">
-                        <p><strong>1. Dados pessoais</strong></p>
-                        <p><strong>2. Nome completo:</strong> {printingTeacher.name}</p>
-                        <p><strong>3. Categoria:</strong> {printingTeacher.category === 'assistente_estagiario' ? 'Assistente Estagiário' : 'Assistente'}</p>
-                        <p><strong>4. Função de direcção ou de chefia:</strong> {printingSelfEval?.header.function || 'Docente'}</p>
-                        <p><strong>5. Regime laboral (tempo inteiro/tempo parcial):</strong> {printingSelfEval?.header.contractRegime || 'Tempo Inteiro'}</p>
-                        <p><strong>6. Período a que se refere a avaliação:</strong> de 01/01/{new Date().getFullYear()} a 31/12/{new Date().getFullYear()}</p>
+                        <p><strong>Nome:</strong> {printingTeacher.name}</p>
+                        <p><strong>Categoria:</strong> {printingTeacher.category}</p>
+                        <p><strong>Função:</strong> {printingSelfEval?.header.function || printingTeacher.jobTitle || 'Docente'}</p>
                     </div>
                     
                     <div className="mb-6">
-                        <p className="font-bold mb-2">7. Tabela de indicadores do desempenho</p>
                         <table className="w-full border-collapse border-2 border-black">
                             <thead>
                                 <tr className="font-bold bg-gray-100">
-                                    <td className="border border-black p-1">Grupos de indicadores (por ficha)</td>
-                                    <td className="border border-black p-1 text-center">Pontos obtidos</td>
-                                    <td className="border border-black p-1 text-center">%</td>
-                                    <td className="border border-black p-1 text-center">Pontos bonificados</td>
+                                    <td className="border border-black p-1">Componente</td>
+                                    <td className="border border-black p-1 text-center">Pontos</td>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td className="border border-black p-1">Auto-avaliação (1)</td>
+                                    <td className="border border-black p-1">Auto-avaliação</td>
                                     <td className="border border-black p-1 text-center">{printingScore.selfEvalScore.toFixed(1)}</td>
-                                    <td className="border border-black p-1"></td>
-                                    <td className="border border-black p-1"></td>
                                 </tr>
                                  <tr>
-                                    <td className="border border-black p-1">Avaliação do docente pelo estudante (2) a)</td>
+                                    <td className="border border-black p-1">Avaliação Estudante</td>
                                     <td className="border border-black p-1 text-center">{printingScore.studentScore.toFixed(1)}</td>
-                                    <td className="border border-black p-1"></td>
-                                    <td className="border border-black p-1"></td>
                                 </tr>
                                  <tr>
-                                    <td className="border border-black p-1">Avaliação qualitativa (3)</td>
+                                    <td className="border border-black p-1">Avaliação Institucional</td>
                                     <td className="border border-black p-1 text-center">{printingScore.institutionalScore.toFixed(1)}</td>
-                                    <td className="border border-black p-1"></td>
-                                    <td className="border border-black p-1"></td>
                                 </tr>
-                                <tr className="font-bold bg-gray-100">
-                                    <td className="border border-black p-1">Total de pontos (1+2+3)</td>
+                                <tr className="font-bold">
+                                    <td className="border border-black p-1">Total</td>
                                     <td className="border border-black p-1 text-center">{printingScore.finalScore.toFixed(1)}</td>
-                                    <td className="border border-black p-1 text-center">{calculatePercentage(printingScore.finalScore).toFixed(1)}%</td>
-                                    <td className="border border-black p-1"></td>
                                 </tr>
                             </tbody>
                         </table>
-                        <p className="text-xs mt-1">a) Para os Investigadores científicos é dispensável.</p>
-                    </div>
-
-                    <div className="space-y-1 mb-6">
-                        <p className="font-bold">8. Classificação obtida:</p>
-                        <p>a) Pontuação total final obtida: <span className="font-bold">{printingScore.finalScore.toFixed(1)}</span> pontos;</p>
-                        <p>b) Classificação final: <span className="font-bold">{calculateClassification20(printingScore.finalScore).toFixed(2)}</span> valores;</p>
-                        <p>c) Percentagem: <span className="font-bold">{calculatePercentage(printingScore.finalScore).toFixed(1)}%</span>;</p>
-                        <p>d) Apreciação final obtida: <span className="font-bold">{getAppreciation(calculateClassification20(printingScore.finalScore))}</span>;</p>
-                        <p>e) Pontuação bonificada total obtida: 0 pontos.</p>
-                    </div>
-                    
-                    <div className="mb-12">
-                        <p className="font-bold">9. Distinções, louvores, bónus ou prémios obtidos na última avaliação do desempenho:</p>
-                        <p>- Nada Consta.</p>
-                        <div className="border-b border-black mt-2 w-full"></div>
                     </div>
                 </main>
-                
-                <footer className="mt-24">
-                    <div className="flex justify-around items-start text-center">
-                        <div className="w-2/5">
-                            <p>Tomei conhecimento</p>
-                            <p>O Docente Avaliado</p>
-                            <div className="border-b border-black mt-12 mb-2"></div>
-                            <p>Data: ___ / ___ / 20___</p>
-                        </div>
-                         <div className="w-2/5">
-                            <p>O Avaliador</p>
-                            <p>O Director da Divisão Pedagógica</p>
-                            <div className="border-b border-black mt-12 mb-2"></div>
-                            <p>Data: ___ / ___ / 20___</p>
-                        </div>
-                    </div>
-
-                    <div className="mt-12 pt-4 text-center text-xs border-t border-black">
-                        <p className="font-bold">{institution?.name}</p>
-                        <p>Rua John Issa, n° 93, Tel: +258 21328657, Fax: +258 21328657, Cel.: +258 823053873</p>
-                        <p>www.iscam.ac.mz; E-mail: info@gmail.com; O FUTURO COM EXCELÊNCIA</p>
-                    </div>
-                </footer>
             </div>
-        ) : (
-            // --- RELATÓRIO DE RESUMO EM TABELA (GLOBAL) ---
-            <div className="p-8 font-sans">
-                <header className="mb-8 border-b-2 border-gray-800 pb-4">
-                    <div className="flex justify-between items-end">
-                        <div>
-                             <h1 className="text-2xl font-bold uppercase tracking-wide text-gray-900">{institution?.name}</h1>
-                             <p className="text-sm font-medium text-gray-600 uppercase">Relatório de Desempenho Docente</p>
-                        </div>
-                        <div className="text-right text-xs text-gray-500">
-                            <p>Data de Emissão: {new Date().toLocaleDateString()}</p>
-                            <p>Total de Docentes: {teachers.length}</p>
-                        </div>
-                    </div>
-                </header>
-
-                <section className="mb-8">
-                     <h2 className="text-sm font-bold uppercase text-gray-800 mb-2 border-l-4 border-gray-800 pl-2">Resumo Estatístico</h2>
-                     <table className="w-full text-sm border-collapse border border-gray-300">
-                        <thead className="bg-gray-100">
-                            <tr>
-                                <th className="border border-gray-300 p-2 text-left">Indicador</th>
-                                <th className="border border-gray-300 p-2 text-center">Valor</th>
-                                <th className="border border-gray-300 p-2 text-left">Distribuição de Classificações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td className="border border-gray-300 p-2 font-medium">Média Institucional</td>
-                                <td className="border border-gray-300 p-2 text-center font-bold">{avgScore}</td>
-                                <td className="border border-gray-300 p-2" rowSpan={3}>
-                                    <div className="grid grid-cols-2 gap-2 text-xs">
-                                        <div>Excelente (≥18): <strong>{gradeDistribution.excellent}</strong></div>
-                                        <div>Bom (14-17): <strong>{gradeDistribution.good}</strong></div>
-                                        <div>Suficiente (10-13): <strong>{gradeDistribution.sufficient}</strong></div>
-                                        <div>Insuficiente (&lt;10): <strong>{gradeDistribution.insufficient}</strong></div>
-                                    </div>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td className="border border-gray-300 p-2 font-medium">Avaliações Processadas</td>
-                                <td className="border border-gray-300 p-2 text-center">{allScores.length}</td>
-                            </tr>
-                        </tbody>
-                     </table>
-                </section>
-                
-                <section>
-                    <h2 className="text-sm font-bold uppercase text-gray-800 mb-2 border-l-4 border-gray-800 pl-2">Detalhamento de Notas</h2>
-                    <table className="w-full text-sm border-collapse border border-gray-300">
-                        <thead className="bg-gray-100">
-                            <tr>
-                                <th className="p-2 border border-gray-300 text-left w-10">#</th>
-                                <th className="p-2 border border-gray-300 text-left">Docente</th>
-                                <th className="p-2 border border-gray-300 text-center">Av. Alunos (20)</th>
-                                <th className="p-2 border border-gray-300 text-center">Auto-Av. (100)</th>
-                                <th className="p-2 border border-gray-300 text-center">Inst. (10)</th>
-                                <th className="p-2 border border-gray-300 text-center bg-gray-200">Nota Final</th>
-                                <th className="p-2 border border-gray-300 text-center">Classificação (0-20)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {sortedScores.map((score, index) => {
-                                const final20 = calculateClassification20(score.finalScore);
-                                return (
-                                    <tr key={score.teacherId} className="hover:bg-gray-50">
-                                        <td className="p-2 border border-gray-300 text-center">{index + 1}</td>
-                                        <td className="p-2 border border-gray-300 font-medium">{score.teacherName}</td>
-                                        <td className="p-2 border border-gray-300 text-center">{score.studentScore.toFixed(1)}</td>
-                                        <td className="p-2 border border-gray-300 text-center">{score.selfEvalScore.toFixed(1)}</td>
-                                        <td className="p-2 border border-gray-300 text-center">{score.institutionalScore.toFixed(1)}</td>
-                                        <td className="p-2 border border-gray-300 text-center font-bold bg-gray-50">{score.finalScore.toFixed(1)}</td>
-                                        <td className="p-2 border border-gray-300 text-center font-bold">
-                                            {final20.toFixed(1)} ({getAppreciation(final20)})
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </section>
-                <footer className="mt-8 text-center text-xs text-gray-500 border-t pt-2">
-                    Sistema AvaliaDocente MZ - Relatório Gerado Automaticamente
-                </footer>
-            </div>
-        )}
+        ) : null}
       </div>
       {/* --- FIM DO CONTEÚDO PARA IMPRESSÃO --- */}
 
-      <div className="print:hidden space-y-8 p-4 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-500">
-        
-        {/* --- MODAL DE PRÉ-VISUALIZAÇÃO --- */}
-        {isPreviewOpen && questionnaire && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
-                <div className="bg-gray-50 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl flex flex-col">
-                    <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center z-10">
-                        <div>
-                            <h3 className="font-bold text-lg text-gray-900">{questionnaire.title}</h3>
-                            <p className="text-xs text-gray-500">Pré-visualização (Modo Estudante)</p>
-                        </div>
-                        <Button variant="ghost" size="sm" onClick={() => setIsPreviewOpen(false)} className="rounded-full h-8 w-8 p-0 hover:bg-gray-100">
-                            <X className="h-5 w-5 text-gray-500" />
-                        </Button>
-                    </div>
-                    <div className="p-6 space-y-6">
-                        {questionnaire.questions.length === 0 ? (
-                            <div className="text-center py-12 text-gray-400">
-                                <FileQuestion className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                                <p>O questionário está vazio.</p>
-                            </div>
-                        ) : (
-                            questionnaire.questions.map((q, idx) => (
-                                <Card key={q.id} className="overflow-visible shadow-sm border-gray-200">
-                                    <CardContent className="pt-6">
-                                        <div className="mb-4">
-                                            <span className="text-xs font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded mr-2">
-                                                #{idx + 1}
-                                            </span>
-                                            <span className="font-medium text-gray-900 text-lg block mt-1">{q.text}</span>
-                                        </div>
-                                        <div className="mt-2">
-                                            {renderPreviewInput(q)}
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))
-                        )}
-                        <div className="flex justify-center pt-4 pb-2">
-                            <Button disabled className="w-full max-w-sm bg-black opacity-50 cursor-not-allowed">
-                                Enviar Avaliação (Simulação)
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {editingUser && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                <Card className="w-full max-w-md shadow-2xl">
-                    <CardHeader className="border-b">
-                        <CardTitle className="flex items-center gap-2">
-                            <Edit className="h-5 w-5" /> Editar Dados do {editingUser.role === UserRole.TEACHER ? 'Docente' : 'Aluno'}
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-6 space-y-4">
-                        <div className="space-y-2">
-                            <Label>Nome Completo</Label>
-                            <Input value={editName} onChange={e => setEditName(e.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Email Institucional</Label>
-                            <Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} />
-                        </div>
-                        <div className="flex justify-end gap-3 pt-4">
-                            <Button variant="ghost" onClick={() => setEditingUser(null)}>Cancelar</Button>
-                            <Button onClick={handleSaveEditUser}>Salvar Alterações</Button>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-        )}
-
-        <header className="border-b pb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div className="flex items-center gap-4">
-              {institution?.logo && (
-                  <div className="h-16 w-16 bg-white border rounded-lg p-1 flex items-center justify-center shadow-sm">
-                      <img src={institution.logo} className="h-full w-full object-contain" alt="Logo da Instituição" />
-                  </div>
-              )}
-              <div>
-                  <h1 className="text-3xl font-bold tracking-tight">{institution?.name || 'Gestão Institucional'}</h1>
-                  <p className="text-gray-500">Administração de Docentes e Avaliações</p>
-              </div>
+      <div className="print:hidden max-w-7xl mx-auto p-4 md:p-8 space-y-8 animate-in fade-in duration-500">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-gray-900">{institution?.name || 'Painel de Gestão'}</h1>
+            <p className="text-gray-500">Gestão Académica Integrada • Semestre 1 / {new Date().getFullYear()}</p>
           </div>
-          <div className="flex bg-gray-100 p-1 rounded-lg flex-wrap gap-1">
-              <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'overview' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Visão Geral</button>
-              <button onClick={() => setActiveTab('courses')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'courses' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Cursos</button>
-              <button onClick={() => setActiveTab('teachers')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'teachers' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Docentes</button>
-              <button onClick={() => setActiveTab('students')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'students' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Alunos</button>
-              <button onClick={() => setActiveTab('qualitative')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-1 ${activeTab === 'qualitative' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>
-                  <ClipboardList className="h-4 w-4" /> Avaliação Qualitativa
-              </button>
-              <button onClick={() => setActiveTab('questionnaire')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-1 ${activeTab === 'questionnaire' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>
-                  <Shield className="h-3 w-3" /> Ficha de Avaliação
-              </button>
-              <button onClick={() => setActiveTab('stats')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'stats' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Relatórios</button>
-              <button onClick={() => setActiveTab('settings')} className={`px-3 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-1 ${activeTab === 'settings' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>
-                  <Settings className="h-4 w-4" /> Config
-              </button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" className="gap-2" onClick={() => setActiveTab('settings')}>
+                <Settings size={16}/> Configurações
+            </Button>
+            <div className="flex bg-white rounded-lg border p-1 shadow-sm">
+                <Button variant={activeTab === 'overview' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('overview')} className="gap-2">
+                    <BarChartHorizontal size={16} /> Visão Geral
+                </Button>
+                <Button variant={activeTab === 'courses' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('courses')} className="gap-2">
+                    <BookOpen size={16} /> Cursos
+                </Button>
+                <Button variant={activeTab === 'teachers' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('teachers')} className="gap-2">
+                    <Users size={16} /> Docentes
+                </Button>
+                <Button variant={activeTab === 'students' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('students')} className="gap-2">
+                    <GraduationCap size={16} /> Estudantes
+                </Button>
+                <Button variant={activeTab === 'questionnaire' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('questionnaire')} className="gap-2">
+                    <FileQuestion size={16} /> Questionário
+                </Button>
+            </div>
           </div>
         </header>
 
-        {activeTab === 'overview' && ( <div className="space-y-6 animate-in fade-in"><div className="grid grid-cols-1 md:grid-cols-3 gap-6"><Card><CardHeader><CardTitle className="text-base font-medium text-gray-500">Total de Docentes</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold">{teachers.length}</div></CardContent></Card><Card><CardHeader><CardTitle className="text-base font-medium text-gray-500">Total de Alunos</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold">{students.length}</div></CardContent></Card><Card><CardHeader><CardTitle className="text-base font-medium text-gray-500">Média Geral (Final)</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold">{avgScore}</div></CardContent></Card></div><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><Card><CardHeader><CardTitle className="flex items-center gap-2"><AlertCircle className="h-5 w-5 text-yellow-500"/> Ações Pendentes</CardTitle></CardHeader><CardContent>{unapproved.length > 0 ? (<div className="space-y-2">{unapproved.map(t => <div key={t.id} className="flex justify-between items-center p-2 bg-yellow-50 rounded-md"><span>{t.name}</span><Button size="sm">Aprovar</Button></div>)}</div>) : <p className="text-gray-500">Nenhuma ação pendente.</p>}</CardContent></Card><Card className="bg-slate-800 text-white"><CardHeader><CardTitle>Fecho do Semestre</CardTitle></CardHeader><CardContent><p className="text-sm text-slate-300 mb-4">Clique para processar todas as avaliações (Alunos, Auto-avaliação, Gestão) e gerar os relatórios finais.</p><Button onClick={handleCalculateScores} disabled={calculating} className="w-full bg-white text-slate-900 hover:bg-slate-200">{calculating ? 'Calculando...' : <><Calculator className="mr-2 h-4 w-4"/> Calcular Notas Finais</>}</Button></CardContent></Card></div></div>)}
-        
-        {/* ABA DE CURSOS */}
+        {activeTab === 'overview' && (
+             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                <Card className="shadow-sm">
+                    <CardContent className="p-6 flex flex-col items-center text-center">
+                        <div className="p-3 bg-blue-100 rounded-full text-blue-600 mb-3"><Users size={24} /></div>
+                        <h3 className="text-2xl font-bold">{teachers.length}</h3>
+                        <p className="text-sm text-gray-500">Docentes Cadastrados</p>
+                    </CardContent>
+                </Card>
+                <Card className="shadow-sm">
+                    <CardContent className="p-6 flex flex-col items-center text-center">
+                        <div className="p-3 bg-emerald-100 rounded-full text-emerald-600 mb-3"><GraduationCap size={24} /></div>
+                        <h3 className="text-2xl font-bold">{students.length}</h3>
+                        <p className="text-sm text-gray-500">Estudantes Ativos</p>
+                    </CardContent>
+                </Card>
+                <Card className="shadow-sm">
+                    <CardContent className="p-6 flex flex-col items-center text-center">
+                        <div className="p-3 bg-purple-100 rounded-full text-purple-600 mb-3"><BookOpen size={24} /></div>
+                        <h3 className="text-2xl font-bold">{subjects.length}</h3>
+                        <p className="text-sm text-gray-500">Disciplinas Alocadas</p>
+                    </CardContent>
+                </Card>
+                <Card className="bg-slate-900 text-white shadow-lg">
+                    <CardContent className="p-6 flex flex-col items-center text-center justify-center h-full">
+                        <h3 className="text-lg font-bold mb-2">Fecho do Semestre</h3>
+                        <Button size="sm" variant="secondary" onClick={handleCalculateScores} disabled={calculating} className="w-full">
+                           {calculating ? <RefreshCw className="animate-spin mr-2 h-4 w-4"/> : <Calculator className="mr-2 h-4 w-4"/>} 
+                           {calculating ? 'Processando...' : 'Calcular Scores'}
+                        </Button>
+                        <p className="text-xs text-slate-400 mt-2">Atualiza todas as notas finais.</p>
+                    </CardContent>
+                </Card>
+
+                {/* --- AVALIAÇÃO QUALITATIVA (NOVO LOCAL) --- */}
+                <Card className="md:col-span-2 lg:col-span-4 border-l-4 border-l-orange-500">
+                    <CardHeader className="bg-orange-50 border-b border-orange-100">
+                        <CardTitle className="text-orange-900 flex items-center gap-2">
+                            <Scale className="h-5 w-5"/> Avaliação Qualitativa (Peso: 10 Pontos)
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <div className="divide-y max-h-[400px] overflow-y-auto">
+                            {teachers.length === 0 ? <p className="p-6 text-center text-gray-500">Nenhum docente cadastrado.</p> : teachers.map(t => (
+                                <div key={t.id} className="p-4 hover:bg-gray-50 transition-colors">
+                                    <div className="flex justify-between items-center cursor-pointer" onClick={() => setExpandedTeacher(expandedTeacher === t.id ? null : t.id)}>
+                                        <div className="flex items-center gap-3">
+                                            <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600">
+                                                {t.name.charAt(0)}
+                                            </div>
+                                            <div>
+                                                <p className="font-medium text-gray-900">{t.name}</p>
+                                                <p className="text-xs text-gray-500">{t.email} • {t.jobTitle || 'Docente'}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <div className="text-right text-xs">
+                                                <span className={`px-2 py-1 rounded-full ${qualEvals[t.id]?.comments ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                                    {qualEvals[t.id]?.comments ? 'Avaliado' : 'Pendente'}
+                                                </span>
+                                            </div>
+                                            {expandedTeacher === t.id ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+                                        </div>
+                                    </div>
+                                    
+                                    {expandedTeacher === t.id && (
+                                        <div className="mt-4 pt-4 border-t bg-gray-50 p-4 rounded-md animate-in slide-in-from-top-2">
+                                            <div className="grid md:grid-cols-2 gap-4 mb-4">
+                                                <div>
+                                                    <Label>Cumprimento de Prazos (0-10)</Label>
+                                                    <Input 
+                                                        type="number" 
+                                                        min="0" max="10" 
+                                                        value={qualEvals[t.id]?.deadlines || 0} 
+                                                        onChange={e => handleEvalChange(t.id, 'deadlines', e.target.value)}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <Label>Qualidade Pedagógica (0-10)</Label>
+                                                    <Input 
+                                                        type="number" 
+                                                        min="0" max="10" 
+                                                        value={qualEvals[t.id]?.quality || 0} 
+                                                        onChange={e => handleEvalChange(t.id, 'quality', e.target.value)}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="mb-4">
+                                                <Label>Observações da Gestão</Label>
+                                                <Input 
+                                                    value={qualEvals[t.id]?.comments || ''} 
+                                                    onChange={e => handleEvalChange(t.id, 'comments', e.target.value)}
+                                                    placeholder="Feedback para o docente..."
+                                                />
+                                            </div>
+                                            <Button size="sm" onClick={() => handleEvalSubmit(t.id)} className="w-full">
+                                                <Save className="h-4 w-4 mr-2" /> Salvar Avaliação
+                                            </Button>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+             </div>
+        )}
+
+        {/* --- ABA COURSES --- */}
         {activeTab === 'courses' && (
-            <div className="grid gap-8 lg:grid-cols-12 animate-in fade-in">
-                <div className="lg:col-span-5 space-y-6">
-                    <Card className="border-amber-100 shadow-md">
-                        <CardHeader className="bg-amber-50/50 pb-4">
-                            <CardTitle className="flex items-center gap-2 text-amber-900"><Award className="h-5 w-5" /> Cadastrar Curso</CardTitle>
+            <div className="grid gap-6 md:grid-cols-3">
+                <div className="md:col-span-2 space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Cursos da Instituição</CardTitle>
                         </CardHeader>
-                        <CardContent className="pt-4">
-                            <form onSubmit={handleAddCourse} className="space-y-5">
+                        <CardContent>
+                            <div className="space-y-2">
+                                {courses.length === 0 ? (
+                                    <p className="text-gray-500 italic">Nenhum curso cadastrado.</p>
+                                ) : (
+                                    courses.map(c => (
+                                        <div key={c.id} className="flex items-center justify-between p-3 border rounded-lg bg-white shadow-sm">
+                                            <div>
+                                                <h4 className="font-semibold">{c.name} ({c.code})</h4>
+                                                <p className="text-xs text-gray-500">
+                                                    {c.duration} Anos • {c.semester}º Semestre • {c.modality}
+                                                </p>
+                                            </div>
+                                            <Button variant="ghost" size="sm" className="text-red-500" onClick={() => handleDeleteCourse(c.id)}>
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+                <div>
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Adicionar Curso</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <form onSubmit={handleAddCourse} className="space-y-4">
                                 <div className="space-y-2">
                                     <Label>Nome do Curso</Label>
-                                    <Input placeholder="Ex: Engenharia Informática" value={newCourseName} onChange={e => setNewCourseName(e.target.value)} required />
+                                    <Input value={newCourseName} onChange={e => setNewCourseName(e.target.value)} placeholder="Ex: Engenharia Informática" />
                                 </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label>Sigla / Código</Label>
-                                        <Input placeholder="Ex: LEI" value={newCourseCode} onChange={e => setNewCourseCode(e.target.value)} required />
-                                    </div>
+                                <div className="space-y-2">
+                                    <Label>Código (Sigla)</Label>
+                                    <Input value={newCourseCode} onChange={e => setNewCourseCode(e.target.value)} placeholder="Ex: LEI" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
                                     <div className="space-y-2">
                                         <Label>Duração (Anos)</Label>
-                                        <Input type="number" min="1" max="7" value={newCourseDuration} onChange={e => setNewCourseDuration(e.target.value)} required />
+                                        <Input type="number" value={newCourseDuration} onChange={e => setNewCourseDuration(e.target.value)} />
                                     </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label>Semestre Atual</Label>
                                         <Select value={newCourseSemester} onChange={e => setNewCourseSemester(e.target.value)}>
@@ -960,260 +846,335 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                             <option value="Anual">Anual</option>
                                         </Select>
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label>Modalidade</Label>
-                                        <Select value={newCourseModality} onChange={e => setNewCourseModality(e.target.value as any)}>
-                                            <option value="Presencial">Presencial</option>
-                                            <option value="Online">Online</option>
-                                        </Select>
-                                    </div>
                                 </div>
-                                <Button type="submit" className="w-full bg-amber-600 hover:bg-amber-700 text-white">Adicionar Curso</Button>
+                                <div className="space-y-2">
+                                    <Label>Modalidade</Label>
+                                    <Select value={newCourseModality} onChange={e => setNewCourseModality(e.target.value as any)}>
+                                        <option value="Presencial">Presencial</option>
+                                        <option value="Online">Online</option>
+                                    </Select>
+                                </div>
+                                <Button type="submit" className="w-full">Adicionar Curso</Button>
                             </form>
                         </CardContent>
                     </Card>
                 </div>
-                <div className="lg:col-span-7">
-                    <Card>
-                        <CardHeader><CardTitle>Cursos da Instituição ({courses.length})</CardTitle></CardHeader>
-                        <CardContent>
-                            {courses.length === 0 ? <p className="text-gray-500 italic">Nenhum curso cadastrado.</p> : (
+            </div>
+        )}
+
+        {/* --- ABA TEACHERS --- */}
+        {activeTab === 'teachers' && (
+            <div className="space-y-6">
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                        <CardTitle>Corpo Docente</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-4">
+                            {teachers.map(t => (
+                                <div key={t.id} className="flex items-center justify-between p-4 border rounded-lg bg-white">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600">
+                                            {t.name.charAt(0)}
+                                        </div>
+                                        <div>
+                                            <h4 className="font-semibold">{t.name}</h4>
+                                            <p className="text-xs text-gray-500">{t.email}</p>
+                                            <p className="text-xs text-blue-600 font-medium">{t.jobTitle || 'Docente'}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Button variant="outline" size="sm" onClick={() => handlePrintReport(t)}>
+                                            <Printer className="h-4 w-4" />
+                                        </Button>
+                                        <Button variant="outline" size="sm" onClick={() => startEditUser(t)}>
+                                            <Edit className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="border-l-4 border-l-blue-500">
+                    <CardHeader>
+                        <CardTitle className="text-blue-900">Cadastrar Novo Docente</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <form onSubmit={handleAddTeacher} className="space-y-6">
+                            <div className="grid md:grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    {courses.filter(c => c).map(c => (
-                                        <div key={c.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                                            <div>
-                                                <p className="font-medium text-gray-900">{c.name}</p>
-                                                <p className="text-xs text-gray-500">
-                                                    {c.code} • {c.duration} Anos • {c.semester}º Sem. • {c.modality || 'Presencial'}
-                                                </p>
-                                            </div>
-                                            <Button variant="ghost" size="sm" onClick={() => handleDeleteCourse(c.id)} className="text-red-500"><Trash2 size={16} /></Button>
+                                    <Label>Nome Completo</Label>
+                                    <Input value={newTeacherName} onChange={e => setNewTeacherName(e.target.value)} placeholder="Ex: Prof. Dr. João" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Email Institucional</Label>
+                                    <Input type="email" value={newTeacherEmail} onChange={e => setNewTeacherEmail(e.target.value)} placeholder="email@uni.ac.mz" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Senha Inicial</Label>
+                                    <Input value={newTeacherPwd} onChange={e => setNewTeacherPwd(e.target.value)} placeholder="Defina uma senha provisória" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Categoria</Label>
+                                    <Select value={newTeacherCategory} onChange={e => setNewTeacherCategory(e.target.value as any)}>
+                                        <option value="assistente">Assistente</option>
+                                        <option value="assistente_estagiario">Assistente Estagiário</option>
+                                    </Select>
+                                </div>
+                            </div>
+                            
+                            {/* Course Selection */}
+                            <div className="bg-gray-50 p-4 rounded-md border">
+                                <h4 className="text-sm font-semibold mb-2">Cursos Vinculados</h4>
+                                <div className="flex gap-2 mb-2">
+                                    <Select value={selectedCourseToAdd} onChange={e => setSelectedCourseToAdd(e.target.value)}>
+                                        <option value="">Selecione um curso...</option>
+                                        {courses.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                    </Select>
+                                    <Button type="button" onClick={handleAddTeacherCourse} disabled={!selectedCourseToAdd}>
+                                        <Plus className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {newTeacherCourses.map(c => (
+                                        <span key={c} className="bg-white border px-2 py-1 rounded text-xs flex items-center gap-1">
+                                            {c} <X className="h-3 w-3 cursor-pointer" onClick={() => handleRemoveTeacherCourse(c)}/>
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Subject Builder */}
+                            <div className="bg-gray-50 p-4 rounded-md border">
+                                <h4 className="text-sm font-semibold mb-2">Adicionar Disciplinas (Opcional)</h4>
+                                <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-2">
+                                    <Input placeholder="Nome da Disciplina" className="md:col-span-2" value={tempSubject.name} onChange={e => setTempSubject({...tempSubject, name: e.target.value})} />
+                                    <Input placeholder="Curso (Sigla)" value={tempSubject.course} onChange={e => setTempSubject({...tempSubject, course: e.target.value})} />
+                                    <Input placeholder="Turma (ex: A)" value={tempSubject.classGroup} onChange={e => setTempSubject({...tempSubject, classGroup: e.target.value})} />
+                                    <Select value={tempSubject.shift} onChange={e => setTempSubject({...tempSubject, shift: e.target.value as any})}>
+                                        <option value="Diurno">Diurno</option>
+                                        <option value="Noturno">Noturno</option>
+                                    </Select>
+                                    <Button type="button" onClick={handleAddTempSubject}><Plus className="h-4 w-4"/></Button>
+                                </div>
+                                <div className="space-y-1">
+                                    {newTeacherSubjects.map((s, i) => (
+                                        <div key={i} className="flex justify-between text-xs bg-white p-2 border rounded">
+                                            <span>{s.name} ({s.course}) - Turma {s.classGroup} ({s.shift})</span>
+                                            <X className="h-3 w-3 cursor-pointer text-red-500" onClick={() => handleRemoveTempSubject(i)}/>
                                         </div>
                                     ))}
                                 </div>
-                            )}
-                        </CardContent>
-                    </Card>
-                </div>
+                            </div>
+
+                            <Button type="submit" className="w-full">Cadastrar Docente</Button>
+                        </form>
+                    </CardContent>
+                </Card>
             </div>
         )}
 
-        {/* ABA DE ALUNOS (NOVO) */}
-        {activeTab === 'students' && (
-            <div className="grid gap-8 lg:grid-cols-12 animate-in fade-in">
-                <div className="lg:col-span-5 space-y-6">
-                    <Card className="border-green-100 shadow-md">
-                        <CardHeader className="bg-green-50/50 pb-4">
-                            <CardTitle className="flex items-center gap-2 text-green-900"><UserPlus className="h-5 w-5" /> Cadastrar Novo Aluno</CardTitle>
-                        </CardHeader>
-                        <CardContent className="pt-4">
-                            <form onSubmit={handleAddStudent} className="space-y-5">
-                                <div className="space-y-4">
-                                    <div className="space-y-2">
-                                        <Label>Nome Completo</Label>
-                                        <Input value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label>Email</Label>
-                                            <Input type="email" value={newStudentEmail} onChange={e => setNewStudentEmail(e.target.value)} required />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Senha</Label>
-                                            <Input type="text" value={newStudentPwd} onChange={e => setNewStudentPwd(e.target.value)} required />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Curso</Label>
-                                        <Select value={newStudentCourse} onChange={e => setNewStudentCourse(e.target.value)}>
-                                            <option value="">Selecione o curso...</option>
-                                            {courses.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                                        </Select>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label>Ano / Nível</Label>
-                                            <Input type="number" min="1" max="6" value={newStudentLevel} onChange={e => setNewStudentLevel(e.target.value)} placeholder="Ex: 1" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Turmas (Ex: A, B)</Label>
-                                            <Input value={newStudentClassGroups} onChange={e => setNewStudentClassGroups(e.target.value)} placeholder="Separar por vírgula" />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label className="block text-sm font-medium text-gray-700">Turnos</Label>
-                                        <div className="flex gap-4">
-                                            <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                                <input type="checkbox" checked={newStudentShifts.includes('Diurno')} onChange={() => handleToggleShift('Diurno')} className="rounded border-gray-300 text-green-600 focus:ring-green-500" />
-                                                Diurno
-                                            </label>
-                                            <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                                <input type="checkbox" checked={newStudentShifts.includes('Noturno')} onChange={() => handleToggleShift('Noturno')} className="rounded border-gray-300 text-green-600 focus:ring-green-500" />
-                                                Noturno
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                                <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white">
-                                    <Check className="mr-2 h-4 w-4" /> Cadastrar Aluno
-                                </Button>
-                            </form>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                <div className="lg:col-span-7 space-y-6">
+        {/* --- ABA QUESTIONNAIRE --- */}
+        {activeTab === 'questionnaire' && (
+            <div className="grid gap-6 md:grid-cols-3">
+                <div className="md:col-span-2 space-y-4">
                     <Card>
+                        <CardHeader className="flex flex-row justify-between items-center">
+                            <CardTitle>Perguntas do Questionário</CardTitle>
+                            <Button variant="outline" size="sm" onClick={handleResetDefaults} className="text-red-600 hover:bg-red-50 border-red-200">
+                                <RefreshCw className="h-3 w-3 mr-2"/> Restaurar Padrão
+                            </Button>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-3">
+                                {questionnaire?.questions.length === 0 && <p className="text-gray-500 italic">Sem perguntas.</p>}
+                                {questionnaire?.questions.map((q, idx) => (
+                                    <div key={q.id} className="p-4 border rounded-lg bg-white relative group">
+                                        <div className="absolute top-2 right-2 hidden group-hover:block">
+                                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500" onClick={() => handleRemoveQuestion(q.id)}>
+                                                <Trash2 className="h-3 w-3" />
+                                            </Button>
+                                        </div>
+                                        <div className="flex gap-3">
+                                            <span className="font-mono text-gray-400 text-sm">#{idx + 1}</span>
+                                            <div className="flex-1 space-y-2">
+                                                <p className="font-medium text-gray-900">{q.text}</p>
+                                                <div className="bg-gray-50 p-2 rounded border border-dashed border-gray-300">
+                                                    {renderPreviewInput(q)}
+                                                </div>
+                                                <div className="flex gap-2 text-xs text-gray-400">
+                                                    <span className="uppercase bg-gray-100 px-1 rounded">{q.type}</span>
+                                                    <span>Peso: {q.weight}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+                
+                <div>
+                    <Card className="sticky top-24">
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" /> Base de Alunos ({students.length})</CardTitle>
+                            <CardTitle>Adicionar Pergunta</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            {students.length === 0 ? <p className="text-gray-500 italic text-center py-4">Nenhum aluno cadastrado.</p> : (
-                                 <div className="space-y-2">
-                                     {students.map(s => (
-                                         <div key={s.id} className="border rounded-lg bg-white shadow-sm flex items-center justify-between p-3">
-                                             <div className="flex items-center gap-3">
-                                                 <div className="h-9 w-9 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-sm">
-                                                     {s.name.charAt(0)}
-                                                 </div>
-                                                 <div>
-                                                     <p className="font-medium text-sm">{s.name}</p>
-                                                     <div className="flex flex-wrap gap-1 text-[10px] text-gray-500">
-                                                         <span>{s.email}</span> • 
-                                                         <span>{s.course || 'S/ Curso'}</span> • 
-                                                         <span>{s.level}º Ano</span>
-                                                     </div>
-                                                 </div>
-                                             </div>
-                                             <Button size="sm" variant="ghost" onClick={() => startEditUser(s)} className="text-gray-400 hover:text-gray-600">
-                                                 <Edit className="h-4 w-4" />
-                                             </Button>
-                                         </div>
-                                     ))}
-                                 </div>
-                            )}
+                        <CardContent>
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label>Texto da Pergunta</Label>
+                                    <Input value={newQText} onChange={e => setNewQText(e.target.value)} placeholder="Ex: O docente foi pontual?" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Tipo de Resposta</Label>
+                                    <Select value={newQType} onChange={e => setNewQType(e.target.value as any)}>
+                                        <option value="binary">Sim / Não (Binário)</option>
+                                        <option value="scale_10">Escala 0 a 10</option>
+                                        <option value="stars">Estrelas (1 a 5)</option>
+                                        <option value="text">Texto Livre</option>
+                                        <option value="choice">Múltipla Escolha</option>
+                                    </Select>
+                                </div>
+                                {newQType !== 'text' && (
+                                    <div className="space-y-2">
+                                        <Label>Peso na Nota</Label>
+                                        <Input type="number" min="0" value={newQWeight} onChange={e => setNewQWeight(parseInt(e.target.value) || 0)} />
+                                    </div>
+                                )}
+                                {newQType === 'choice' && (
+                                    <div className="space-y-2">
+                                        <Label>Opções (separadas por vírgula)</Label>
+                                        <Input value={newQOptions} onChange={e => setNewQOptions(e.target.value)} placeholder="Ex: Ótimo, Bom, Regular, Mau" />
+                                    </div>
+                                )}
+                                <Button onClick={handleAddQuestion} className="w-full">
+                                    <Plus className="h-4 w-4 mr-2" /> Adicionar ao Questionário
+                                </Button>
+                            </div>
                         </CardContent>
                     </Card>
                 </div>
             </div>
         )}
 
-        {activeTab === 'teachers' && ( <div className="grid gap-8 lg:grid-cols-12"><div className="lg:col-span-5 space-y-6"><Card className="border-indigo-100 shadow-md"><CardHeader className="bg-indigo-50/50 pb-4"><CardTitle className="flex items-center gap-2 text-indigo-900"><UserPlus className="h-5 w-5" /> Cadastrar Novo Docente</CardTitle></CardHeader><CardContent className="pt-4"><form onSubmit={handleAddTeacher} className="space-y-5"><div className="space-y-4"><div className="flex gap-4"><div className="flex-1 space-y-2"><Label>Nome Completo</Label><Input value={newTeacherName} onChange={e => setNewTeacherName(e.target.value)} required /></div><div className="w-16 space-y-2"><Label>Foto</Label><div className="relative h-10 w-full"><input type="file" accept="image/*" onChange={(e) => handleAvatarUpload(e, setNewTeacherAvatar)} className="absolute inset-0 opacity-0 cursor-pointer z-10" /><div className="h-full w-full border rounded flex items-center justify-center bg-white">{newTeacherAvatar ? <img src={newTeacherAvatar} className="h-full w-full object-cover rounded" alt="Avatar"/> : <ImageIcon className="h-4 w-4 text-gray-400" />}</div></div></div></div><div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Email</Label><Input type="email" value={newTeacherEmail} onChange={e => setNewTeacherEmail(e.target.value)} required /></div><div className="space-y-2"><Label>Senha</Label><Input type="text" value={newTeacherPwd} onChange={e => setNewTeacherPwd(e.target.value)} required /></div></div><div className="space-y-2"><Label>Categoria</Label><Select value={newTeacherCategory} onChange={(e) => setNewTeacherCategory(e.target.value as TeacherCategory)}><option value="assistente">Assistente (Pleno)</option><option value="assistente_estagiario">Assistente Estagiário</option></Select></div>
-        
-        {/* Nova seção: Múltiplos Cursos */}
-        <div className="space-y-2 border-t pt-2 mt-2">
-            <Label>Vincular a Cursos/Departamentos</Label>
-            <div className="flex gap-2">
-                <Select value={selectedCourseToAdd} onChange={(e) => setSelectedCourseToAdd(e.target.value)}>
-                    <option value="">Selecione um curso...</option>
-                    {courses.filter(c => c).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                </Select>
-                <Button type="button" onClick={handleAddTeacherCourse} variant="secondary">Adicionar</Button>
-            </div>
-            <div className="flex flex-wrap gap-2 mt-2">
-                {newTeacherCourses.map(course => (
-                    <div key={course} className="bg-indigo-100 text-indigo-800 text-xs px-2 py-1 rounded-full flex items-center gap-1">
-                        {course}
-                        <button type="button" onClick={() => handleRemoveTeacherCourse(course)} className="hover:text-indigo-900"><X size={12} /></button>
-                    </div>
-                ))}
-            </div>
-        </div>
+        {/* --- ABA STUDENTS --- */}
+        {activeTab === 'students' && (
+            <div className="grid gap-6 md:grid-cols-2">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Estudantes</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                            {students.length === 0 && <p className="text-gray-500 italic">Nenhum estudante cadastrado.</p>}
+                            {students.map(s => (
+                                <div key={s.id} className="flex items-center justify-between p-3 border rounded-lg bg-white">
+                                    <div>
+                                        <h4 className="font-semibold">{s.name}</h4>
+                                        <p className="text-xs text-gray-500">{s.email}</p>
+                                        <p className="text-xs text-blue-500">{s.course} • {s.level}º Ano</p>
+                                    </div>
+                                    <Button variant="ghost" size="sm" onClick={() => startEditUser(s)}>
+                                        <Edit className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="h-fit">
+                    <CardHeader>
+                        <CardTitle>Matricular Novo Estudante</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <form onSubmit={handleAddStudent} className="space-y-4">
+                            <div className="space-y-2">
+                                <Label>Nome Completo</Label>
+                                <Input value={newStudentName} onChange={e => setNewStudentName(e.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Email</Label>
+                                <Input type="email" value={newStudentEmail} onChange={e => setNewStudentEmail(e.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Senha Inicial</Label>
+                                <Input value={newStudentPwd} onChange={e => setNewStudentPwd(e.target.value)} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="space-y-2">
+                                    <Label>Curso</Label>
+                                    <Select value={newStudentCourse} onChange={e => setNewStudentCourse(e.target.value)}>
+                                        <option value="">Selecione...</option>
+                                        {courses.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Ano/Nível</Label>
+                                    <Input value={newStudentLevel} onChange={e => setNewStudentLevel(e.target.value)} placeholder="Ex: 1" />
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-2">
+                                <Label>Turnos (Múltipla Seleção)</Label>
+                                <div className="flex gap-2">
+                                    {['Diurno', 'Noturno'].map(shift => (
+                                        <div 
+                                            key={shift}
+                                            onClick={() => handleToggleShift(shift)}
+                                            className={`px-3 py-1 rounded border cursor-pointer text-sm ${newStudentShifts.includes(shift) ? 'bg-blue-100 border-blue-300 text-blue-800' : 'bg-white hover:bg-gray-50'}`}
+                                        >
+                                            {shift}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-2">
+                                <Label>Turmas (Separadas por vírgula)</Label>
+                                <Input value={newStudentClassGroups} onChange={e => setNewStudentClassGroups(e.target.value)} placeholder="Ex: A, B" />
+                            </div>
 
-        </div><div className="space-y-4 border-t pt-4 mt-4"><h3 className="text-sm font-medium text-gray-600">Disciplinas a Lecionar</h3>{newTeacherSubjects.length > 0 && (<div className="space-y-2">{newTeacherSubjects.map((s, i) => (<div key={i} className="flex items-center justify-between text-xs bg-gray-100 p-2 rounded"><span className="font-medium">{s.name}</span><button type="button" onClick={() => handleRemoveTempSubject(i)}><Trash2 className="h-3 w-3 text-red-500"/></button></div>))}</div>)}<div className="p-3 bg-gray-50 rounded-lg border space-y-3"><div className="grid grid-cols-2 gap-2"><div className="space-y-1"><Label className="text-xs">Nome da Disciplina</Label><Input value={tempSubject.name} onChange={e => setTempSubject({...tempSubject, name: e.target.value})} /></div><div className="space-y-1"><Label className="text-xs">Código</Label><Input value={tempSubject.code} onChange={e => setTempSubject({...tempSubject, code: e.target.value})} /></div></div><div className="space-y-1"><Label className="text-xs">Curso</Label><Select value={tempSubject.course} onChange={e => setTempSubject({...tempSubject, course: e.target.value})}><option value="">Selecione...</option>{courses.filter(c => c).map(c=><option key={c.id} value={c.name}>{c.name}</option>)}</Select></div><div className="grid grid-cols-3 gap-2"><div className="space-y-1"><Label className="text-xs">Ano</Label><Input value={tempSubject.level} onChange={e => setTempSubject({...tempSubject, level: e.target.value})} /></div><div className="space-y-1"><Label className="text-xs">Turma</Label><Input value={tempSubject.classGroup} onChange={e => setTempSubject({...tempSubject, classGroup: e.target.value})} /></div><div className="space-y-1"><Label className="text-xs">Turno</Label><Select value={tempSubject.shift} onChange={e => setTempSubject({...tempSubject, shift: e.target.value as any})}><option value="Diurno">Diurno</option><option value="Noturno">Noturno</option></Select></div></div><Button type="button" variant="secondary" size="sm" className="w-full" onClick={handleAddTempSubject}><Plus className="h-4 w-4 mr-2" />Adicionar Disciplina à Lista</Button></div></div><Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"><Check className="mr-2 h-4 w-4" /> Confirmar Cadastro</Button></form></CardContent></Card></div><div className="lg:col-span-7 space-y-6"><Card><CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" /> Corpo Docente ({teachers.length})</CardTitle></CardHeader><CardContent className="space-y-2">{teachers.map(t => ( <div key={t.id} className="border rounded-lg bg-white shadow-sm flex items-center justify-between p-4"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">{t.avatar ? <img src={t.avatar} className="h-full w-full object-cover" alt="Avatar"/> : <Users className="h-5 w-5 m-2.5 text-gray-400" />}</div><div className="flex flex-col"><div className="font-medium text-sm">{t.name}</div><span className="text-xs text-gray-400">{t.email}</span>
-        {/* Exibir cursos associados */}
-        {t.courses && t.courses.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-                {t.courses.map(c => <span key={c} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{c}</span>)}
+                            <Button type="submit" className="w-full">Matricular</Button>
+                        </form>
+                    </CardContent>
+                </Card>
             </div>
         )}
-        </div></div><div className="flex items-center gap-2"><Button size="sm" variant="ghost" onClick={() => startEditUser(t)} className="text-gray-500"><Edit className="h-4 w-4" /></Button><Button size="sm" variant="ghost" onClick={() => handlePrintTeacherReport(t)} className="text-gray-500" title="Gerar Folha de Classificação"><FileText className="h-4 w-4" /></Button></div></div>))} </CardContent></Card></div></div>)}
-        {activeTab === 'questionnaire' && ( <div className="animate-in fade-in space-y-6"><div className="grid gap-8 lg:grid-cols-12"><div className="lg:col-span-5 space-y-6"><Card><CardHeader className="bg-slate-900 text-white rounded-t-lg"><CardTitle className="flex items-center gap-2"><Plus className="h-5 w-5" /> Adicionar Pergunta</CardTitle></CardHeader><CardContent className="space-y-4 pt-6"><div className="space-y-2"><Label>Texto</Label><Input value={newQText} onChange={(e) => setNewQText(e.target.value)} /></div><div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Tipo</Label><Select value={newQType} onChange={(e) => setNewQType(e.target.value as QuestionType)}><option value="binary">Sim / Não</option><option value="stars">Estrelas (1-5)</option><option value="scale_10">Escala (0-10)</option><option value="text">Texto</option><option value="choice">Múltipla Escolha</option></Select></div><div className="space-y-2"><Label>Pontos (Se SIM)</Label><Input type="number" min="0" value={newQWeight} onChange={(e) => setNewQWeight(Number(e.target.value))} disabled={newQType === 'text' || newQType === 'choice'} /></div></div><Button onClick={handleAddQuestion} className="w-full bg-slate-900">Adicionar Pergunta</Button></CardContent></Card></div><div className="lg:col-span-7 space-y-6"><Card className="h-full flex flex-col bg-gray-50/50"><CardHeader className="bg-white border-b border-gray-200"><div className="flex items-center justify-between"><CardTitle className="flex items-center gap-2 text-gray-800"><Eye className="h-5 w-5 text-indigo-600" /> Pré-visualização da Ficha (Estudante)</CardTitle><Button variant="outline" size="sm" onClick={handleResetDefaults} title="Restaurar perguntas originais"><RefreshCw className="h-4 w-4 mr-2" /> Restaurar Padrão</Button></div><Input value={questionnaire?.title || ''} onChange={(e) => handleUpdateTitle(e.target.value)} className="mt-4 font-bold text-lg" placeholder="Título da Ficha de Avaliação" /></CardHeader><CardContent className="flex-1 overflow-y-auto p-6 space-y-4">{(!questionnaire || questionnaire.questions.length === 0) ? (<div className="flex flex-col items-center justify-center h-64 text-gray-400"><FileQuestion className="h-12 w-12 mb-3 opacity-20" /><p className="font-medium">O formulário está vazio.</p></div>) : (questionnaire.questions.map((q, idx) => (<div key={q.id} className="relative group bg-white p-5 rounded-lg border border-gray-200 shadow-sm"><div className="absolute right-3 top-3"><button onClick={() => handleRemoveQuestion(q.id)} className="p-1.5 text-gray-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div><div className="mb-3 pr-8"><p className="font-medium text-gray-900 text-base">#{idx + 1}. {q.text}</p></div><div className="pl-4 opacity-70 pointer-events-none flex items-center justify-between"><div>{renderPreviewInput(q)}</div>{q.type === 'binary' && <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded border border-green-200">Vale {q.weight} pts (Sim)</span>}</div></div>)))}</CardContent></Card></div></div></div>)} 
-        {activeTab === 'qualitative' && ( <div className="animate-in fade-in grid grid-cols-1 lg:grid-cols-3 gap-6"><div className="lg:col-span-2 space-y-6"><Card><CardHeader><CardTitle className="flex items-center gap-2"><ClipboardList className="h-5 w-5" /> Avaliação Qualitativa Institucional</CardTitle><p className="text-sm text-gray-500 pt-1">Atribua uma nota de 0 a 10 para cada indicador. Esta avaliação representa 8% da nota final do docente.</p></CardHeader><CardContent className="space-y-2">{teachers.map(t => ( <div key={t.id} className="border rounded-lg overflow-hidden"><button onClick={() => setExpandedTeacher(prev => prev === t.id ? null : t.id)} className="w-full flex items-center justify-between p-4 bg-white hover:bg-gray-50 transition-colors"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">{t.avatar ? <img src={t.avatar} className="h-full w-full object-cover" alt="Avatar"/> : <Users className="h-5 w-5 m-2.5 text-gray-400" />}</div><div className="text-left"><p className="font-medium">{t.name}</p><p className="text-sm text-gray-500">{t.email}</p></div></div><div className="flex items-center gap-2 text-gray-500">{expandedTeacher === t.id ? <ChevronUp/> : <ChevronDown/>}</div></button>{expandedTeacher === t.id && ( <div className="p-4 bg-gray-50/70 border-t space-y-4 animate-in fade-in duration-300"><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div className="space-y-2"><Label>Cumprimento de tarefas e prazos (0-10)</Label><Input type="number" min="0" max="10" value={qualEvals[t.id]?.deadlines || 0} onChange={e => handleEvalChange(t.id, 'deadlines', e.target.value)} /></div><div className="space-y-2"><Label>Qualidade do trabalho realizado (0-10)</Label><Input type="number" min="0" max="10" value={qualEvals[t.id]?.quality || 0} onChange={e => handleEvalChange(t.id, 'quality', e.target.value)} /></div></div><div className="space-y-2"><Label>Comentários / Observações</Label><textarea value={qualEvals[t.id]?.comments || ''} onChange={e => handleEvalChange(t.id, 'comments', e.target.value)} className="w-full min-h-[80px] p-2 border rounded" placeholder="Adicione notas sobre o desempenho..." /></div><Button onClick={() => handleEvalSubmit(t.id)}><Save className="mr-2 h-4 w-4"/> Salvar Avaliação</Button></div>)}</div>))} </CardContent></Card></div><div className="lg:col-span-1"><Card className="h-fit sticky top-4"><CardHeader className="bg-slate-50 pb-3 border-b"><CardTitle className="text-sm flex items-center gap-2 text-slate-800"><Scale className="h-4 w-4" /> Guião de Pontuação (Rubrica)</CardTitle></CardHeader><CardContent className="p-0"><table className="w-full text-xs text-left"><thead className="bg-slate-100 font-bold text-slate-600"><tr><th className="p-2 border-b">Classif.</th><th className="p-2 border-b">Pontos</th><th className="p-2 border-b">Critério</th></tr></thead><tbody className="divide-y text-slate-700"><tr className="bg-green-50"><td className="p-2 font-bold text-green-800">Excelente</td><td className="p-2 font-bold">10.0</td><td className="p-2">Qualidade excepcional ou prazos superados (antecipação).</td></tr><tr><td className="p-2 font-bold text-blue-800">Muito Bom</td><td className="p-2 font-bold">7.5</td><td className="p-2">Trabalho exemplar e com rapidez/oportunidade.</td></tr><tr><td className="p-2 font-bold text-yellow-800">Bom</td><td className="p-2 font-bold">5.0</td><td className="p-2">Dentro do padrão e dos prazos estabelecidos.</td></tr><tr className="bg-red-50"><td className="p-2 font-bold text-red-800">Mau</td><td className="p-2 font-bold">2.5</td><td className="p-2">Insuficiente, atrasos frequentes ou erros.</td></tr></tbody></table><div className="p-3 text-xs text-gray-400 italic bg-gray-50 border-t">Baseado na Ficha de Indicadores de Avaliação Qualitativa</div></CardContent></Card></div></div>)}
-        {activeTab === 'stats' && (
-            <div className="space-y-6 animate-in fade-in">
-                <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                    <div>
-                        <h2 className="text-xl font-bold text-slate-800">Relatório de Desempenho Global</h2>
-                        <p className="text-slate-500 text-sm">Visão consolidada do corpo docente</p>
-                    </div>
-                    <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={handleExportCSV} className="text-slate-600 border-slate-300">
-                            <Download className="mr-2 h-4 w-4" /> CSV
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={handlePrintSummaryReport} className="text-slate-600 border-slate-300">
-                            <Printer className="mr-2 h-4 w-4" /> PDF
-                        </Button>
-                    </div>
-                </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Resumo em Tabela Minimalista */}
-                    <Card className="lg:col-span-1 border-none shadow-md overflow-hidden bg-white">
-                        <CardHeader className="border-b border-gray-100 pb-2 bg-gray-50">
-                            <CardTitle className="text-sm uppercase tracking-wider text-gray-500 font-bold">Resumo Estatístico</CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-0">
-                            <table className="w-full text-sm">
-                                <tbody className="divide-y divide-gray-100">
-                                    <tr><td className="p-4 text-gray-500">Total de Avaliações</td><td className="p-4 text-right font-bold">{allScores.length}</td></tr>
-                                    <tr><td className="p-4 text-gray-500">Média Institucional</td><td className="p-4 text-right font-bold text-blue-600">{avgScore}</td></tr>
-                                    <tr className="bg-gray-50/50"><td colSpan={2} className="p-2 text-xs font-bold text-center uppercase tracking-widest text-gray-400">Distribuição</td></tr>
-                                    <tr><td className="p-3 pl-6 text-green-700 font-medium">Excelente (≥18)</td><td className="p-3 text-right font-bold">{gradeDistribution.excellent}</td></tr>
-                                    <tr><td className="p-3 pl-6 text-blue-700 font-medium">Bom (14-17)</td><td className="p-3 text-right font-bold">{gradeDistribution.good}</td></tr>
-                                    <tr><td className="p-3 pl-6 text-yellow-700 font-medium">Suficiente (10-13)</td><td className="p-3 text-right font-bold">{gradeDistribution.sufficient}</td></tr>
-                                    <tr><td className="p-3 pl-6 text-red-700 font-medium">Insuficiente (&lt;10)</td><td className="p-3 text-right font-bold">{gradeDistribution.insufficient}</td></tr>
-                                </tbody>
-                            </table>
-                        </CardContent>
-                    </Card>
-
-                    {/* Ranking em Tabela Minimalista */}
-                    <Card className="lg:col-span-2 border-none shadow-md bg-white">
-                        <CardHeader className="border-b border-gray-100 pb-2 bg-gray-50">
-                            <CardTitle className="text-sm uppercase tracking-wider text-gray-500 font-bold flex items-center gap-2"><Table2 size={16}/> Ranking de Desempenho (Top 15)</CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-0 overflow-x-auto">
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="border-b border-gray-100 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        <th className="p-3 w-10">#</th>
-                                        <th className="p-3">Docente</th>
-                                        <th className="p-3 text-center">Final</th>
-                                        <th className="p-3 text-center">Situação</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100 text-sm">
-                                    {sortedScores.slice(0, 15).map((score, index) => {
-                                        const final20 = calculateClassification20(score.finalScore);
-                                        return (
-                                            <tr key={index} className="hover:bg-gray-50 transition-colors">
-                                                <td className="p-3 font-medium text-gray-400">{index + 1}</td>
-                                                <td className="p-3 font-medium text-gray-900">{score.teacherName}</td>
-                                                <td className="p-3 text-center font-bold text-gray-800">{score.finalScore.toFixed(1)}</td>
-                                                <td className="p-3 text-center">
-                                                    <span className={cn(
-                                                        "px-2 py-0.5 rounded text-xs font-bold uppercase",
-                                                        final20 >= 14 ? "bg-green-100 text-green-800" :
-                                                        final20 >= 10 ? "bg-yellow-100 text-yellow-800" : "bg-red-100 text-red-800"
-                                                    )}>
-                                                        {getAppreciation(final20)}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        )
-                                    })}
-                                    {sortedScores.length === 0 && <tr><td colSpan={4} className="p-4 text-center text-gray-500">Sem dados.</td></tr>}
-                                </tbody>
-                            </table>
-                        </CardContent>
-                    </Card>
-                </div>
-            </div>
+        {/* --- ABA SETTINGS --- */}
+        {activeTab === 'settings' && (
+            <Card>
+                <CardHeader>
+                    <CardTitle>Configurações da Instituição</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <form onSubmit={handleUpdateInstitution} className="space-y-4 max-w-md">
+                        <div className="space-y-2">
+                            <Label>Nome da Instituição</Label>
+                            <Input 
+                                value={institution?.name || ''} 
+                                onChange={e => institution && setInstitution({...institution, name: e.target.value})} 
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Logotipo da Instituição</Label>
+                            <div className="flex items-center gap-4">
+                                <div className="h-16 w-16 border rounded bg-gray-50 flex items-center justify-center overflow-hidden">
+                                    {institution?.logo ? <img src={institution.logo} className="w-full h-full object-contain" /> : <ImageIcon className="text-gray-300"/>}
+                                </div>
+                                <Input type="file" accept="image/*" onChange={handleInstLogoUpload} />
+                            </div>
+                        </div>
+                        <Button type="submit">Salvar Alterações</Button>
+                    </form>
+                </CardContent>
+            </Card>
         )}
-        {activeTab === 'settings' && institution && ( <div className="animate-in fade-in"><Card className="max-w-2xl mx-auto"><CardHeader><CardTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" /> Configurações da Instituição</CardTitle></CardHeader><CardContent><form onSubmit={handleUpdateInstitution} className="space-y-4"><div className="space-y-2"><Label>Nome da Instituição</Label><Input value={institution.name} onChange={e => setInstitution({...institution, name: e.target.value})}/></div><div className="space-y-2"><Label>Logotipo</Label><div className="flex items-center gap-4"><div className="h-16 w-16 border rounded bg-white p-1 flex items-center justify-center">{institution.logo ? <img src={institution.logo} className="object-contain h-full w-full" alt="Logo"/> : <ImageIcon className="h-6 w-6 text-gray-300"/>}</div><Input type="file" accept="image/*" onChange={handleInstLogoUpload} /></div></div><Button type="submit"><Save className="mr-2 h-4 w-4"/> Salvar Alterações</Button></form></CardContent></Card></div>)}
+
       </div>
-    </>
+    </div>
   );
 };
-    

@@ -120,7 +120,8 @@ const SupabaseBackend = {
             course: data.course,
             courses: data.courses,
             semester: data.semester,
-            modality: data.modality
+            modality: data.modality,
+            jobTitle: data.jobTitle
         };
         localStorage.setItem(DB_KEYS.SESSION, JSON.stringify({ user, token: 'supa' }));
         return { user, token: 'supa' };
@@ -221,7 +222,7 @@ const SupabaseBackend = {
     // --------------
 
     async addTeacher(institutionId: string, name: string, email: string, password?: string, avatar?: string, category?: TeacherCategory, courses?: string[]) {
-        const newUser = { id: `u_${Date.now()}`, email, name, role: UserRole.TEACHER, institutionId, approved: true, password: password || '123456', avatar, category, courses, mustChangePassword: !!password };
+        const newUser = { id: `u_${Date.now()}`, email, name, role: UserRole.TEACHER, institutionId, approved: true, password: password || '123456', avatar, category, courses, mustChangePassword: !!password, jobTitle: 'Docente' };
         if (!supabase) {
             const users = getTable<User>(DB_KEYS.USERS);
             setTable(DB_KEYS.USERS, [...users, newUser]);

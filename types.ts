@@ -27,6 +27,7 @@ export interface User {
   classGroups?: string[]; // Lista de turmas do aluno (ex: ['A', 'B'])
   // Novo campo para docentes
   category?: TeacherCategory;
+  jobTitle?: string; // Nova Função/Cargo (Ex: Director, Docente)
 }
 
 export interface Course {
