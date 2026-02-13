@@ -58,7 +58,7 @@ export interface Subject {
   name: string;
   code?: string; // Agora opcional
   institutionId: string;
-  teacherId: string;
+  teacherId?: string; // Agora opcional (pode ser criada sem professor)
   // Novos campos solicitados para contexto
   academicYear?: string;
   level?: string;

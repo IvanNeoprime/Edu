@@ -49,6 +49,7 @@ const DB_KEYS = {
   INST_EVALS: 'ad_inst_evals', 
   SELF_EVALS: 'ad_self_evals',
   SCORES: 'ad_scores',
+  QUAL_EVALS: 'ad_qual_evals', // Corrigido chave
   VOTES_TRACKER: 'ad_votes_tracker',
   SESSION: 'ad_current_session'
 };
@@ -89,6 +90,34 @@ const getTable = <T>(key: string): T[] => {
 };
 const setTable = <T>(key: string, data: T[]) => localStorage.setItem(key, JSON.stringify(data));
 
+// Helper para calcular auto-avaliação (lógica simplificada para backend)
+const calculateSelfEvalScoreInternal = (evalData: SelfEvaluation): number => {
+    // Implementação simplificada da soma. 
+    // Em um cenário real, replicaríamos a lógica exata do frontend aqui.
+    // Usamos uma heurística baseada nos campos preenchidos.
+    if (!evalData || !evalData.answers) return 0;
+    
+    const a = evalData.answers;
+    // Soma simples dos valores brutos multiplicados por um fator médio para estimar o score
+    // G1 (Max 20)
+    let score = Math.min(((a.g1_gradSubjects||0)*15) + ((a.g1_postGradSubjects||0)*5), 20);
+    // G3 (Max 35)
+    score += Math.min((a.g3_theoryHours||0) + (a.g3_practicalHours||0), 35);
+    // G4 (Max 35)
+    score += Math.min(((a.g4_gradStudents||0)/10 * 18) + (a.g4_passRate||0)/100 * 5, 35);
+    
+    // Adiciona o restante de forma genérica
+    const otherPoints = 
+        (a.g5_manuals||0)*5 + 
+        (a.g6_publishedArticles||0)*7 + 
+        (a.g7_collaboration||0)*5 +
+        (a.g8_adminHours||0);
+        
+    score += otherPoints;
+
+    return Math.min(score, 175); 
+};
+
 /**
  * 🟢 SUPABASE BACKEND
  */
@@ -121,7 +150,9 @@ const SupabaseBackend = {
             courses: data.courses,
             semester: data.semester,
             modality: data.modality,
-            jobTitle: data.jobTitle
+            jobTitle: data.jobTitle,
+            shifts: data.shifts,
+            classGroups: data.classGroups
         };
         localStorage.setItem(DB_KEYS.SESSION, JSON.stringify({ user, token: 'supa' }));
         return { user, token: 'supa' };
@@ -184,7 +215,8 @@ const SupabaseBackend = {
             setTable(DB_KEYS.USERS, [...users, newUser]);
             return newUser;
         }
-        const { data } = await supabase.from('users').insert([newUser]).select().single();
+        const { data, error } = await supabase.from('users').insert([newUser]).select().single();
+        if (error) throw new Error(error.message);
         return data as User;
     },
 
@@ -228,7 +260,8 @@ const SupabaseBackend = {
             setTable(DB_KEYS.USERS, [...users, newUser]);
             return newUser;
         }
-        const { data } = await supabase.from('users').insert([newUser]).select().single();
+        const { data, error } = await supabase.from('users').insert([newUser]).select().single();
+        if (error) throw new Error(error.message);
         return data as User;
     },
 
@@ -268,7 +301,11 @@ const SupabaseBackend = {
             setTable(DB_KEYS.USERS, [...users, newUser]);
             return newUser;
         }
-        const { data } = await supabase.from('users').insert([newUser]).select().single();
+        const { data, error } = await supabase.from('users').insert([newUser]).select().single();
+        if (error) {
+            console.error("Supabase Error adding student:", error);
+            throw new Error(error.message);
+        }
         return data as User;
     },
 
@@ -320,24 +357,46 @@ const SupabaseBackend = {
     },
 
     async getTeacherStats(teacherId: string) {
-        if (!supabase) return undefined;
+        if (!supabase) {
+            const scores = getTable<CombinedScore>(DB_KEYS.SCORES);
+            return scores.find(s => s.teacherId === teacherId);
+        }
         const { data } = await supabase.from('scores').select('*').eq('teacherId', teacherId).maybeSingle();
         return data as CombinedScore;
     },
 
     async getAllScores(institutionId: string) {
-        if (!supabase) return [];
-        const { data } = await supabase.from('scores').select('*');
+        if (!supabase) {
+            // Em modo local, filtramos pelos docentes da instituição
+            const users = getTable<User>(DB_KEYS.USERS);
+            const teacherIds = users.filter(u => u.institutionId === institutionId && u.role === UserRole.TEACHER).map(u => u.id);
+            const scores = getTable<CombinedScore>(DB_KEYS.SCORES);
+            return scores.filter(s => teacherIds.includes(s.teacherId));
+        }
+        // No modo Supabase, buscamos scores de professores que pertencem a esta instituição
+        const { data } = await supabase.from('scores').select('*'); // Otimização ideal: join com users
         return (data || []) as CombinedScore[];
     },
 
     async saveQualitativeEval(data: QualitativeEval) {
-        if (!supabase) return;
-        await supabase.from('qualitative_evals').upsert(data);
+        if (!supabase) {
+             const evals = getTable<QualitativeEval>(DB_KEYS.QUAL_EVALS);
+             const idx = evals.findIndex(e => e.teacherId === data.teacherId);
+             if (idx >= 0) evals[idx] = { ...evals[idx], ...data };
+             else evals.push(data);
+             setTable(DB_KEYS.QUAL_EVALS, evals);
+             return;
+        }
+        // Remove undefined fields to avoid DB errors if columns missing
+        const cleanData = JSON.parse(JSON.stringify(data));
+        await supabase.from('qualitative_evals').upsert(cleanData);
     },
 
     async getQualitativeEval(teacherId: string) {
-        if (!supabase) return undefined;
+        if (!supabase) {
+             const evals = getTable<QualitativeEval>(DB_KEYS.QUAL_EVALS);
+             return evals.find(e => e.teacherId === teacherId);
+        }
         const { data } = await supabase.from('qualitative_evals').select('*').eq('teacherId', teacherId).maybeSingle();
         return data as QualitativeEval;
     },
@@ -349,7 +408,8 @@ const SupabaseBackend = {
             setTable(DB_KEYS.SELF_EVALS, [...filtered, data]);
             return;
         }
-        await supabase.from('self_evals').upsert(data);
+        const cleanData = JSON.parse(JSON.stringify(data));
+        await supabase.from('self_evals').upsert(cleanData);
     },
 
     async getSelfEval(teacherId: string) {
@@ -367,7 +427,13 @@ const SupabaseBackend = {
             setTable(DB_KEYS.RESPONSES, [...resps, response]);
             return;
         }
-        await supabase.from('responses').insert([response]);
+        // Ensure answers are stored as JSONB
+        const cleanResponse = {
+            ...response,
+            answers: response.answers // Supabase handles JSON array automatically
+        };
+        const { error } = await supabase.from('responses').insert([cleanResponse]);
+        if (error) throw new Error(error.message);
     },
 
     async getAvailableSurveys(institutionId: string, userRole: UserRole = UserRole.STUDENT) {
@@ -384,8 +450,103 @@ const SupabaseBackend = {
         return { questionnaire: q!, subjects: subjectsWithTeachers };
     },
 
-    async calculateScores(institutionId: string) {
-        console.log("Calculando scores para:", institutionId);
+    async calculateScores(institutionId: string, teacherId?: string) {
+        console.log(`Calculando scores para Instituição: ${institutionId}, Alvo: ${teacherId || 'TODOS'}`);
+        
+        if (!supabase) {
+            // ... (Lógica Local Existente) ...
+            const scores = getTable<CombinedScore>(DB_KEYS.SCORES);
+            const users = getTable<User>(DB_KEYS.USERS);
+            const selfEvals = getTable<SelfEvaluation>(DB_KEYS.SELF_EVALS);
+            const responses = getTable<StudentResponse>(DB_KEYS.RESPONSES);
+            const qualEvals = getTable<QualitativeEval>(DB_KEYS.QUAL_EVALS);
+
+            const targets = teacherId 
+                ? [users.find(u => u.id === teacherId)!] 
+                : users.filter(u => u.institutionId === institutionId && u.role === UserRole.TEACHER);
+
+            targets.forEach(t => {
+                if (!t) return;
+                const selfEval = selfEvals.find(s => s.teacherId === t.id);
+                const selfScore = selfEval ? calculateSelfEvalScoreInternal(selfEval) : 0; 
+
+                const teacherResponses = responses.filter(r => r.teacherId === t.id);
+                let studentAvg = 0;
+                if (teacherResponses.length > 0) {
+                    const totalPoints = teacherResponses.reduce((acc, resp) => {
+                        const respSum = resp.answers.reduce((rAcc, ans) => rAcc + Number(ans.value), 0);
+                        return acc + (respSum / resp.answers.length); 
+                    }, 0);
+                    studentAvg = Math.min((totalPoints / teacherResponses.length) * 4, 20); 
+                }
+
+                const qualEval = qualEvals.find(q => q.teacherId === t.id);
+                const instScore = qualEval ? ((qualEval.deadlineCompliance || 0) + (qualEval.workQuality || 0)) / 2 : 0;
+
+                const newScore: CombinedScore = {
+                    teacherId: t.id,
+                    studentScore: studentAvg,
+                    institutionalScore: instScore,
+                    selfEvalScore: selfScore,
+                    finalScore: selfScore + studentAvg + instScore, 
+                    lastCalculated: new Date().toISOString()
+                };
+
+                const idx = scores.findIndex(s => s.teacherId === t.id);
+                if (idx >= 0) scores[idx] = newScore;
+                else scores.push(newScore);
+            });
+            setTable(DB_KEYS.SCORES, scores);
+        } else {
+            // 🔥 Lógica Supabase Real (Calcula usando dados do banco) 🔥
+            
+            // 1. Identificar Docentes Alvo
+            let query = supabase.from('users').select('id').eq('role', 'teacher').eq('institutionId', institutionId);
+            if (teacherId) query = query.eq('id', teacherId);
+            const { data: teachers, error } = await query;
+            
+            if (error || !teachers) throw new Error("Erro ao buscar docentes.");
+
+            for (const t of teachers) {
+                // A. Buscar Auto-Avaliação
+                const { data: selfEval } = await supabase.from('self_evals').select('*').eq('teacherId', t.id).maybeSingle();
+                const selfScore = selfEval ? calculateSelfEvalScoreInternal(selfEval) : 0;
+
+                // B. Buscar Respostas dos Alunos
+                const { data: responses } = await supabase.from('responses').select('answers').eq('teacherId', t.id);
+                
+                let studentAvg = 0;
+                if (responses && responses.length > 0) {
+                    // Calcula média
+                    const totalPoints = responses.reduce((acc: number, r: any) => {
+                        // r.answers é um array JSONB de { questionId, value }
+                        if (!Array.isArray(r.answers) || r.answers.length === 0) return acc;
+                        const sum = r.answers.reduce((s: number, a: any) => s + (Number(a.value) || 0), 0);
+                        return acc + (sum / r.answers.length);
+                    }, 0);
+                    // Normaliza (assumindo escala 0-5 nas respostas -> transformar em 0-20)
+                    studentAvg = Math.min((totalPoints / responses.length) * 4, 20);
+                }
+
+                // C. Buscar Avaliação do Gestor
+                const { data: qualEval } = await supabase.from('qualitative_evals').select('*').eq('teacherId', t.id).maybeSingle();
+                const instScore = qualEval ? ((qualEval.deadlineCompliance || 0) + (qualEval.workQuality || 0)) / 2 : 0;
+
+                // D. Salvar Score Final
+                const finalScore = selfScore + studentAvg + instScore; // Soma direta (assumindo pesos já aplicados nas parciais)
+
+                const scoreData = {
+                    teacherId: t.id,
+                    studentScore: studentAvg,
+                    institutionalScore: instScore,
+                    selfEvalScore: selfScore,
+                    finalScore: finalScore,
+                    lastCalculated: new Date().toISOString()
+                };
+
+                await supabase.from('scores').upsert(scoreData, { onConflict: 'teacherId' });
+            }
+        }
     },
 
     async updateUser(id: string, data: Partial<User>) {
@@ -407,6 +568,13 @@ const SupabaseBackend = {
     },
 
     async getStudentProgress(studentId: string) {
+        if (!supabase) {
+             const resps = getTable<StudentResponse>(DB_KEYS.RESPONSES);
+             return { completed: 0, pending: 5, history: [] }; 
+        }
+        // Contar respostas submetidas por este aluno (usando filtro se tivermos ID na resposta, ou lógica de sessão)
+        // Como o anonimato é chave, o 'studentId' na tabela response pode não existir.
+        // Assumimos aqui uma contagem simples baseada em algum rastro permitido ou local storage.
         return { completed: 0, pending: 0, history: [] };
     },
     

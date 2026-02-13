@@ -268,8 +268,8 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                   <CardHeader>
                       <CardTitle className="text-base flex items-center gap-2"><Check className="h-4 w-4"/> Status de Avaliação</CardTitle>
                   </CardHeader>
-                  <CardContent className="flex items-center justify-center">
-                      <div className="w-full h-[200px]">
+                  <CardContent className="pt-0">
+                      <div style={{ width: '100%', height: 200 }}>
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie

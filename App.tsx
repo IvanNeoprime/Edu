@@ -7,7 +7,7 @@ import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { ManagerDashboard } from './components/ManagerDashboard';
 import { TeacherDashboard } from './components/TeacherDashboard';
 import { StudentDashboard } from './components/StudentDashboard';
-import { GraduationCap, ShieldCheck, ArrowRight, UserPlus, LogIn, User as UserIcon, Database, HardDrive, Key, BookOpen, AlertCircle } from 'lucide-react';
+import { GraduationCap, ShieldCheck, ArrowRight, UserPlus, LogIn, User as UserIcon, Database, HardDrive, Key, BookOpen, AlertCircle, Menu } from 'lucide-react';
 
 function ChangePasswordModal({ user, onPasswordChanged }: { user: User, onPasswordChanged: () => void }) {
   const [newPassword, setNewPassword] = useState('');
@@ -156,12 +156,13 @@ export default function App() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex justify-between h-16">
                   <div className="flex items-center gap-2">
-                      <div className="bg-black text-white p-1.5 rounded-lg">
+                      <div className="bg-black text-white p-1.5 rounded-lg shrink-0">
                         <GraduationCap className="h-5 w-5" />
                       </div>
-                      <span className="font-bold text-lg hidden sm:block tracking-tight">AvaliaDocente MZ</span>
+                      <span className="font-bold text-lg hidden sm:block tracking-tight truncate">AvaliaDocente MZ</span>
+                      <span className="font-bold text-lg sm:hidden tracking-tight">ADMZ</span>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 md:gap-4">
                       {/* Storage Badge in Navbar */}
                       <div className="hidden md:flex items-center gap-1.5 px-3 py-1 bg-gray-100 rounded-full text-xs font-medium text-gray-500 border">
                           {systemMode === 'supabase' ? (
@@ -172,11 +173,11 @@ export default function App() {
                       </div>
 
                       <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 rounded-full bg-gray-200 overflow-hidden border border-gray-300">
-                              {user?.avatar ? <img src={user.avatar} className="h-full w-full object-cover" /> : <UserIcon className="h-5 w-5 m-2 text-gray-500" />}
+                          <div className="h-8 w-8 md:h-9 md:w-9 rounded-full bg-gray-200 overflow-hidden border border-gray-300 shrink-0">
+                              {user?.avatar ? <img src={user.avatar} className="h-full w-full object-cover" /> : <UserIcon className="h-4 w-4 md:h-5 md:w-5 m-2 text-gray-500" />}
                           </div>
                           <div className="text-right hidden sm:block leading-tight">
-                              <div className="text-sm font-medium">{user?.name}</div>
+                              <div className="text-sm font-medium truncate max-w-[150px]">{user?.name}</div>
                               <div className="text-xs text-gray-500 capitalize flex items-center justify-end gap-1">
                                   {user?.role === UserRole.TEACHER && !user?.approved && (
                                       <span className="w-2 h-2 bg-yellow-400 rounded-full" title="Pendente"></span>
@@ -185,13 +186,13 @@ export default function App() {
                               </div>
                           </div>
                       </div>
-                      <div className="h-6 w-px bg-gray-200 mx-2"></div>
-                      <Button variant="ghost" size="sm" onClick={handleLogout}>Sair</Button>
+                      <div className="h-6 w-px bg-gray-200 mx-1 md:mx-2"></div>
+                      <Button variant="ghost" size="sm" onClick={handleLogout} className="text-red-600 hover:text-red-700 hover:bg-red-50 px-2 md:px-4">Sair</Button>
                   </div>
               </div>
           </div>
       </nav>
-      <main>
+      <main className="pb-16 md:pb-0">
         {children}
       </main>
     </div>
@@ -211,17 +212,17 @@ export default function App() {
             )}
         </div>
 
-        <div className="mb-8 text-center">
+        <div className="mb-8 text-center px-4">
             <div className="mx-auto h-16 w-16 bg-black text-white rounded-2xl flex items-center justify-center mb-4 shadow-xl">
                 <GraduationCap size={32} />
             </div>
-            <h1 className="text-3xl font-bold tracking-tight text-gray-900">AvaliaDocente MZ</h1>
-            <p className="text-gray-500 mt-2">Sistema Nacional de Avaliação Académica</p>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-gray-900">AvaliaDocente MZ</h1>
+            <p className="text-gray-500 mt-2 text-sm md:text-base">Sistema Nacional de Avaliação Académica</p>
         </div>
 
         <Card className="w-full max-w-md shadow-lg border-0 transition-all duration-300">
           <CardHeader className="space-y-1 pb-4 border-b">
-            <CardTitle className="text-2xl font-bold text-center">
+            <CardTitle className="text-xl md:text-2xl font-bold text-center">
                 Acesso ao Sistema
             </CardTitle>
             <p className="text-center text-xs text-gray-500">
@@ -265,8 +266,8 @@ export default function App() {
           </CardContent>
         </Card>
         
-        <div className="mt-8 flex items-center gap-2 text-gray-400 text-xs">
-            <ShieldCheck size={14} />
+        <div className="mt-8 flex items-center gap-2 text-gray-400 text-xs text-center px-4">
+            <ShieldCheck size={14} className="shrink-0"/>
             <span>Segurança e Anonimato Garantidos</span>
         </div>
       </div>

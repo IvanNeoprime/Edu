@@ -3,7 +3,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { BackendService, PDF_STANDARD_QUESTIONS } from '../services/backend';
 import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution, SelfEvaluation, Course } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, cn } from './ui';
-import { Users, BookOpen, Calculator, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, Star, BarChartHorizontal, GraduationCap, Download, Printer, Image as ImageIcon, RefreshCw, Settings, Save, X, Edit, Scale, Award } from 'lucide-react';
+import { Users, BookOpen, Calculator, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, Star, BarChartHorizontal, GraduationCap, Download, Printer, Image as ImageIcon, RefreshCw, Settings, Save, X, Edit, Scale, Award, FileSpreadsheet, ListChecks, FileText, Layers, AlertTriangle, Menu } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface Props {
   institutionId: string;
@@ -18,6 +20,12 @@ interface NewSubjectItem {
     shift: 'Diurno' | 'Noturno';
 }
 
+interface CurricularSubject {
+    name: string;
+    level: string;
+    semester: string;
+}
+
 export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'courses' | 'teachers' | 'students' | 'qualitative' | 'questionnaire' | 'stats' | 'settings'>('overview');
   const [institution, setInstitution] = useState<Institution | null>(null);
@@ -30,6 +38,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   
   const [qualEvals, setQualEvals] = useState<Record<string, { deadlines: number, quality: number, comments: string }>>({});
   const [expandedTeacher, setExpandedTeacher] = useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
@@ -45,6 +54,15 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [newCourseDuration, setNewCourseDuration] = useState('4');
   const [newCourseSemester, setNewCourseSemester] = useState('1'); 
   const [newCourseModality, setNewCourseModality] = useState<'Presencial' | 'Online'>('Presencial');
+  
+  // Estado para Disciplinas do Curso (Estrutura Curricular)
+  const [courseSubjects, setCourseSubjects] = useState<CurricularSubject[]>([]);
+  const [tempCourseSubjectName, setTempCourseSubjectName] = useState('');
+  const [tempCourseSubjectLevel, setTempCourseSubjectLevel] = useState('1');
+  const [tempCourseSubjectSemester, setTempCourseSubjectSemester] = useState('1');
+  
+  // Estado para Cálculo de Scores
+  const [calcTarget, setCalcTarget] = useState<string>('all');
 
   // Edit User State
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -177,10 +195,18 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const handleCalculateScores = async () => {
     setCalculating(true);
     try {
-        await BackendService.calculateScores(institutionId);
+        const targetId = calcTarget === 'all' ? undefined : calcTarget;
+        await BackendService.calculateScores(institutionId, targetId);
+        
+        // Recarrega scores após cálculo
         const scores = await BackendService.getAllScores(institutionId);
         setAllScores(scores);
-        alert("Cálculo de notas realizado com sucesso!");
+        
+        const msg = targetId 
+            ? `Cálculo realizado para o docente selecionado.` 
+            : `Cálculo realizado para ${teachers.length} docentes.`;
+            
+        alert(msg);
     } catch (e) {
         alert("Erro ao calcular: " + e);
     } finally {
@@ -198,11 +224,26 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       }
   };
 
+  const handleAddCourseSubject = () => {
+      if(!tempCourseSubjectName.trim()) return;
+      setCourseSubjects([...courseSubjects, {
+          name: tempCourseSubjectName,
+          level: tempCourseSubjectLevel,
+          semester: tempCourseSubjectSemester
+      }]);
+      setTempCourseSubjectName('');
+  };
+
+  const handleRemoveCourseSubject = (index: number) => {
+      setCourseSubjects(courseSubjects.filter((_, i) => i !== index));
+  };
+
   const handleAddCourse = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!newCourseName || !newCourseCode) return;
       
       try {
+          // 1. Criar o Curso
           const result = await BackendService.addCourse(
               institutionId, 
               newCourseName, 
@@ -214,6 +255,27 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           
           if (result) {
             setCourses(prev => [...prev, result]);
+            
+            // 2. Criar as Disciplinas Associadas (se houver)
+            if (courseSubjects.length > 0) {
+                const year = new Date().getFullYear().toString();
+                for (const sub of courseSubjects) {
+                    await BackendService.assignSubject({
+                        name: sub.name,
+                        code: `${newCourseCode}-${sub.level}${sub.semester}`,
+                        teacherId: undefined, // Sem professor inicialmente
+                        institutionId: institutionId,
+                        academicYear: year,
+                        level: sub.level,
+                        semester: sub.semester,
+                        course: newCourseName, // Vincula ao nome do curso
+                        classGroup: 'A', // Turma padrão
+                        shift: 'Diurno', // Turno padrão
+                        modality: newCourseModality as any
+                    });
+                }
+                await loadData(); // Recarregar disciplinas
+            }
           }
           
           setNewCourseName('');
@@ -221,7 +283,8 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
           setNewCourseDuration('4');
           setNewCourseSemester('1');
           setNewCourseModality('Presencial');
-          alert("Curso adicionado com sucesso!");
+          setCourseSubjects([]);
+          alert(`Curso "${newCourseName}" criado com ${courseSubjects.length} disciplinas!`);
       } catch(e: any) {
           alert("Erro ao adicionar curso: " + e.message);
       }
@@ -276,7 +339,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
               newTeacherName, 
               newTeacherEmail, 
               newTeacherPwd, 
-              newTeacherAvatar,
+              newTeacherAvatar, 
               newTeacherCategory,
               newTeacherCourses
           );
@@ -330,6 +393,11 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       
       if (!newStudentName.trim() || !newStudentEmail.trim() || !newStudentPwd.trim()) {
           alert("Por favor, preencha Nome, Email e Senha.");
+          return;
+      }
+      
+      if (!newStudentCourse) {
+          alert("Por favor, selecione um Curso para o estudante.");
           return;
       }
 
@@ -497,38 +565,16 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   // Calculations for Stats
   const avgScore = allScores.length > 0 ? (allScores.reduce((acc, curr) => acc + curr.finalScore, 0) / allScores.length).toFixed(1) : '0';
 
-  const sortedScores = useMemo(() => {
-      return [...allScores].sort((a,b) => b.finalScore - a.finalScore).map(score => {
-        const teacher = teachers.find(t => t.id === score.teacherId);
-        return {
-            ...score,
-            teacherName: teacher?.name || 'Desconhecido',
-            teacherEmail: teacher?.email
-        };
-      });
-  }, [allScores, teachers]);
-
-  const gradeDistribution = useMemo(() => {
-      const dist = {
-          excellent: 0, // >= 18
-          good: 0,      // 14-17
-          sufficient: 0,// 10-13
-          insufficient: 0 // < 10
-      };
-
-      allScores.forEach(s => {
-          const val20 = (s.finalScore / 130) * 20;
-          if (val20 >= 18) dist.excellent++;
-          else if (val20 >= 14) dist.good++;
-          else if (val20 >= 10) dist.sufficient++;
-          else dist.insufficient++;
-      });
-      return dist;
-  }, [allScores]);
-
   const MAX_SCORE_FOR_CONVERSION = 130; 
-  const calculateClassification20 = (finalScore: number) => (finalScore / MAX_SCORE_FOR_CONVERSION) * 20;
-  const calculatePercentage = (finalScore: number) => (finalScore / MAX_SCORE_FOR_CONVERSION) * 100;
+  const calculateClassification20 = (finalScore: number) => {
+      // Normalização: A nota final máxima pode variar (175 para assistente, 125 para estagiário)
+      // Para simplificar a pauta unificada, assumimos o score bruto ou convertemos para escala 0-20
+      // A maioria dos relatórios pede escala 0-20.
+      // Se score > 20, assumimos que é score bruto e normalizamos assumindo max 175 (padrão)
+      if (finalScore > 20) return (finalScore / 175) * 20;
+      return finalScore;
+  };
+
   const getAppreciation = (classification20: number) => {
       if (classification20 >= 18) return 'Excelente';
       if (classification20 >= 14) return 'Bom';
@@ -536,12 +582,38 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       return 'Insuficiente';
   };
 
+  // Lista de todos os docentes, mesclada com suas notas (se existirem)
+  const fullReportData = useMemo(() => {
+    return teachers.map(teacher => {
+        const score = allScores.find(s => s.teacherId === teacher.id);
+        const hasScore = !!score;
+        const val20 = hasScore ? calculateClassification20(score.finalScore) : 0;
+        
+        return {
+            teacherId: teacher.id,
+            teacherName: teacher.name,
+            teacherEmail: teacher.email,
+            teacherCategory: teacher.category || 'N/A',
+            teacherJob: teacher.jobTitle || 'Docente',
+            
+            // Dados de Score (Se não tiver, usa 0 ou null)
+            hasScore,
+            selfEvalScore: score?.selfEvalScore || 0,
+            studentScore: score?.studentScore || 0,
+            institutionalScore: score?.institutionalScore || 0,
+            finalScore: score?.finalScore || 0,
+            val20,
+            classification: hasScore ? getAppreciation(val20) : 'Pendente'
+        };
+    }).sort((a, b) => b.finalScore - a.finalScore); // Ordena pelos maiores scores, pendentes ficam no fim
+  }, [allScores, teachers]);
+
   const handlePrintReport = (teacher: User) => {
       const score = allScores.find(s => s.teacherId === teacher.id);
       const selfEval = allSelfEvals[teacher.id];
 
       if (!score) {
-        alert("Este docente ainda não tem uma pontuação final calculada.");
+        alert("Este docente ainda não tem uma pontuação final calculada. Execute o cálculo na 'Visão Geral' primeiro.");
         return;
       }
       
@@ -552,6 +624,160 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       setTimeout(() => {
         window.print();
       }, 100);
+  };
+
+  const handleExportCSV = () => {
+    if (fullReportData.length === 0) {
+        alert("Não há dados para exportar.");
+        return;
+    }
+
+    // BOM para garantir acentos no Excel
+    const BOM = "\uFEFF";
+    const headers = [
+        "Nome do Docente",
+        "Email",
+        "Categoria",
+        "Cargo/Função",
+        "Status",
+        "Auto-Avaliação (80%)",
+        "Aval. Estudantes (12%)",
+        "Aval. Institucional (8%)",
+        "Nota Final (Bruta)",
+        "Nota Final (0-20)",
+        "Classificação Qualitativa"
+    ];
+
+    const rows = fullReportData.map(s => {
+        return [
+            `"${s.teacherName}"`,
+            `"${s.teacherEmail || ''}"`,
+            `"${s.teacherCategory}"`,
+            `"${s.teacherJob}"`,
+            `"${s.hasScore ? 'Avaliado' : 'Pendente'}"`,
+            s.selfEvalScore.toFixed(2),
+            s.studentScore.toFixed(2),
+            s.institutionalScore.toFixed(2),
+            s.finalScore.toFixed(2),
+            s.val20.toFixed(2),
+            `"${s.classification}"`
+        ].join(",");
+    });
+
+    const csvContent = BOM + [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Relatorio_Completo_${institution?.code || 'Geral'}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleDownloadDetailedPDF = () => {
+      if (fullReportData.length === 0) {
+          alert("Não há dados para exportar.");
+          return;
+      }
+
+      const doc = new jsPDF();
+      const dateStr = new Date().toLocaleDateString('pt-PT');
+
+      // Header Logic
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text(institution?.name || 'Relatório Institucional', 105, 20, { align: 'center' });
+      
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Pauta de Classificação Final de Docentes', 105, 28, { align: 'center' });
+      doc.setFontSize(10);
+      doc.text(`Gerado em: ${dateStr}`, 105, 34, { align: 'center' });
+
+      // Add Logo if exists and valid
+      if (institution?.logo && institution.logo.startsWith('data:image')) {
+          try {
+             doc.addImage(institution.logo, 'PNG', 14, 10, 20, 20);
+          } catch(e) { console.error("Logo error", e); }
+      }
+
+      const tableColumn = [
+          "Docente", 
+          "Categoria", 
+          "Auto-Aval.", 
+          "Estudante", 
+          "Inst.", 
+          "Nota Final", 
+          "Classificação"
+      ];
+
+      const tableRows = fullReportData.map(s => {
+          if (!s.hasScore) {
+              return [s.teacherName, s.teacherCategory.replace('_', ' '), "-", "-", "-", "-", "Pendente"];
+          }
+          return [
+              s.teacherName,
+              s.teacherCategory.replace('_', ' '),
+              s.selfEvalScore.toFixed(1),
+              s.studentScore.toFixed(1),
+              s.institutionalScore.toFixed(1),
+              s.finalScore.toFixed(1),
+              s.classification
+          ];
+      });
+
+      autoTable(doc, {
+          head: [tableColumn],
+          body: tableRows,
+          startY: 45,
+          theme: 'grid',
+          headStyles: { fillColor: [41, 128, 185], halign: 'center' }, // Blue-ish
+          columnStyles: {
+            0: { cellWidth: 50 }, // Docente name
+            2: { halign: 'center' },
+            3: { halign: 'center' },
+            4: { halign: 'center' },
+            5: { halign: 'center', fontStyle: 'bold' },
+            6: { halign: 'center' }
+          },
+          styles: { fontSize: 9, cellPadding: 3 },
+          alternateRowStyles: { fillColor: [245, 245, 245] }
+      });
+
+      // Signature Section
+      // @ts-ignore
+      let finalY = doc.lastAutoTable?.finalY || 150;
+      
+      // Ensure space for signatures (needs about 40-50 units)
+      if (finalY + 50 > doc.internal.pageSize.height) {
+          doc.addPage();
+          finalY = 20;
+      }
+      
+      const signatureY = finalY + 30;
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      
+      // Data Place
+      doc.text(`Maputo, ${new Date().toLocaleDateString('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' })}`, 14, finalY + 10);
+
+      // Signature 1: Director / Pedagógico
+      doc.line(20, signatureY, 90, signatureY); // Line
+      doc.text("O Director Pedagógico", 55, signatureY + 5, { align: 'center' });
+      
+      // Signature 2: Chefe de Departamento / Registo
+      doc.line(120, signatureY, 190, signatureY); // Line
+      doc.text("O Registo Académico", 155, signatureY + 5, { align: 'center' });
+
+      doc.save(`Pauta_Final_${institution?.code || 'Geral'}_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  const handlePrintStats = () => {
+      // Simplesmente chama o print do navegador, pois o CSS @media print vai cuidar de esconder o menu
+      // e mostrar a tabela em modo limpo.
+      window.print();
   };
 
   return (
@@ -587,10 +813,10 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         </div>
       )}
 
-      {/* --- INÍCIO DO CONTEÚDO PARA IMPRESSÃO --- */}
+      {/* --- INÍCIO DO CONTEÚDO PARA IMPRESSÃO INDIVIDUAL --- */}
       <div className="hidden print:block font-serif">
         {printingTeacher && printingScore ? (
-            <div className="p-4 text-sm">
+            <div className="p-4 text-sm break-after-page">
                 <main>
                     <header className="flex justify-between items-start mb-6">
                         <div className="text-center">
@@ -647,40 +873,138 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             </div>
         ) : null}
       </div>
+
+      {/* --- INÍCIO DA PAUTA GERAL PARA IMPRESSÃO --- */}
+      {activeTab === 'stats' && (
+        <div className="hidden print:block p-8 font-serif">
+             <header className="flex justify-between items-center mb-8 border-b pb-4">
+                <div className="flex items-center gap-4">
+                    {institution?.logo && <img src={institution.logo} className="h-16 w-16 object-contain" alt="Logo"/>}
+                    <div>
+                        <h1 className="text-2xl font-bold">{institution?.name}</h1>
+                        <p>Pauta de Classificação Final de Docentes</p>
+                        <p className="text-sm">Semestre 1 / {new Date().getFullYear()}</p>
+                    </div>
+                </div>
+                <div className="text-right text-sm">
+                    <p>Gerado em: {new Date().toLocaleDateString()}</p>
+                </div>
+            </header>
+            <table className="w-full text-sm border-collapse border border-black">
+                <thead>
+                    <tr className="bg-gray-100">
+                        <th className="border border-black p-2 text-left">Docente</th>
+                        <th className="border border-black p-2 text-center">Auto (80%)</th>
+                        <th className="border border-black p-2 text-center">Estudante (12%)</th>
+                        <th className="border border-black p-2 text-center">Inst. (8%)</th>
+                        <th className="border border-black p-2 text-center">Nota Final</th>
+                        <th className="border border-black p-2 text-center">Classificação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {fullReportData.map(s => (
+                        <tr key={s.teacherId}>
+                            <td className="border border-black p-2">
+                                <div className="font-bold">{s.teacherName}</div>
+                                <div className="text-xs">{s.teacherCategory}</div>
+                            </td>
+                            {s.hasScore ? (
+                                <>
+                                    <td className="border border-black p-2 text-center">{s.selfEvalScore.toFixed(1)}</td>
+                                    <td className="border border-black p-2 text-center">{s.studentScore.toFixed(1)}</td>
+                                    <td className="border border-black p-2 text-center">{s.institutionalScore.toFixed(1)}</td>
+                                    <td className="border border-black p-2 text-center font-bold">{s.finalScore.toFixed(1)}</td>
+                                    <td className="border border-black p-2 text-center">{s.classification}</td>
+                                </>
+                            ) : (
+                                <td colSpan={5} className="border border-black p-2 text-center text-gray-500 italic">
+                                    Pendente de Cálculo
+                                </td>
+                            )}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+      )}
       {/* --- FIM DO CONTEÚDO PARA IMPRESSÃO --- */}
 
       <div className="print:hidden max-w-7xl mx-auto p-4 md:p-8 space-y-8 animate-in fade-in duration-500">
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-gray-900">{institution?.name || 'Painel de Gestão'}</h1>
-            <p className="text-gray-500">Gestão Académica Integrada • Semestre 1 / {new Date().getFullYear()}</p>
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" className="gap-2" onClick={() => setActiveTab('settings')}>
-                <Settings size={16}/> Configurações
-            </Button>
-            <div className="flex bg-white rounded-lg border p-1 shadow-sm">
-                <Button variant={activeTab === 'overview' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('overview')} className="gap-2">
-                    <BarChartHorizontal size={16} /> Visão Geral
-                </Button>
-                <Button variant={activeTab === 'courses' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('courses')} className="gap-2">
-                    <BookOpen size={16} /> Cursos
-                </Button>
-                <Button variant={activeTab === 'teachers' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('teachers')} className="gap-2">
-                    <Users size={16} /> Docentes
-                </Button>
-                <Button variant={activeTab === 'students' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('students')} className="gap-2">
-                    <GraduationCap size={16} /> Estudantes
-                </Button>
-                <Button variant={activeTab === 'questionnaire' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('questionnaire')} className="gap-2">
-                    <FileQuestion size={16} /> Questionário
-                </Button>
+        
+        {/* HEADER RESPONSIVO COM HAMBURGER */}
+        <div className="bg-white p-4 rounded-xl shadow-sm border mb-6 relative z-30">
+            <div className="flex justify-between items-center">
+                <div>
+                    <h1 className="text-xl md:text-3xl font-bold tracking-tight text-gray-900 truncate max-w-[200px] md:max-w-none">{institution?.name || 'Painel de Gestão'}</h1>
+                    <p className="text-xs md:text-sm text-gray-500">Gestão Académica • {new Date().getFullYear()}</p>
+                </div>
+
+                {/* Desktop Navigation */}
+                <div className="hidden md:flex items-center gap-2">
+                     <Button variant="outline" size="sm" onClick={() => setActiveTab('settings')} className="gap-2">
+                        <Settings size={16}/> Configurações
+                    </Button>
+                    <div className="flex bg-gray-100 p-1 rounded-lg">
+                        <Button variant={activeTab === 'overview' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('overview')} className="gap-2">
+                            <BarChartHorizontal size={16} /> Visão Geral
+                        </Button>
+                        <Button variant={activeTab === 'stats' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('stats')} className="gap-2">
+                            <ListChecks size={16} /> Relatórios
+                        </Button>
+                         <Button variant={activeTab === 'courses' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('courses')} className="gap-2">
+                            <BookOpen size={16} /> Cursos
+                        </Button>
+                        <Button variant={activeTab === 'teachers' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('teachers')} className="gap-2">
+                            <Users size={16} /> Docentes
+                        </Button>
+                        <Button variant={activeTab === 'students' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('students')} className="gap-2">
+                            <GraduationCap size={16} /> Estudantes
+                        </Button>
+                         <Button variant={activeTab === 'questionnaire' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('questionnaire')} className="gap-2">
+                            <FileQuestion size={16} /> Quest.
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Mobile Menu Toggle */}
+                <button 
+                    className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                    onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                >
+                    {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+                </button>
             </div>
-          </div>
-        </header>
+
+            {/* Mobile Dropdown Menu */}
+            {isMobileMenuOpen && (
+                <div className="md:hidden mt-4 pt-4 border-t grid gap-2 animate-in slide-in-from-top-2">
+                    <button onClick={() => {setActiveTab('overview'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'overview' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}>
+                        <BarChartHorizontal size={18} /> Visão Geral
+                    </button>
+                    <button onClick={() => {setActiveTab('stats'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'stats' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}>
+                        <ListChecks size={18} /> Relatórios e Pautas
+                    </button>
+                    <button onClick={() => {setActiveTab('courses'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'courses' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}>
+                        <BookOpen size={18} /> Cursos e Disciplinas
+                    </button>
+                    <button onClick={() => {setActiveTab('teachers'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'teachers' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}>
+                        <Users size={18} /> Gestão de Docentes
+                    </button>
+                    <button onClick={() => {setActiveTab('students'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'students' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}>
+                        <GraduationCap size={18} /> Gestão de Estudantes
+                    </button>
+                    <button onClick={() => {setActiveTab('questionnaire'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'questionnaire' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}>
+                        <FileQuestion size={18} /> Configurar Questionário
+                    </button>
+                    <button onClick={() => {setActiveTab('settings'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'settings' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}>
+                        <Settings size={18} /> Configurações
+                    </button>
+                </div>
+            )}
+        </div>
 
         {activeTab === 'overview' && (
-             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+             <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
                 <Card className="shadow-sm">
                     <CardContent className="p-6 flex flex-col items-center text-center">
                         <div className="p-3 bg-blue-100 rounded-full text-blue-600 mb-3"><Users size={24} /></div>
@@ -705,16 +1029,32 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                 <Card className="bg-slate-900 text-white shadow-lg">
                     <CardContent className="p-6 flex flex-col items-center text-center justify-center h-full">
                         <h3 className="text-lg font-bold mb-2">Fecho do Semestre</h3>
+                        
+                        <div className="w-full space-y-2 mb-2 text-left">
+                            <Label className="text-xs text-slate-300">Alvo do Cálculo</Label>
+                            <select 
+                                value={calcTarget} 
+                                onChange={e => setCalcTarget(e.target.value)}
+                                className="w-full bg-slate-800 border-slate-700 text-white text-sm rounded p-2 focus:ring-slate-500"
+                            >
+                                <option value="all">Todos os Docentes</option>
+                                {teachers.map(t => (
+                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
                         <Button size="sm" variant="secondary" onClick={handleCalculateScores} disabled={calculating} className="w-full">
                            {calculating ? <RefreshCw className="animate-spin mr-2 h-4 w-4"/> : <Calculator className="mr-2 h-4 w-4"/>} 
                            {calculating ? 'Processando...' : 'Calcular Scores'}
                         </Button>
-                        <p className="text-xs text-slate-400 mt-2">Atualiza todas as notas finais.</p>
+                        <p className="text-xs text-slate-400 mt-2">
+                           {calcTarget === 'all' ? 'Atualiza notas de todos.' : 'Atualiza apenas o docente selecionado.'}
+                        </p>
                     </CardContent>
                 </Card>
 
-                {/* --- AVALIAÇÃO QUALITATIVA (NOVO LOCAL) --- */}
-                <Card className="md:col-span-2 lg:col-span-4 border-l-4 border-l-orange-500">
+                <Card className="col-span-1 md:col-span-2 lg:col-span-4 border-l-4 border-l-orange-500">
                     <CardHeader className="bg-orange-50 border-b border-orange-100">
                         <CardTitle className="text-orange-900 flex items-center gap-2">
                             <Scale className="h-5 w-5"/> Avaliação Qualitativa (Peso: 10 Pontos)
@@ -746,7 +1086,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                     
                                     {expandedTeacher === t.id && (
                                         <div className="mt-4 pt-4 border-t bg-gray-50 p-4 rounded-md animate-in slide-in-from-top-2">
-                                            <div className="grid md:grid-cols-2 gap-4 mb-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                                 <div>
                                                     <Label>Cumprimento de Prazos (0-10)</Label>
                                                     <Input 
@@ -787,10 +1127,174 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
              </div>
         )}
 
+        {/* --- ABA STATS (NOVA - RELATÓRIOS DETALHADOS) --- */}
+        {activeTab === 'stats' && (
+             <div className="space-y-6">
+                 <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center bg-white p-4 rounded-lg shadow-sm border">
+                    <div>
+                        <h2 className="text-lg font-bold">Relatórios e Resultados Finais</h2>
+                        <p className="text-sm text-gray-500">Consulte a pauta, exporte para Excel ou imprima relatórios oficiais.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" onClick={handleExportCSV} className="text-green-700 hover:text-green-800 hover:bg-green-50 border-green-200">
+                            <FileSpreadsheet className="h-4 w-4 mr-2" /> <span className="hidden sm:inline">Exportar Excel</span>
+                        </Button>
+                        <Button onClick={handleDownloadDetailedPDF} className="bg-red-600 hover:bg-red-700 text-white">
+                            <FileText className="h-4 w-4 mr-2" /> <span className="hidden sm:inline">Baixar PDF</span>
+                        </Button>
+                        <Button variant="ghost" onClick={handlePrintStats} className="text-gray-600">
+                             <Printer className="h-4 w-4" />
+                        </Button>
+                    </div>
+                 </div>
+
+                 {/* DESKTOP VIEW: TABLE */}
+                 <Card className="hidden md:block">
+                    <CardHeader>
+                        <CardTitle>Pauta Geral (Todos os Docentes)</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0 overflow-x-auto">
+                        <table className="w-full text-sm min-w-[800px]">
+                            <thead className="bg-gray-50 text-gray-600 font-medium">
+                                <tr>
+                                    <th className="p-4 text-left">Docente</th>
+                                    <th className="p-4 text-left">Categoria</th>
+                                    <th className="p-4 text-center">Auto-Aval (80%)</th>
+                                    <th className="p-4 text-center">Estudante (12%)</th>
+                                    <th className="p-4 text-center">Institucional (8%)</th>
+                                    <th className="p-4 text-center font-bold">Nota Final</th>
+                                    <th className="p-4 text-center">Classificação</th>
+                                    <th className="p-4 text-center">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                {fullReportData.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={8} className="p-8 text-center text-gray-500 italic">
+                                            Nenhum docente cadastrado na instituição.
+                                        </td>
+                                    </tr>
+                                ) : fullReportData.map(score => {
+                                    return (
+                                        <tr key={score.teacherId} className="hover:bg-gray-50 transition-colors">
+                                            <td className="p-4">
+                                                <div className="font-medium text-gray-900">{score.teacherName}</div>
+                                                <div className="text-xs text-gray-500">{score.teacherEmail}</div>
+                                            </td>
+                                            <td className="p-4 text-gray-600 capitalize">{score.teacherCategory.replace('_', ' ')}</td>
+                                            {score.hasScore ? (
+                                                <>
+                                                    <td className="p-4 text-center">{score.selfEvalScore.toFixed(1)}</td>
+                                                    <td className="p-4 text-center">{score.studentScore.toFixed(1)}</td>
+                                                    <td className="p-4 text-center">{score.institutionalScore.toFixed(1)}</td>
+                                                    <td className="p-4 text-center font-bold text-base">{score.finalScore.toFixed(1)}</td>
+                                                    <td className="p-4 text-center">
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                                            score.val20 >= 14 ? 'bg-green-100 text-green-800' :
+                                                            score.val20 >= 10 ? 'bg-yellow-100 text-yellow-800' :
+                                                            'bg-red-100 text-red-800'
+                                                        }`}>
+                                                            {score.classification}
+                                                        </span>
+                                                    </td>
+                                                </>
+                                            ) : (
+                                                <td colSpan={5} className="p-4 text-center text-gray-400 italic bg-gray-50/50">
+                                                    Aguardando cálculo...
+                                                </td>
+                                            )}
+                                            
+                                            <td className="p-4 text-center">
+                                                {score.hasScore ? (
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="sm" 
+                                                        title="Imprimir Individual"
+                                                        onClick={() => {
+                                                            const user = teachers.find(t => t.id === score.teacherId);
+                                                            if (user) handlePrintReport(user);
+                                                        }}
+                                                    >
+                                                        <Printer className="h-4 w-4 text-gray-400 hover:text-black"/>
+                                                    </Button>
+                                                ) : (
+                                                    <span className="text-xs text-gray-400">-</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    )
+                                })}
+                            </tbody>
+                        </table>
+                    </CardContent>
+                 </Card>
+
+                 {/* MOBILE VIEW: "TIGELINHA" (CARDS) */}
+                 <div className="md:hidden space-y-4">
+                    <h3 className="font-semibold text-gray-700">Pauta Geral</h3>
+                    {fullReportData.map(score => (
+                        <Card key={score.teacherId} className={`border-l-4 ${score.hasScore ? (score.val20 >= 10 ? 'border-l-green-500' : 'border-l-red-500') : 'border-l-gray-300'}`}>
+                            <CardContent className="p-4">
+                                <div className="flex justify-between items-start mb-2">
+                                    <div>
+                                        <div className="font-bold text-gray-900">{score.teacherName}</div>
+                                        <div className="text-xs text-gray-500">{score.teacherCategory.replace('_', ' ')}</div>
+                                    </div>
+                                    {score.hasScore && (
+                                        <div className="bg-gray-100 px-2 py-1 rounded text-lg font-bold">
+                                            {score.finalScore.toFixed(1)}
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                {score.hasScore ? (
+                                    <div className="space-y-2 mt-3 text-sm">
+                                        <div className="grid grid-cols-3 gap-2 text-center text-xs text-gray-600 bg-gray-50 p-2 rounded">
+                                            <div>
+                                                <span className="block font-bold text-gray-800">{score.selfEvalScore.toFixed(0)}</span>
+                                                Auto
+                                            </div>
+                                            <div>
+                                                <span className="block font-bold text-gray-800">{score.studentScore.toFixed(0)}</span>
+                                                Alunos
+                                            </div>
+                                            <div>
+                                                <span className="block font-bold text-gray-800">{score.institutionalScore.toFixed(0)}</span>
+                                                Inst.
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-between items-center pt-2 border-t">
+                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                                score.val20 >= 14 ? 'bg-green-100 text-green-800' :
+                                                score.val20 >= 10 ? 'bg-yellow-100 text-yellow-800' :
+                                                'bg-red-100 text-red-800'
+                                            }`}>
+                                                {score.classification}
+                                            </span>
+                                            <Button variant="ghost" size="sm" onClick={() => {
+                                                const user = teachers.find(t => t.id === score.teacherId);
+                                                if (user) handlePrintReport(user);
+                                            }}>
+                                                <Printer size={16} />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="mt-2 text-sm text-gray-400 italic flex items-center gap-2">
+                                        <AlertTriangle size={14}/> Pendente de cálculo
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    ))}
+                 </div>
+             </div>
+        )}
+
         {/* --- ABA COURSES --- */}
         {activeTab === 'courses' && (
-            <div className="grid gap-6 md:grid-cols-3">
-                <div className="md:col-span-2 space-y-4">
+            <div className="grid gap-6 grid-cols-1 md:grid-cols-3">
+                <div className="md:col-span-2 space-y-4 order-2 md:order-1">
                     <Card>
                         <CardHeader>
                             <CardTitle>Cursos da Instituição</CardTitle>
@@ -818,7 +1322,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                         </CardContent>
                     </Card>
                 </div>
-                <div>
+                <div className="order-1 md:order-2">
                     <Card>
                         <CardHeader>
                             <CardTitle>Adicionar Curso</CardTitle>
@@ -836,7 +1340,11 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="space-y-2">
                                         <Label>Duração (Anos)</Label>
-                                        <Input type="number" value={newCourseDuration} onChange={e => setNewCourseDuration(e.target.value)} />
+                                        <Select value={newCourseDuration} onChange={e => setNewCourseDuration(e.target.value)}>
+                                            {[1, 2, 3, 4, 5, 6].map(year => (
+                                                <option key={year} value={year.toString()}>{year} Anos</option>
+                                            ))}
+                                        </Select>
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Semestre Atual</Label>
@@ -854,7 +1362,62 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                         <option value="Online">Online</option>
                                     </Select>
                                 </div>
-                                <Button type="submit" className="w-full">Adicionar Curso</Button>
+
+                                {/* Seção para Adicionar Disciplinas/Cadeiras */}
+                                <div className="space-y-3 pt-4 border-t">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-gray-700 font-semibold flex items-center gap-2">
+                                            <Layers size={14} /> Estrutura Curricular (Disciplinas)
+                                        </Label>
+                                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{courseSubjects.length} adicionadas</span>
+                                    </div>
+                                    
+                                    <div className="bg-gray-50 p-3 rounded-md border space-y-3">
+                                        <div className="space-y-2">
+                                            <Input 
+                                                value={tempCourseSubjectName} 
+                                                onChange={e => setTempCourseSubjectName(e.target.value)} 
+                                                placeholder="Nome da Cadeira (ex: Matemática I)"
+                                                className="bg-white"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <Select value={tempCourseSubjectLevel} onChange={e => setTempCourseSubjectLevel(e.target.value)}>
+                                                {[...Array(parseInt(newCourseDuration))].map((_, i) => (
+                                                    <option key={i+1} value={(i+1).toString()}>{i+1}º Ano</option>
+                                                ))}
+                                            </Select>
+                                            <Select value={tempCourseSubjectSemester} onChange={e => setTempCourseSubjectSemester(e.target.value)}>
+                                                <option value="1">1º Sem.</option>
+                                                <option value="2">2º Sem.</option>
+                                            </Select>
+                                        </div>
+                                        <Button type="button" size="sm" onClick={handleAddCourseSubject} className="w-full bg-slate-800 text-white hover:bg-slate-700">
+                                            <Plus size={14} className="mr-1"/> Adicionar Cadeira
+                                        </Button>
+                                    </div>
+
+                                    {/* Lista de Cadeiras Adicionadas */}
+                                    {courseSubjects.length > 0 && (
+                                        <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+                                            {courseSubjects.map((sub, idx) => (
+                                                <div key={idx} className="flex justify-between items-center bg-white p-2 rounded border text-xs shadow-sm">
+                                                    <div>
+                                                        <span className="font-medium">{sub.name}</span>
+                                                        <span className="text-gray-500 ml-2">({sub.level}º Ano, {sub.semester}º Sem)</span>
+                                                    </div>
+                                                    <button type="button" onClick={() => handleRemoveCourseSubject(idx)} className="text-red-500 hover:text-red-700">
+                                                        <X size={14}/>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <Button type="submit" className="w-full">
+                                    {courseSubjects.length > 0 ? `Criar Curso e ${courseSubjects.length} Disciplinas` : 'Criar Curso'}
+                                </Button>
                             </form>
                         </CardContent>
                     </Card>
@@ -865,45 +1428,13 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         {/* --- ABA TEACHERS --- */}
         {activeTab === 'teachers' && (
             <div className="space-y-6">
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between">
-                        <CardTitle>Corpo Docente</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
-                            {teachers.map(t => (
-                                <div key={t.id} className="flex items-center justify-between p-4 border rounded-lg bg-white">
-                                    <div className="flex items-center gap-3">
-                                        <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600">
-                                            {t.name.charAt(0)}
-                                        </div>
-                                        <div>
-                                            <h4 className="font-semibold">{t.name}</h4>
-                                            <p className="text-xs text-gray-500">{t.email}</p>
-                                            <p className="text-xs text-blue-600 font-medium">{t.jobTitle || 'Docente'}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <Button variant="outline" size="sm" onClick={() => handlePrintReport(t)}>
-                                            <Printer className="h-4 w-4" />
-                                        </Button>
-                                        <Button variant="outline" size="sm" onClick={() => startEditUser(t)}>
-                                            <Edit className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
-
                 <Card className="border-l-4 border-l-blue-500">
                     <CardHeader>
                         <CardTitle className="text-blue-900">Cadastrar Novo Docente</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handleAddTeacher} className="space-y-6">
-                            <div className="grid md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label>Nome Completo</Label>
                                     <Input value={newTeacherName} onChange={e => setNewTeacherName(e.target.value)} placeholder="Ex: Prof. Dr. João" />
@@ -928,12 +1459,12 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                             {/* Course Selection */}
                             <div className="bg-gray-50 p-4 rounded-md border">
                                 <h4 className="text-sm font-semibold mb-2">Cursos Vinculados</h4>
-                                <div className="flex gap-2 mb-2">
+                                <div className="flex flex-col sm:flex-row gap-2 mb-2">
                                     <Select value={selectedCourseToAdd} onChange={e => setSelectedCourseToAdd(e.target.value)}>
                                         <option value="">Selecione um curso...</option>
                                         {courses.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                                     </Select>
-                                    <Button type="button" onClick={handleAddTeacherCourse} disabled={!selectedCourseToAdd}>
+                                    <Button type="button" onClick={handleAddTeacherCourse} disabled={!selectedCourseToAdd} className="w-full sm:w-auto">
                                         <Plus className="h-4 w-4" />
                                     </Button>
                                 </div>
@@ -949,7 +1480,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                             {/* Subject Builder */}
                             <div className="bg-gray-50 p-4 rounded-md border">
                                 <h4 className="text-sm font-semibold mb-2">Adicionar Disciplinas (Opcional)</h4>
-                                <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-2">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-2 mb-2">
                                     <Input placeholder="Nome da Disciplina" className="md:col-span-2" value={tempSubject.name} onChange={e => setTempSubject({...tempSubject, name: e.target.value})} />
                                     <Input placeholder="Curso (Sigla)" value={tempSubject.course} onChange={e => setTempSubject({...tempSubject, course: e.target.value})} />
                                     <Input placeholder="Turma (ex: A)" value={tempSubject.classGroup} onChange={e => setTempSubject({...tempSubject, classGroup: e.target.value})} />
@@ -957,13 +1488,13 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                         <option value="Diurno">Diurno</option>
                                         <option value="Noturno">Noturno</option>
                                     </Select>
-                                    <Button type="button" onClick={handleAddTempSubject}><Plus className="h-4 w-4"/></Button>
+                                    <Button type="button" onClick={handleAddTempSubject} className="w-full sm:w-auto"><Plus className="h-4 w-4"/></Button>
                                 </div>
                                 <div className="space-y-1">
                                     {newTeacherSubjects.map((s, i) => (
-                                        <div key={i} className="flex justify-between text-xs bg-white p-2 border rounded">
+                                        <div key={i} className="flex flex-col sm:flex-row sm:justify-between text-xs bg-white p-2 border rounded">
                                             <span>{s.name} ({s.course}) - Turma {s.classGroup} ({s.shift})</span>
-                                            <X className="h-3 w-3 cursor-pointer text-red-500" onClick={() => handleRemoveTempSubject(i)}/>
+                                            <X className="h-3 w-3 cursor-pointer text-red-500 mt-1 sm:mt-0" onClick={() => handleRemoveTempSubject(i)}/>
                                         </div>
                                     ))}
                                 </div>
@@ -973,96 +1504,44 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                         </form>
                     </CardContent>
                 </Card>
-            </div>
-        )}
 
-        {/* --- ABA QUESTIONNAIRE --- */}
-        {activeTab === 'questionnaire' && (
-            <div className="grid gap-6 md:grid-cols-3">
-                <div className="md:col-span-2 space-y-4">
-                    <Card>
-                        <CardHeader className="flex flex-row justify-between items-center">
-                            <CardTitle>Perguntas do Questionário</CardTitle>
-                            <Button variant="outline" size="sm" onClick={handleResetDefaults} className="text-red-600 hover:bg-red-50 border-red-200">
-                                <RefreshCw className="h-3 w-3 mr-2"/> Restaurar Padrão
-                            </Button>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-3">
-                                {questionnaire?.questions.length === 0 && <p className="text-gray-500 italic">Sem perguntas.</p>}
-                                {questionnaire?.questions.map((q, idx) => (
-                                    <div key={q.id} className="p-4 border rounded-lg bg-white relative group">
-                                        <div className="absolute top-2 right-2 hidden group-hover:block">
-                                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500" onClick={() => handleRemoveQuestion(q.id)}>
-                                                <Trash2 className="h-3 w-3" />
-                                            </Button>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                        <CardTitle>Corpo Docente Existente</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-4">
+                            {teachers.map(t => (
+                                <div key={t.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border rounded-lg bg-white gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600 shrink-0">
+                                            {t.name.charAt(0)}
                                         </div>
-                                        <div className="flex gap-3">
-                                            <span className="font-mono text-gray-400 text-sm">#{idx + 1}</span>
-                                            <div className="flex-1 space-y-2">
-                                                <p className="font-medium text-gray-900">{q.text}</p>
-                                                <div className="bg-gray-50 p-2 rounded border border-dashed border-gray-300">
-                                                    {renderPreviewInput(q)}
-                                                </div>
-                                                <div className="flex gap-2 text-xs text-gray-400">
-                                                    <span className="uppercase bg-gray-100 px-1 rounded">{q.type}</span>
-                                                    <span>Peso: {q.weight}</span>
-                                                </div>
-                                            </div>
+                                        <div>
+                                            <h4 className="font-semibold">{t.name}</h4>
+                                            <p className="text-xs text-gray-500">{t.email}</p>
+                                            <p className="text-xs text-blue-600 font-medium">{t.jobTitle || 'Docente'}</p>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-                
-                <div>
-                    <Card className="sticky top-24">
-                        <CardHeader>
-                            <CardTitle>Adicionar Pergunta</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label>Texto da Pergunta</Label>
-                                    <Input value={newQText} onChange={e => setNewQText(e.target.value)} placeholder="Ex: O docente foi pontual?" />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Tipo de Resposta</Label>
-                                    <Select value={newQType} onChange={e => setNewQType(e.target.value as any)}>
-                                        <option value="binary">Sim / Não (Binário)</option>
-                                        <option value="scale_10">Escala 0 a 10</option>
-                                        <option value="stars">Estrelas (1 a 5)</option>
-                                        <option value="text">Texto Livre</option>
-                                        <option value="choice">Múltipla Escolha</option>
-                                    </Select>
-                                </div>
-                                {newQType !== 'text' && (
-                                    <div className="space-y-2">
-                                        <Label>Peso na Nota</Label>
-                                        <Input type="number" min="0" value={newQWeight} onChange={e => setNewQWeight(parseInt(e.target.value) || 0)} />
+                                    <div className="flex gap-2 w-full sm:w-auto justify-end">
+                                        <Button variant="outline" size="sm" onClick={() => handlePrintReport(t)}>
+                                            <Printer className="h-4 w-4" />
+                                        </Button>
+                                        <Button variant="outline" size="sm" onClick={() => startEditUser(t)}>
+                                            <Edit className="h-4 w-4" />
+                                        </Button>
                                     </div>
-                                )}
-                                {newQType === 'choice' && (
-                                    <div className="space-y-2">
-                                        <Label>Opções (separadas por vírgula)</Label>
-                                        <Input value={newQOptions} onChange={e => setNewQOptions(e.target.value)} placeholder="Ex: Ótimo, Bom, Regular, Mau" />
-                                    </div>
-                                )}
-                                <Button onClick={handleAddQuestion} className="w-full">
-                                    <Plus className="h-4 w-4 mr-2" /> Adicionar ao Questionário
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
+                                </div>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
         )}
 
         {/* --- ABA STUDENTS --- */}
         {activeTab === 'students' && (
-            <div className="grid gap-6 md:grid-cols-2">
+            <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
                 <Card>
                     <CardHeader>
                         <CardTitle>Estudantes</CardTitle>
@@ -1113,7 +1592,31 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Ano/Nível</Label>
-                                    <Input value={newStudentLevel} onChange={e => setNewStudentLevel(e.target.value)} placeholder="Ex: 1" />
+                                    <Select value={newStudentLevel} onChange={e => setNewStudentLevel(e.target.value)}>
+                                        <option value="">Selecione o Ano...</option>
+                                        {[1, 2, 3, 4, 5, 6].map(year => (
+                                            <option key={year} value={year.toString()}>{year}º Ano</option>
+                                        ))}
+                                    </Select>
+                                </div>
+                            </div>
+                            
+                            {/* Novos Campos: Semestre e Modalidade */}
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="space-y-2">
+                                    <Label>Semestre</Label>
+                                    <Select value={newStudentSemester} onChange={e => setNewStudentSemester(e.target.value)}>
+                                        <option value="1">1º Semestre</option>
+                                        <option value="2">2º Semestre</option>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Modalidade</Label>
+                                    <Select value={newStudentModality} onChange={e => setNewStudentModality(e.target.value as any)}>
+                                        <option value="Presencial">Presencial</option>
+                                        <option value="Online">Online</option>
+                                        <option value="Híbrido">Híbrido</option>
+                                    </Select>
                                 </div>
                             </div>
                             
@@ -1162,7 +1665,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                         <div className="space-y-2">
                             <Label>Logotipo da Instituição</Label>
                             <div className="flex items-center gap-4">
-                                <div className="h-16 w-16 border rounded bg-gray-50 flex items-center justify-center overflow-hidden">
+                                <div className="h-16 w-16 border rounded bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
                                     {institution?.logo ? <img src={institution.logo} className="w-full h-full object-contain" /> : <ImageIcon className="text-gray-300"/>}
                                 </div>
                                 <Input type="file" accept="image/*" onChange={handleInstLogoUpload} />
