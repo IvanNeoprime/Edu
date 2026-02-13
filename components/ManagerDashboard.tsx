@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { BackendService } from '../services/backend';
 // import { AIService } from '../services/ai'; // Removed AI Service
 import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution, SelfEvaluation } from '../types';
-import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select } from './ui';
+import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, cn } from './ui';
 import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, GraduationCap, PieChart as PieIcon, Download, Printer, Image as ImageIcon, Sparkles, RefreshCw, ScanText, Eye, Settings, Building2, Save, FileText, X, TrendingUp, ClipboardList, CheckCircle2, Lock, Shield, Edit } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
 
@@ -19,6 +19,25 @@ interface NewSubjectItem {
     classGroup: string;
     shift: 'Diurno' | 'Noturno';
 }
+
+// Custom Tooltip for Charts
+const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-white p-4 border border-slate-100 shadow-xl rounded-xl">
+          <p className="font-bold text-slate-800 mb-2">{label}</p>
+          {payload.map((entry: any, index: number) => (
+            <div key={index} className="flex items-center gap-2 text-xs font-medium">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color || entry.fill }}></div>
+                <span className="text-slate-500">{entry.name}:</span>
+                <span className="text-slate-900 font-bold">{Number(entry.value).toFixed(2)}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return null;
+};
 
 export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'teachers' | 'students' | 'qualitative' | 'questionnaire' | 'stats' | 'settings'>('overview');
@@ -484,16 +503,39 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
   const avgScore = allScores.length > 0 ? (allScores.reduce((acc, curr) => acc + curr.finalScore, 0) / allScores.length).toFixed(1) : '0';
 
+  // --- DATA PREPARATION FOR CHARTS ---
+
   const chartData = useMemo(() => allScores.map(score => {
       const teacher = teachers.find(t => t.id === score.teacherId);
       return {
-          name: teacher ? teacher.name.split(' ')[0] : 'N/A',
+          name: teacher ? teacher.name.split(' ').slice(0, 2).join(' ') : 'N/A', // First 2 names
+          fullName: teacher?.name,
           finalScore: score.finalScore,
           studentScore: score.studentScore,
           selfEvalScore: score.selfEvalScore,
           institutionalScore: score.institutionalScore
       }
-  }), [allScores, teachers]);
+  }).sort((a,b) => b.finalScore - a.finalScore).slice(0, 15), [allScores, teachers]); // Show top 15
+
+  const gradeDistribution = useMemo(() => {
+      const dist = [
+          { name: 'Excelente (≥18)', value: 0, fill: '#10b981' }, // Emerald
+          { name: 'Bom (14-17)', value: 0, fill: '#3b82f6' },      // Blue
+          { name: 'Suficiente (10-13)', value: 0, fill: '#f59e0b' }, // Amber
+          { name: 'Insuficiente (<10)', value: 0, fill: '#ef4444' }  // Red
+      ];
+
+      allScores.forEach(s => {
+          // Convert max 130 to 20 scale for categorization
+          const val20 = (s.finalScore / 130) * 20;
+          if (val20 >= 18) dist[0].value++;
+          else if (val20 >= 14) dist[1].value++;
+          else if (val20 >= 10) dist[2].value++;
+          else dist[3].value++;
+      });
+      return dist.filter(d => d.value > 0);
+  }, [allScores]);
+
 
   // Funções de cálculo para o relatório individual
   const MAX_SCORE_FOR_CONVERSION = 130; // Ponto máximo teórico
@@ -743,7 +785,112 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         {activeTab === 'students' && ( <div className="grid gap-8 lg:grid-cols-12 animate-in fade-in"><div className="lg:col-span-4 space-y-6"><Card><CardHeader><CardTitle className="flex items-center gap-2"><GraduationCap className="h-5 w-5" /> Cadastrar Aluno</CardTitle></CardHeader><CardContent><form onSubmit={handleAddStudent} className="bg-gray-50 p-4 rounded-lg border space-y-4"><div className="space-y-2"><Label>Nome</Label><Input value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required /></div><div className="space-y-2"><Label>Email</Label><Input type="email" value={newStudentEmail} onChange={e => setNewStudentEmail(e.target.value)} required /></div><div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Curso</Label><Select value={newStudentCourse} onChange={e => setNewStudentCourse(e.target.value)} disabled={uniqueCourses.length === 0}><option value="">Curso...</option>{uniqueCourses.map(c => <option key={c} value={c}>{c}</option>)}</Select></div><div className="space-y-2"><Label>Ano/Nível</Label><Input value={newStudentLevel} onChange={e => setNewStudentLevel(e.target.value)} /></div></div><div className="space-y-2"><Label>Senha</Label><Input type="text" value={newStudentPwd} onChange={e => setNewStudentPwd(e.target.value)} required /></div><Button type="submit" className="w-full"><Plus className="mr-2 h-4 w-4" /> Adicionar Estudante</Button></form></CardContent></Card></div><div className="lg:col-span-8"><Card><CardHeader><CardTitle className="flex items-center gap-2">Lista de Estudantes ({students.length})</CardTitle></CardHeader><CardContent><div className="space-y-6">{Object.entries(groupedStudents).map(([course, levels]) => (<div key={course} className="border rounded-md overflow-hidden"><div className="bg-gray-100 px-4 py-2 font-semibold text-gray-800 border-b">{course}</div><div className="divide-y">{Object.entries(levels).map(([level, users]) => (<div key={level}><div className="bg-gray-50 px-4 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wider border-b">{level}</div><div>{users.map(std => (<div key={std.id} className="p-4 bg-white hover:bg-gray-50 flex justify-between items-center border-b last:border-0"><div className="flex items-center gap-3"><div className="h-8 w-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">{std.avatar ? <img src={std.avatar} className="h-full w-full object-cover" alt="Avatar"/> : <Users className="h-4 w-4 m-2 text-gray-400" />}</div><div><p className="font-medium text-gray-900">{std.name}</p><p className="text-sm text-gray-500">{std.email}</p></div></div><Button size="sm" variant="ghost" onClick={() => startEditUser(std)} className="text-gray-500"><Edit className="h-4 w-4" /></Button></div>))}</div></div>))}</div></div>))}</div></CardContent></Card></div></div>)}
         {activeTab === 'questionnaire' && ( <div className="animate-in fade-in space-y-6"><div className="grid gap-8 lg:grid-cols-12"><div className="lg:col-span-5 space-y-6"><Card><CardHeader className="pb-3"><CardTitle className="text-sm">Público Alvo do Questionário</CardTitle></CardHeader><CardContent><Select value={targetRole} onChange={(e) => setTargetRole(e.target.value as 'student' | 'teacher')}><option value="student">🎓 Alunos (Avaliar Docentes)</option><option value="teacher">👨‍🏫 Docentes (Institucional)</option></Select></CardContent></Card><Card><CardHeader className="bg-slate-900 text-white rounded-t-lg"><CardTitle className="flex items-center gap-2"><Plus className="h-5 w-5" /> Adicionar Pergunta</CardTitle></CardHeader><CardContent className="space-y-4 pt-6"><div className="space-y-2"><Label>Texto</Label><Input value={newQText} onChange={(e) => setNewQText(e.target.value)} /></div><div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Tipo</Label><Select value={newQType} onChange={(e) => setNewQType(e.target.value as QuestionType)}><option value="binary">Sim / Não</option><option value="stars">Estrelas (1-5)</option><option value="scale_10">Escala (0-10)</option><option value="text">Texto</option><option value="choice">Múltipla Escolha</option></Select></div><div className="space-y-2"><Label>Pontos (Se SIM)</Label><Input type="number" min="0" value={newQWeight} onChange={(e) => setNewQWeight(Number(e.target.value))} disabled={newQType === 'text' || newQType === 'choice'} /></div></div><Button onClick={handleAddQuestion} className="w-full bg-slate-900">Adicionar Pergunta</Button></CardContent></Card></div><div className="lg:col-span-7 space-y-6"><Card className="h-full flex flex-col bg-gray-50/50"><CardHeader className="bg-white border-b border-gray-200"><div className="flex items-center justify-between"><CardTitle className="flex items-center gap-2 text-gray-800"><Eye className="h-5 w-5 text-indigo-600" /> Pré-visualização do Formulário</CardTitle></div><Input value={questionnaire?.title || ''} onChange={(e) => handleUpdateTitle(e.target.value)} className="mt-4 font-bold text-lg" placeholder="Título do Formulário" /></CardHeader><CardContent className="flex-1 overflow-y-auto p-6 space-y-4">{(!questionnaire || questionnaire.questions.length === 0) ? (<div className="flex flex-col items-center justify-center h-64 text-gray-400"><FileQuestion className="h-12 w-12 mb-3 opacity-20" /><p className="font-medium">O formulário está vazio.</p></div>) : (questionnaire.questions.map((q, idx) => (<div key={q.id} className="relative group bg-white p-5 rounded-lg border border-gray-200 shadow-sm"><div className="absolute right-3 top-3"><button onClick={() => handleRemoveQuestion(q.id)} className="p-1.5 text-gray-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div><div className="mb-3 pr-8"><p className="font-medium text-gray-900 text-base">#{idx + 1}. {q.text}</p></div><div className="pl-4 opacity-70 pointer-events-none">{renderPreviewInput(q)}</div></div>)))}</CardContent></Card></div></div></div>)} 
         {activeTab === 'qualitative' && ( <div className="animate-in fade-in"><Card><CardHeader><CardTitle className="flex items-center gap-2"><ClipboardList className="h-5 w-5" /> Avaliação Qualitativa Institucional</CardTitle><p className="text-sm text-gray-500 pt-1">Atribua uma nota de 0 a 10 para cada indicador. Esta avaliação representa 8% da nota final do docente.</p></CardHeader><CardContent className="space-y-2">{teachers.map(t => ( <div key={t.id} className="border rounded-lg overflow-hidden"><button onClick={() => setExpandedTeacher(prev => prev === t.id ? null : t.id)} className="w-full flex items-center justify-between p-4 bg-white hover:bg-gray-50 transition-colors"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">{t.avatar ? <img src={t.avatar} className="h-full w-full object-cover" alt="Avatar"/> : <Users className="h-5 w-5 m-2.5 text-gray-400" />}</div><div className="text-left"><p className="font-medium">{t.name}</p><p className="text-sm text-gray-500">{t.email}</p></div></div><div className="flex items-center gap-2 text-gray-500">{expandedTeacher === t.id ? <ChevronUp/> : <ChevronDown/>}</div></button>{expandedTeacher === t.id && ( <div className="p-4 bg-gray-50/70 border-t space-y-4 animate-in fade-in duration-300"><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div className="space-y-2"><Label>Cumprimento de Prazos (0-10)</Label><Input type="number" min="0" max="10" value={qualEvals[t.id]?.deadlines || 0} onChange={e => handleEvalChange(t.id, 'deadlines', e.target.value)} /></div><div className="space-y-2"><Label>Qualidade de Trabalho (0-10)</Label><Input type="number" min="0" max="10" value={qualEvals[t.id]?.quality || 0} onChange={e => handleEvalChange(t.id, 'quality', e.target.value)} /></div></div><div className="space-y-2"><Label>Comentários / Observações</Label><textarea value={qualEvals[t.id]?.comments || ''} onChange={e => handleEvalChange(t.id, 'comments', e.target.value)} className="w-full min-h-[80px] p-2 border rounded" placeholder="Adicione notas sobre o desempenho..." /></div><Button onClick={() => handleEvalSubmit(t.id)}><Save className="mr-2 h-4 w-4"/> Salvar Avaliação</Button></div>)}</div>))} </CardContent></Card></div>)}
-        {activeTab === 'stats' && ( <div className="space-y-6 animate-in fade-in"><Card><CardHeader className="flex flex-row justify-between items-center"><CardTitle className="flex items-center gap-2"><BarChartHorizontal className="h-5 w-5" /> Relatório de Desempenho Global</CardTitle><div className="flex gap-2"><Button variant="outline" onClick={handleExportCSV}><Download className="mr-2 h-4 w-4" /> Exportar CSV</Button><Button variant="outline" onClick={handlePrintSummaryReport}><Printer className="mr-2 h-4 w-4" /> Exportar Resumo PDF</Button></div></CardHeader><CardContent><div className="h-[400px] w-full"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Legend /><Bar dataKey="finalScore" fill="#1f2937" name="Nota Final" /></BarChart></ResponsiveContainer></div></CardContent></Card></div>)}
+        {activeTab === 'stats' && (
+            <div className="space-y-6 animate-in fade-in">
+                <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                    <div>
+                        <h2 className="text-xl font-bold text-slate-800">Relatório de Desempenho Global</h2>
+                        <p className="text-slate-500 text-sm">Visão consolidada do corpo docente</p>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={handleExportCSV} className="text-slate-600 border-slate-300">
+                            <Download className="mr-2 h-4 w-4" /> CSV
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={handlePrintSummaryReport} className="text-slate-600 border-slate-300">
+                            <Printer className="mr-2 h-4 w-4" /> PDF
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Gráfico 1: Distribuição de Classificações (Donut) */}
+                    <Card className="lg:col-span-1 border-none shadow-md overflow-hidden bg-white">
+                        <CardHeader className="border-b border-gray-100 pb-2">
+                            <CardTitle className="text-base text-slate-700 font-bold">Distribuição de Notas</CardTitle>
+                        </CardHeader>
+                        <CardContent className="flex flex-col items-center justify-center p-6">
+                            <div className="h-[250px] w-full relative">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie
+                                            data={gradeDistribution}
+                                            dataKey="value"
+                                            nameKey="name"
+                                            cx="50%"
+                                            cy="50%"
+                                            innerRadius={60}
+                                            outerRadius={80}
+                                            paddingAngle={5}
+                                            stroke="none"
+                                        >
+                                            {gradeDistribution.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip content={<CustomTooltip />} />
+                                        <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                    <div className="text-center">
+                                        <span className="text-3xl font-bold text-slate-800">{allScores.length}</span>
+                                        <p className="text-xs text-slate-400 uppercase tracking-widest">Avaliações</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Gráfico 2: Ranking de Docentes (Horizontal Bar) */}
+                    <Card className="lg:col-span-2 border-none shadow-md bg-white">
+                        <CardHeader className="border-b border-gray-100 pb-2">
+                            <CardTitle className="text-base text-slate-700 font-bold">Ranking de Desempenho (Top 15)</CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-4">
+                            <div className="h-[300px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart
+                                        layout="vertical"
+                                        data={chartData}
+                                        margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                                        <XAxis type="number" domain={[0, 150]} hide />
+                                        <YAxis
+                                            dataKey="name"
+                                            type="category"
+                                            width={100}
+                                            tick={{ fontSize: 11, fill: '#64748b' }}
+                                            axisLine={false}
+                                            tickLine={false}
+                                        />
+                                        <Tooltip content={<CustomTooltip />} cursor={{fill: '#f8fafc'}} />
+                                        <Bar
+                                            dataKey="finalScore"
+                                            name="Nota Final"
+                                            radius={[0, 4, 4, 0]}
+                                            barSize={12}
+                                        >
+                                            {chartData.map((entry, index) => (
+                                                <Cell
+                                                    key={`cell-${index}`}
+                                                    fill={
+                                                        entry.finalScore >= 110 ? '#10b981' : // Emerald
+                                                        entry.finalScore >= 90 ? '#3b82f6' :  // Blue
+                                                        entry.finalScore >= 65 ? '#f59e0b' :  // Amber
+                                                        '#ef4444'                              // Red
+                                                    }
+                                                />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        )}
         {activeTab === 'settings' && institution && ( <div className="animate-in fade-in"><Card className="max-w-2xl mx-auto"><CardHeader><CardTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" /> Configurações da Instituição</CardTitle></CardHeader><CardContent><form onSubmit={handleUpdateInstitution} className="space-y-4"><div className="space-y-2"><Label>Nome da Instituição</Label><Input value={institution.name} onChange={e => setInstitution({...institution, name: e.target.value})}/></div><div className="space-y-2"><Label>Logotipo</Label><div className="flex items-center gap-4"><div className="h-16 w-16 border rounded bg-white p-1 flex items-center justify-center">{institution.logo ? <img src={institution.logo} className="object-contain h-full w-full" alt="Logo"/> : <ImageIcon className="h-6 w-6 text-gray-300"/>}</div><Input type="file" accept="image/*" onChange={handleInstLogoUpload} /></div></div><Button type="submit"><Save className="mr-2 h-4 w-4"/> Salvar Alterações</Button></form></CardContent></Card></div>)}
       </div>
     </>

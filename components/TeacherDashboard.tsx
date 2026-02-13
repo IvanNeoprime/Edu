@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { User, CombinedScore, SelfEvaluation, TeacherCategory, Questionnaire, UserRole, Question, QualitativeEval, Institution } from '../types';
 import { BackendService } from '../services/backend';
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label, Select } from './ui';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
 import { Download, TrendingUp, FileText, BarChart3, Save, FileQuestion, Star, CheckCircle2, Lock, Printer, AlertCircle, Info, Calculator, FileCheck, ClipboardList, Shield } from 'lucide-react';
 
 interface Props {
@@ -204,10 +204,20 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
   const isIntern = header.category === 'assistente_estagiario';
   
   const scoreChartData = stats ? [
-      { name: 'Avaliação dos Alunos', value: stats.studentScore, fill: '#3b82f6' },
-      { name: 'Auto-Avaliação', value: stats.selfEvalScore, fill: '#8b5cf6' },
-      { name: 'Avaliação Institucional', value: stats.institutionalScore, fill: '#16a34a' },
+      { name: 'Av. Alunos', value: stats.studentScore, fill: '#3b82f6' }, // Blue
+      { name: 'Auto-Avaliação', value: stats.selfEvalScore, fill: '#8b5cf6' }, // Violet
+      { name: 'Institucional', value: stats.institutionalScore, fill: '#10b981' }, // Emerald
   ] : [];
+
+  // Data for Radar Chart (Comparing Achieved vs Max Possible in each category roughly scaled to 100 for visibility)
+  // Max approx points: Student (20), Self (100 -> scaled to 80), Inst (10 -> scaled to 10?) 
+  // Simplified Radar: normalize all to 0-100% scale for comparison
+  const radarData = stats ? [
+      { subject: 'Pedagógico (Alunos)', A: (stats.studentScore / 20) * 100, fullMark: 100 },
+      { subject: 'Desempenho (Auto)', A: (stats.selfEvalScore / 100) * 100, fullMark: 100 }, // Assuming 100 max raw self points for viz
+      { subject: 'Compromisso (Inst)', A: (stats.institutionalScore / 20) * 100, fullMark: 100 },
+  ] : [];
+
 
   return (
     <>
@@ -288,53 +298,121 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
         {activeTab === 'stats' && (
             <div className="space-y-6 animate-in fade-in">
                 <Card>
-                    <CardHeader className="flex flex-row justify-between items-center">
+                    <CardHeader className="flex flex-row justify-between items-center border-b pb-4">
                         <CardTitle className="flex items-center gap-2">
-                            <FileText className="h-5 w-5" /> Relatório de Desempenho
+                            <FileText className="h-5 w-5 text-indigo-600" /> Relatório de Desempenho
                         </CardTitle>
                         <Button variant="outline" onClick={handleDownloadPDF}><Printer className="mr-2 h-4 w-4" /> Imprimir Relatório</Button>
                     </CardHeader>
-                    <CardContent className="space-y-6">
+                    <CardContent className="space-y-8 pt-6">
                         {!stats ? (
                             <div className="text-center py-12 text-gray-500"><AlertCircle className="mx-auto h-8 w-8 mb-2"/>Aguardando cálculo de notas pelo gestor.</div>
                         ) : (
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                {/* Coluna 1: Cartões de KPI */}
                                 <div className="lg:col-span-1 space-y-4">
-                                    <Card className="bg-slate-800 text-white text-center">
-                                        <CardContent className="pt-6">
-                                            <p className="text-sm text-slate-300">Classificação Final</p>
-                                            <p className="text-6xl font-extrabold tracking-tighter">{stats.finalScore.toFixed(2)}</p>
-                                            <p className="text-xs text-slate-400">Calculado em: {new Date(stats.lastCalculated).toLocaleDateString()}</p>
-                                        </CardContent>
-                                    </Card>
-                                    <Card><CardContent className="pt-6"><p className="text-sm text-gray-500">Avaliação (Alunos)</p><p className="text-2xl font-bold">{stats.studentScore.toFixed(2)}</p></CardContent></Card>
-                                    <Card><CardContent className="pt-6"><p className="text-sm text-gray-500">Auto-Avaliação</p><p className="text-2xl font-bold">{stats.selfEvalScore.toFixed(2)}</p></CardContent></Card>
-                                    <Card><CardContent className="pt-6"><p className="text-sm text-gray-500">Avaliação (Institucional)</p><p className="text-2xl font-bold">{stats.institutionalScore.toFixed(2)}</p></CardContent></Card>
-                                </div>
-                                <div className="lg:col-span-2">
-                                    <Card className="h-full">
-                                        <CardHeader><CardTitle className="text-base">Composição da Nota</CardTitle></CardHeader>
-                                        <CardContent>
-                                            <div className="h-[250px] w-full">
-                                                <ResponsiveContainer width="100%" height="100%">
-                                                    <PieChart>
-                                                        <Pie data={scoreChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                                                            {scoreChartData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.fill} />)}
-                                                        </Pie>
-                                                        <Tooltip />
-                                                        <Legend />
-                                                    </PieChart>
-                                                </ResponsiveContainer>
+                                    <Card className="bg-slate-900 text-white text-center shadow-xl border-none">
+                                        <CardContent className="pt-8 pb-8">
+                                            <p className="text-sm font-medium text-slate-300 uppercase tracking-widest mb-2">Classificação Final</p>
+                                            <p className="text-6xl font-black tracking-tighter text-white drop-shadow-sm">{stats.finalScore.toFixed(1)}</p>
+                                            <div className="mt-4 inline-block px-3 py-1 bg-white/10 rounded-full text-xs text-slate-200">
+                                                {new Date(stats.lastCalculated).toLocaleDateString()}
                                             </div>
-                                            {qualEval?.comments && (
-                                                <div className="mt-6 border-t pt-4">
-                                                    <h4 className="font-semibold">Comentários do Gestor</h4>
-                                                    <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-md mt-2 italic">"{qualEval.comments}"</p>
-                                                </div>
-                                            )}
                                         </CardContent>
                                     </Card>
+                                    
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <Card className="bg-blue-50 border-blue-100">
+                                            <CardContent className="p-4 text-center">
+                                                <p className="text-xs text-blue-600 font-bold uppercase">Alunos</p>
+                                                <p className="text-xl font-black text-blue-900">{stats.studentScore.toFixed(1)}</p>
+                                            </CardContent>
+                                        </Card>
+                                        <Card className="bg-emerald-50 border-emerald-100">
+                                            <CardContent className="p-4 text-center">
+                                                <p className="text-xs text-emerald-600 font-bold uppercase">Institucional</p>
+                                                <p className="text-xl font-black text-emerald-900">{stats.institutionalScore.toFixed(1)}</p>
+                                            </CardContent>
+                                        </Card>
+                                        <Card className="bg-violet-50 border-violet-100 col-span-2">
+                                            <CardContent className="p-4 flex justify-between items-center">
+                                                <div>
+                                                    <p className="text-xs text-violet-600 font-bold uppercase">Auto-Avaliação</p>
+                                                    <p className="text-2xl font-black text-violet-900">{stats.selfEvalScore.toFixed(1)}</p>
+                                                </div>
+                                                <div className="h-10 w-10 rounded-full bg-violet-200 flex items-center justify-center text-violet-700">
+                                                    <CheckCircle2 size={20} />
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
                                 </div>
+
+                                {/* Coluna 2: Gráfico Donut */}
+                                <div className="lg:col-span-1">
+                                    <div className="h-full flex flex-col justify-center items-center">
+                                        <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Composição da Nota</h4>
+                                        <div className="h-[220px] w-full relative">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <PieChart>
+                                                    <Pie
+                                                        data={scoreChartData}
+                                                        dataKey="value"
+                                                        nameKey="name"
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        innerRadius={60}
+                                                        outerRadius={80}
+                                                        paddingAngle={5}
+                                                        stroke="none"
+                                                    >
+                                                        {scoreChartData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.fill} />)}
+                                                    </Pie>
+                                                    <Tooltip />
+                                                    <Legend verticalAlign="bottom" iconType="circle" />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                                <span className="text-2xl font-bold text-gray-300">100%</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* Coluna 3: Gráfico Radar */}
+                                <div className="lg:col-span-1">
+                                    <div className="h-full flex flex-col justify-center items-center">
+                                        <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Triângulo de Competências</h4>
+                                        <div className="h-[220px] w-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
+                                                    <PolarGrid stroke="#e2e8f0" />
+                                                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10, fontWeight: 'bold' }} />
+                                                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                                                    <Radar
+                                                        name="Performance %"
+                                                        dataKey="A"
+                                                        stroke="#6366f1"
+                                                        fill="#6366f1"
+                                                        fillOpacity={0.4}
+                                                    />
+                                                    <Tooltip />
+                                                </RadarChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {qualEval?.comments && (
+                                    <div className="lg:col-span-3 mt-4">
+                                        <div className="bg-amber-50 border border-amber-100 rounded-xl p-6">
+                                            <h4 className="font-bold text-amber-800 flex items-center gap-2 mb-2">
+                                                <AlertCircle size={16} /> Feedback Qualitativo do Gestor
+                                            </h4>
+                                            <p className="text-sm text-amber-900 italic leading-relaxed">"{qualEval.comments}"</p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </CardContent>
