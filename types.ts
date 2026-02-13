@@ -117,16 +117,45 @@ export interface SelfEvaluation {
     workPeriod: string; // Laboral/PL
     academicYear: string;
   };
-  // Respostas específicas (Quantidades que serão multiplicadas pelos pontos)
+  // Respostas baseadas na Ficha Oficial
   answers: {
-    gradSubjects?: number;
-    postGradSubjects?: number;
-    theoryHours?: number;
-    practicalHours?: number;
-    consultationHours?: number;
-    gradSupervision?: number;
-    postGradSupervision?: number;
-    regencySubjects?: number;
+    // Grupo 1: Actividade Docente (Máx 20)
+    g1_gradSubjects?: number; // 101 (15 pts)
+    g1_postGradSubjects?: number; // 102
+
+    // Grupo 2: Supervisão (Máx 20 - Apenas A)
+    g2_gradSupervision?: number; // 151 (6 pts)
+    g2_postGradSupervision?: number; // 152 (6 pts)
+    g2_regencySubjects?: number; // 156 (8 pts)
+
+    // Grupo 3: Carga Horária (Máx 35)
+    g3_theoryHours?: number; // 201 (16 pts)
+    g3_practicalHours?: number; // 202 (14 pts)
+    g3_consultationHours?: number; // 203 (5 pts)
+
+    // Grupo 4: Rendimento Pedagógico (Máx 35)
+    g4_gradStudents?: number; // 252 (18 pts)
+    g4_postGradStudents?: number; // 252 (12 pts) - Corrigido para refletir PDF
+    g4_passRate?: number; // 253 (5 pts)
+
+    // Grupo 5: Material Didático (Máx 30)
+    g5_manuals?: number; // 301 (15 pts)
+    g5_supportTexts?: number; // 302 (10 pts)
+
+    // Grupo 6: Investigação (Máx 35)
+    g6_individualProjects?: number; // 351 (4 pts)
+    g6_collectiveProjects?: number; // 352 (4 pts)
+    g6_publishedArticles?: number; // 353 (7 pts)
+    g6_eventsComms?: number; // 354 (3 pts)
+    g6_scientificActivities?: number; // 355
+    g6_reports?: number; // 356
+
+    // Grupo 7: Extensão (Máx 40)
+    g7_collaboration?: number; // 401 (5 pts)
+    g7_institutionalTeams?: number; // 402 (5 pts)
+
+    // Grupo 8: Administração (Máx 45)
+    g8_adminHours?: number; // (10 pts)
   };
   // Novo campo: Avaliação Qualitativa descritiva do próprio docente
   comments?: string; 

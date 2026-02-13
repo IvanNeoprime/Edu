@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { BackendService, PDF_STANDARD_QUESTIONS, TEACHER_STANDARD_QUESTIONS } from '../services/backend';
+import { BackendService, PDF_STANDARD_QUESTIONS } from '../services/backend';
 // import { AIService } from '../services/ai'; // Removed AI Service
 import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution, SelfEvaluation, Course } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, cn } from './ui';
@@ -54,12 +54,13 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [editEmail, setEditEmail] = useState('');
 
   // Questionnaire State
-  const [targetRole, setTargetRole] = useState<'student' | 'teacher'>('student');
   const [questionnaire, setQuestionnaire] = useState<Questionnaire | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false); // New Preview State
   
   // Form Builder State
   const [newQText, setNewQText] = useState('');
-  const [newQType, setNewQType] = useState<QuestionType>('binary'); // Default Sim/Não
+  // Force default to binary as per requirement "os questionarios default so se respondem sim ou nao"
+  const [newQType, setNewQType] = useState<QuestionType>('binary'); 
   const [newQWeight, setNewQWeight] = useState(1);
   const [newQOptions, setNewQOptions] = useState(''); // Comma separated
 
@@ -99,7 +100,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
   useEffect(() => {
       loadQuestionnaire();
-  }, [targetRole, institutionId]);
+  }, [institutionId]);
 
   useEffect(() => {
     if (activeTab === 'stats' || activeTab === 'overview') {
@@ -108,7 +109,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   }, [activeTab, institutionId]);
 
   const loadQuestionnaire = async () => {
-    const q = await BackendService.getInstitutionQuestionnaire(institutionId, targetRole);
+    const q = await BackendService.getInstitutionQuestionnaire(institutionId);
     setQuestionnaire(q);
   };
 
@@ -421,12 +422,12 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       const updatedQ: Questionnaire = questionnaire
         ? { ...questionnaire, questions: updatedQuestions }
         : {
-            id: `q_${institutionId}_${targetRole}`,
+            id: `q_${institutionId}_student`,
             institutionId,
-            title: targetRole === 'student' ? 'Avaliação de Desempenho' : 'Inquérito ao Docente',
+            title: 'Avaliação de Desempenho Docente (Estudantes)',
             active: true,
             questions: updatedQuestions,
-            targetRole: targetRole
+            targetRole: 'student'
           };
       
       setQuestionnaire(updatedQ);
@@ -462,18 +463,18 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     if(!confirm("Tem certeza? Isso substituirá as perguntas atuais pelas padrão do sistema.")) return;
     
     // Select defaults based on active role
-    const defaults = targetRole === 'student' ? PDF_STANDARD_QUESTIONS : TEACHER_STANDARD_QUESTIONS;
+    const defaults = PDF_STANDARD_QUESTIONS;
     
     // Create updated questionnaire object
     const updatedQ: Questionnaire = questionnaire 
         ? { ...questionnaire, questions: defaults }
         : {
-            id: `def_${targetRole}_${institutionId}`,
+            id: `def_student_${institutionId}`,
             institutionId,
-            title: `Questionário ${targetRole === 'student' ? 'Estudante' : 'Docente'}`,
+            title: `Avaliação de Desempenho Docente (Estudantes)`,
             active: true,
             questions: defaults,
-            targetRole: targetRole
+            targetRole: 'student'
           };
 
     setQuestionnaire(updatedQ);
@@ -509,7 +510,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const renderPreviewInput = (q: Question) => {
     switch (q.type) {
         case 'stars': return <div className="flex gap-2 text-gray-300"><Star className="h-6 w-6" /><Star className="h-6 w-6" /><Star className="h-6 w-6" /><Star className="h-6 w-6" /><Star className="h-6 w-6" /></div>;
-        case 'binary': return <div className="flex gap-4 max-w-xs"><Button variant="outline" disabled className="flex-1">Não</Button><Button variant="outline" disabled className="flex-1">Sim</Button></div>;
+        case 'binary': return <div className="flex gap-4 w-full"><Button variant="outline" disabled className="flex-1 bg-red-50 text-red-800 border-red-200">Não</Button><Button variant="outline" disabled className="flex-1 bg-green-50 text-green-800 border-green-200">Sim</Button></div>;
         case 'scale_10': return <div className="flex gap-1 overflow-x-auto pb-1">{[...Array(11)].map((_, i) => <div key={i} className="h-8 w-8 flex items-center justify-center border rounded text-xs text-gray-400 bg-white shrink-0">{i}</div>)}</div>;
         case 'text': return <div className="h-20 w-full border rounded-md bg-gray-50 text-gray-400 p-2 text-sm italic">Área de resposta de texto...</div>;
         case 'choice': return <div className="space-y-2">{q.options?.map(o => <div key={o} className="flex items-center gap-2 text-gray-500 text-sm"><div className="h-4 w-4 rounded-full border border-gray-300"></div><span>{o}</span></div>)}</div>;
@@ -821,6 +822,53 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       {/* --- FIM DO CONTEÚDO PARA IMPRESSÃO --- */}
 
       <div className="print:hidden space-y-8 p-4 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-500">
+        
+        {/* --- MODAL DE PRÉ-VISUALIZAÇÃO --- */}
+        {isPreviewOpen && questionnaire && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+                <div className="bg-gray-50 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl flex flex-col">
+                    <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center z-10">
+                        <div>
+                            <h3 className="font-bold text-lg text-gray-900">{questionnaire.title}</h3>
+                            <p className="text-xs text-gray-500">Pré-visualização (Modo Estudante)</p>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => setIsPreviewOpen(false)} className="rounded-full h-8 w-8 p-0 hover:bg-gray-100">
+                            <X className="h-5 w-5 text-gray-500" />
+                        </Button>
+                    </div>
+                    <div className="p-6 space-y-6">
+                        {questionnaire.questions.length === 0 ? (
+                            <div className="text-center py-12 text-gray-400">
+                                <FileQuestion className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                                <p>O questionário está vazio.</p>
+                            </div>
+                        ) : (
+                            questionnaire.questions.map((q, idx) => (
+                                <Card key={q.id} className="overflow-visible shadow-sm border-gray-200">
+                                    <CardContent className="pt-6">
+                                        <div className="mb-4">
+                                            <span className="text-xs font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded mr-2">
+                                                #{idx + 1}
+                                            </span>
+                                            <span className="font-medium text-gray-900 text-lg block mt-1">{q.text}</span>
+                                        </div>
+                                        <div className="mt-2">
+                                            {renderPreviewInput(q)}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))
+                        )}
+                        <div className="flex justify-center pt-4 pb-2">
+                            <Button disabled className="w-full max-w-sm bg-black opacity-50 cursor-not-allowed">
+                                Enviar Avaliação (Simulação)
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
         {editingUser && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                 <Card className="w-full max-w-md shadow-2xl">
@@ -868,7 +916,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                   <ClipboardList className="h-4 w-4" /> Avaliação Qualitativa
               </button>
               <button onClick={() => setActiveTab('questionnaire')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-1 ${activeTab === 'questionnaire' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>
-                  <Shield className="h-3 w-3" /> Questionários
+                  <Shield className="h-3 w-3" /> Ficha de Avaliação
               </button>
               <button onClick={() => setActiveTab('stats')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'stats' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Relatórios</button>
               <button onClick={() => setActiveTab('settings')} className={`px-3 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-1 ${activeTab === 'settings' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>
@@ -950,6 +998,106 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             </div>
         )}
 
+        {/* ABA DE ALUNOS (NOVO) */}
+        {activeTab === 'students' && (
+            <div className="grid gap-8 lg:grid-cols-12 animate-in fade-in">
+                <div className="lg:col-span-5 space-y-6">
+                    <Card className="border-green-100 shadow-md">
+                        <CardHeader className="bg-green-50/50 pb-4">
+                            <CardTitle className="flex items-center gap-2 text-green-900"><UserPlus className="h-5 w-5" /> Cadastrar Novo Aluno</CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-4">
+                            <form onSubmit={handleAddStudent} className="space-y-5">
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label>Nome Completo</Label>
+                                        <Input value={newStudentName} onChange={e => setNewStudentName(e.target.value)} required />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label>Email</Label>
+                                            <Input type="email" value={newStudentEmail} onChange={e => setNewStudentEmail(e.target.value)} required />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Senha</Label>
+                                            <Input type="text" value={newStudentPwd} onChange={e => setNewStudentPwd(e.target.value)} required />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Curso</Label>
+                                        <Select value={newStudentCourse} onChange={e => setNewStudentCourse(e.target.value)}>
+                                            <option value="">Selecione o curso...</option>
+                                            {courses.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                        </Select>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label>Ano / Nível</Label>
+                                            <Input type="number" min="1" max="6" value={newStudentLevel} onChange={e => setNewStudentLevel(e.target.value)} placeholder="Ex: 1" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Turmas (Ex: A, B)</Label>
+                                            <Input value={newStudentClassGroups} onChange={e => setNewStudentClassGroups(e.target.value)} placeholder="Separar por vírgula" />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="block text-sm font-medium text-gray-700">Turnos</Label>
+                                        <div className="flex gap-4">
+                                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                <input type="checkbox" checked={newStudentShifts.includes('Diurno')} onChange={() => handleToggleShift('Diurno')} className="rounded border-gray-300 text-green-600 focus:ring-green-500" />
+                                                Diurno
+                                            </label>
+                                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                <input type="checkbox" checked={newStudentShifts.includes('Noturno')} onChange={() => handleToggleShift('Noturno')} className="rounded border-gray-300 text-green-600 focus:ring-green-500" />
+                                                Noturno
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white">
+                                    <Check className="mr-2 h-4 w-4" /> Cadastrar Aluno
+                                </Button>
+                            </form>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div className="lg:col-span-7 space-y-6">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" /> Base de Alunos ({students.length})</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {students.length === 0 ? <p className="text-gray-500 italic text-center py-4">Nenhum aluno cadastrado.</p> : (
+                                 <div className="space-y-2">
+                                     {students.map(s => (
+                                         <div key={s.id} className="border rounded-lg bg-white shadow-sm flex items-center justify-between p-3">
+                                             <div className="flex items-center gap-3">
+                                                 <div className="h-9 w-9 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-sm">
+                                                     {s.name.charAt(0)}
+                                                 </div>
+                                                 <div>
+                                                     <p className="font-medium text-sm">{s.name}</p>
+                                                     <div className="flex flex-wrap gap-1 text-[10px] text-gray-500">
+                                                         <span>{s.email}</span> • 
+                                                         <span>{s.course || 'S/ Curso'}</span> • 
+                                                         <span>{s.level}º Ano</span>
+                                                     </div>
+                                                 </div>
+                                             </div>
+                                             <Button size="sm" variant="ghost" onClick={() => startEditUser(s)} className="text-gray-400 hover:text-gray-600">
+                                                 <Edit className="h-4 w-4" />
+                                             </Button>
+                                         </div>
+                                     ))}
+                                 </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        )}
+
         {activeTab === 'teachers' && ( <div className="grid gap-8 lg:grid-cols-12"><div className="lg:col-span-5 space-y-6"><Card className="border-indigo-100 shadow-md"><CardHeader className="bg-indigo-50/50 pb-4"><CardTitle className="flex items-center gap-2 text-indigo-900"><UserPlus className="h-5 w-5" /> Cadastrar Novo Docente</CardTitle></CardHeader><CardContent className="pt-4"><form onSubmit={handleAddTeacher} className="space-y-5"><div className="space-y-4"><div className="flex gap-4"><div className="flex-1 space-y-2"><Label>Nome Completo</Label><Input value={newTeacherName} onChange={e => setNewTeacherName(e.target.value)} required /></div><div className="w-16 space-y-2"><Label>Foto</Label><div className="relative h-10 w-full"><input type="file" accept="image/*" onChange={(e) => handleAvatarUpload(e, setNewTeacherAvatar)} className="absolute inset-0 opacity-0 cursor-pointer z-10" /><div className="h-full w-full border rounded flex items-center justify-center bg-white">{newTeacherAvatar ? <img src={newTeacherAvatar} className="h-full w-full object-cover rounded" alt="Avatar"/> : <ImageIcon className="h-4 w-4 text-gray-400" />}</div></div></div></div><div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Email</Label><Input type="email" value={newTeacherEmail} onChange={e => setNewTeacherEmail(e.target.value)} required /></div><div className="space-y-2"><Label>Senha</Label><Input type="text" value={newTeacherPwd} onChange={e => setNewTeacherPwd(e.target.value)} required /></div></div><div className="space-y-2"><Label>Categoria</Label><Select value={newTeacherCategory} onChange={(e) => setNewTeacherCategory(e.target.value as TeacherCategory)}><option value="assistente">Assistente (Pleno)</option><option value="assistente_estagiario">Assistente Estagiário</option></Select></div>
         
         {/* Nova seção: Múltiplos Cursos */}
@@ -980,7 +1128,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             </div>
         )}
         </div></div><div className="flex items-center gap-2"><Button size="sm" variant="ghost" onClick={() => startEditUser(t)} className="text-gray-500"><Edit className="h-4 w-4" /></Button><Button size="sm" variant="ghost" onClick={() => handlePrintTeacherReport(t)} className="text-gray-500" title="Gerar Folha de Classificação"><FileText className="h-4 w-4" /></Button></div></div>))} </CardContent></Card></div></div>)}
-        {activeTab === 'questionnaire' && ( <div className="animate-in fade-in space-y-6"><div className="grid gap-8 lg:grid-cols-12"><div className="lg:col-span-5 space-y-6"><Card><CardHeader className="pb-3"><CardTitle className="text-sm">Público Alvo do Questionário</CardTitle></CardHeader><CardContent><Select value={targetRole} onChange={(e) => setTargetRole(e.target.value as 'student' | 'teacher')}><option value="student">🎓 Alunos (Avaliar Docentes)</option><option value="teacher">👨‍🏫 Docentes (Institucional)</option></Select></CardContent></Card><Card><CardHeader className="bg-slate-900 text-white rounded-t-lg"><CardTitle className="flex items-center gap-2"><Plus className="h-5 w-5" /> Adicionar Pergunta</CardTitle></CardHeader><CardContent className="space-y-4 pt-6"><div className="space-y-2"><Label>Texto</Label><Input value={newQText} onChange={(e) => setNewQText(e.target.value)} /></div><div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Tipo</Label><Select value={newQType} onChange={(e) => setNewQType(e.target.value as QuestionType)}><option value="binary">Sim / Não</option><option value="stars">Estrelas (1-5)</option><option value="scale_10">Escala (0-10)</option><option value="text">Texto</option><option value="choice">Múltipla Escolha</option></Select></div><div className="space-y-2"><Label>Pontos (Se SIM)</Label><Input type="number" min="0" value={newQWeight} onChange={(e) => setNewQWeight(Number(e.target.value))} disabled={newQType === 'text' || newQType === 'choice'} /></div></div><Button onClick={handleAddQuestion} className="w-full bg-slate-900">Adicionar Pergunta</Button></CardContent></Card></div><div className="lg:col-span-7 space-y-6"><Card className="h-full flex flex-col bg-gray-50/50"><CardHeader className="bg-white border-b border-gray-200"><div className="flex items-center justify-between"><CardTitle className="flex items-center gap-2 text-gray-800"><Eye className="h-5 w-5 text-indigo-600" /> Pré-visualização do Formulário</CardTitle><Button variant="outline" size="sm" onClick={handleResetDefaults} title="Restaurar perguntas originais"><RefreshCw className="h-4 w-4 mr-2" /> Restaurar Padrão</Button></div><Input value={questionnaire?.title || ''} onChange={(e) => handleUpdateTitle(e.target.value)} className="mt-4 font-bold text-lg" placeholder="Título do Formulário" /></CardHeader><CardContent className="flex-1 overflow-y-auto p-6 space-y-4">{(!questionnaire || questionnaire.questions.length === 0) ? (<div className="flex flex-col items-center justify-center h-64 text-gray-400"><FileQuestion className="h-12 w-12 mb-3 opacity-20" /><p className="font-medium">O formulário está vazio.</p></div>) : (questionnaire.questions.map((q, idx) => (<div key={q.id} className="relative group bg-white p-5 rounded-lg border border-gray-200 shadow-sm"><div className="absolute right-3 top-3"><button onClick={() => handleRemoveQuestion(q.id)} className="p-1.5 text-gray-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div><div className="mb-3 pr-8"><p className="font-medium text-gray-900 text-base">#{idx + 1}. {q.text}</p></div><div className="pl-4 opacity-70 pointer-events-none flex items-center justify-between"><div>{renderPreviewInput(q)}</div>{q.type === 'binary' && <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded border border-green-200">Vale {q.weight} pts (Sim)</span>}</div></div>)))}</CardContent></Card></div></div></div>)} 
+        {activeTab === 'questionnaire' && ( <div className="animate-in fade-in space-y-6"><div className="grid gap-8 lg:grid-cols-12"><div className="lg:col-span-5 space-y-6"><Card><CardHeader className="bg-slate-900 text-white rounded-t-lg"><CardTitle className="flex items-center gap-2"><Plus className="h-5 w-5" /> Adicionar Pergunta</CardTitle></CardHeader><CardContent className="space-y-4 pt-6"><div className="space-y-2"><Label>Texto</Label><Input value={newQText} onChange={(e) => setNewQText(e.target.value)} /></div><div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Tipo</Label><Select value={newQType} onChange={(e) => setNewQType(e.target.value as QuestionType)}><option value="binary">Sim / Não</option><option value="stars">Estrelas (1-5)</option><option value="scale_10">Escala (0-10)</option><option value="text">Texto</option><option value="choice">Múltipla Escolha</option></Select></div><div className="space-y-2"><Label>Pontos (Se SIM)</Label><Input type="number" min="0" value={newQWeight} onChange={(e) => setNewQWeight(Number(e.target.value))} disabled={newQType === 'text' || newQType === 'choice'} /></div></div><Button onClick={handleAddQuestion} className="w-full bg-slate-900">Adicionar Pergunta</Button></CardContent></Card></div><div className="lg:col-span-7 space-y-6"><Card className="h-full flex flex-col bg-gray-50/50"><CardHeader className="bg-white border-b border-gray-200"><div className="flex items-center justify-between"><CardTitle className="flex items-center gap-2 text-gray-800"><Eye className="h-5 w-5 text-indigo-600" /> Pré-visualização da Ficha (Estudante)</CardTitle><Button variant="outline" size="sm" onClick={handleResetDefaults} title="Restaurar perguntas originais"><RefreshCw className="h-4 w-4 mr-2" /> Restaurar Padrão</Button></div><Input value={questionnaire?.title || ''} onChange={(e) => handleUpdateTitle(e.target.value)} className="mt-4 font-bold text-lg" placeholder="Título da Ficha de Avaliação" /></CardHeader><CardContent className="flex-1 overflow-y-auto p-6 space-y-4">{(!questionnaire || questionnaire.questions.length === 0) ? (<div className="flex flex-col items-center justify-center h-64 text-gray-400"><FileQuestion className="h-12 w-12 mb-3 opacity-20" /><p className="font-medium">O formulário está vazio.</p></div>) : (questionnaire.questions.map((q, idx) => (<div key={q.id} className="relative group bg-white p-5 rounded-lg border border-gray-200 shadow-sm"><div className="absolute right-3 top-3"><button onClick={() => handleRemoveQuestion(q.id)} className="p-1.5 text-gray-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button></div><div className="mb-3 pr-8"><p className="font-medium text-gray-900 text-base">#{idx + 1}. {q.text}</p></div><div className="pl-4 opacity-70 pointer-events-none flex items-center justify-between"><div>{renderPreviewInput(q)}</div>{q.type === 'binary' && <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded border border-green-200">Vale {q.weight} pts (Sim)</span>}</div></div>)))}</CardContent></Card></div></div></div>)} 
         {activeTab === 'qualitative' && ( <div className="animate-in fade-in grid grid-cols-1 lg:grid-cols-3 gap-6"><div className="lg:col-span-2 space-y-6"><Card><CardHeader><CardTitle className="flex items-center gap-2"><ClipboardList className="h-5 w-5" /> Avaliação Qualitativa Institucional</CardTitle><p className="text-sm text-gray-500 pt-1">Atribua uma nota de 0 a 10 para cada indicador. Esta avaliação representa 8% da nota final do docente.</p></CardHeader><CardContent className="space-y-2">{teachers.map(t => ( <div key={t.id} className="border rounded-lg overflow-hidden"><button onClick={() => setExpandedTeacher(prev => prev === t.id ? null : t.id)} className="w-full flex items-center justify-between p-4 bg-white hover:bg-gray-50 transition-colors"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">{t.avatar ? <img src={t.avatar} className="h-full w-full object-cover" alt="Avatar"/> : <Users className="h-5 w-5 m-2.5 text-gray-400" />}</div><div className="text-left"><p className="font-medium">{t.name}</p><p className="text-sm text-gray-500">{t.email}</p></div></div><div className="flex items-center gap-2 text-gray-500">{expandedTeacher === t.id ? <ChevronUp/> : <ChevronDown/>}</div></button>{expandedTeacher === t.id && ( <div className="p-4 bg-gray-50/70 border-t space-y-4 animate-in fade-in duration-300"><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div className="space-y-2"><Label>Cumprimento de tarefas e prazos (0-10)</Label><Input type="number" min="0" max="10" value={qualEvals[t.id]?.deadlines || 0} onChange={e => handleEvalChange(t.id, 'deadlines', e.target.value)} /></div><div className="space-y-2"><Label>Qualidade do trabalho realizado (0-10)</Label><Input type="number" min="0" max="10" value={qualEvals[t.id]?.quality || 0} onChange={e => handleEvalChange(t.id, 'quality', e.target.value)} /></div></div><div className="space-y-2"><Label>Comentários / Observações</Label><textarea value={qualEvals[t.id]?.comments || ''} onChange={e => handleEvalChange(t.id, 'comments', e.target.value)} className="w-full min-h-[80px] p-2 border rounded" placeholder="Adicione notas sobre o desempenho..." /></div><Button onClick={() => handleEvalSubmit(t.id)}><Save className="mr-2 h-4 w-4"/> Salvar Avaliação</Button></div>)}</div>))} </CardContent></Card></div><div className="lg:col-span-1"><Card className="h-fit sticky top-4"><CardHeader className="bg-slate-50 pb-3 border-b"><CardTitle className="text-sm flex items-center gap-2 text-slate-800"><Scale className="h-4 w-4" /> Guião de Pontuação (Rubrica)</CardTitle></CardHeader><CardContent className="p-0"><table className="w-full text-xs text-left"><thead className="bg-slate-100 font-bold text-slate-600"><tr><th className="p-2 border-b">Classif.</th><th className="p-2 border-b">Pontos</th><th className="p-2 border-b">Critério</th></tr></thead><tbody className="divide-y text-slate-700"><tr className="bg-green-50"><td className="p-2 font-bold text-green-800">Excelente</td><td className="p-2 font-bold">10.0</td><td className="p-2">Qualidade excepcional ou prazos superados (antecipação).</td></tr><tr><td className="p-2 font-bold text-blue-800">Muito Bom</td><td className="p-2 font-bold">7.5</td><td className="p-2">Trabalho exemplar e com rapidez/oportunidade.</td></tr><tr><td className="p-2 font-bold text-yellow-800">Bom</td><td className="p-2 font-bold">5.0</td><td className="p-2">Dentro do padrão e dos prazos estabelecidos.</td></tr><tr className="bg-red-50"><td className="p-2 font-bold text-red-800">Mau</td><td className="p-2 font-bold">2.5</td><td className="p-2">Insuficiente, atrasos frequentes ou erros.</td></tr></tbody></table><div className="p-3 text-xs text-gray-400 italic bg-gray-50 border-t">Baseado na Ficha de Indicadores de Avaliação Qualitativa</div></CardContent></Card></div></div>)}
         {activeTab === 'stats' && (
             <div className="space-y-6 animate-in fade-in">
@@ -1068,3 +1216,4 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     </>
   );
 };
+    

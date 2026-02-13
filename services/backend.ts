@@ -74,10 +74,10 @@ export const PDF_STANDARD_QUESTIONS: Question[] = [
 ];
 
 export const TEACHER_STANDARD_QUESTIONS: Question[] = [
-    { id: "inst_01", text: "As condições das salas de aula são adequadas?", type: "scale_10", weight: 0 },
-    { id: "inst_02", text: "Os recursos didáticos atendem às necessidades?", type: "scale_10", weight: 0 },
-    { id: "inst_03", text: "A comunicação com a direção é eficiente?", type: "stars", weight: 0 },
-    { id: "inst_04", text: "Existe apoio para investigação?", type: "binary", weight: 0 }
+    { id: "inst_01", text: "As condições das salas de aula são adequadas?", type: "binary", weight: 1 },
+    { id: "inst_02", text: "Os recursos didáticos atendem às necessidades?", type: "binary", weight: 1 },
+    { id: "inst_03", text: "A comunicação com a direção é eficiente?", type: "binary", weight: 1 },
+    { id: "inst_04", text: "Existe apoio para investigação?", type: "binary", weight: 1 }
 ];
 
 export interface SubjectWithTeacher extends Subject {
@@ -301,7 +301,7 @@ const SupabaseBackend = {
         return {
             id: `def_${role}_${institutionId}`,
             institutionId,
-            title: `Questionário ${role === 'student' ? 'Estudante' : 'Docente'}`,
+            title: role === 'student' ? 'Avaliação de Desempenho Docente' : 'Inquérito Institucional',
             questions: role === 'student' ? PDF_STANDARD_QUESTIONS : TEACHER_STANDARD_QUESTIONS,
             active: true,
             targetRole: role
