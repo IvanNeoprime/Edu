@@ -53,20 +53,27 @@ const DB_KEYS = {
   SESSION: 'ad_current_session'
 };
 
-const PDF_STANDARD_QUESTIONS: Question[] = [
+// ATUALIZADO CONFORME FICHA DE AVALIAÇÃO DO DESEMPENHO DO DOCENTE PELO ESTUDANTE
+// Total: 30 Pontos
+export const PDF_STANDARD_QUESTIONS: Question[] = [
+    // Grupo 65: Organização da disciplina (15 pontos)
     { id: "651", text: "O docente apresentou o programa temático ou analítico da disciplina?", type: "binary", weight: 4 },
     { id: "652", text: "O docente apresentou os objetivos da disciplina?", type: "binary", weight: 3 },
     { id: "653", text: "O docente apresentou a metodologia de ensino da disciplina?", type: "binary", weight: 2 },
-    { id: "654", text: "O docente cumpriu com o programa temático ou analítico apresentado?", type: "binary", weight: 4 }, 
-    { id: "701", text: "O docente foi acessível aos estudantes?", type: "binary", weight: 3 },
-    { id: "702", text: "O docente disponibilizou-se para esclarecer dúvidas?", type: "binary", weight: 3 },
-    { id: "703", text: "O docente encorajou ao uso de métodos participativos na sala de aula?", type: "binary", weight: 3 },
-    { id: "751", text: "O docente avaliou os estudantes dentro dos prazos?", type: "binary", weight: 4 },
-    { id: "752", text: "O estudante teve oportunidade de ver seus resultados depois de corrigidos?", type: "binary", weight: 2 },
-    { id: "753", text: "O docente publicou os resultados da avaliação dentro dos prazos estabelecidos?", type: "binary", weight: 2 }
+    { id: "654", text: "O docente cumpriu com o programa temático ou analítico apresentado?", type: "binary", weight: 6 },
+    
+    // Grupo 70: Interação do docente com os estudantes (3 pontos)
+    { id: "701", text: "O docente foi acessível aos estudantes?", type: "binary", weight: 1 },
+    { id: "702", text: "O docente disponibilizou-se para esclarecer dúvidas?", type: "binary", weight: 1 },
+    { id: "703", text: "O docente encorajou ao uso de métodos participativos na sala de aula?", type: "binary", weight: 1 },
+    
+    // Grupo 75: Avaliação do estudante pelo docente (12 pontos)
+    { id: "751", text: "O docente avaliou os estudantes dentro dos prazos?", type: "binary", weight: 5 },
+    { id: "752", text: "O estudante teve oportunidade de ver seus resultados depois de corrigidos?", type: "binary", weight: 3 },
+    { id: "753", text: "O docente publicou os resultados da avaliação dentro dos prazos estabelecidos?", type: "binary", weight: 4 }
 ];
 
-const TEACHER_STANDARD_QUESTIONS: Question[] = [
+export const TEACHER_STANDARD_QUESTIONS: Question[] = [
     { id: "inst_01", text: "As condições das salas de aula são adequadas?", type: "scale_10", weight: 0 },
     { id: "inst_02", text: "Os recursos didáticos atendem às necessidades?", type: "scale_10", weight: 0 },
     { id: "inst_03", text: "A comunicação com a direção é eficiente?", type: "stars", weight: 0 },
@@ -110,7 +117,10 @@ const SupabaseBackend = {
             avatar: data.avatar,
             category: data.category as TeacherCategory,
             mustChangePassword: data.mustChangePassword,
-            course: data.course
+            course: data.course,
+            courses: data.courses,
+            semester: data.semester,
+            modality: data.modality
         };
         localStorage.setItem(DB_KEYS.SESSION, JSON.stringify({ user, token: 'supa' }));
         return { user, token: 'supa' };
@@ -186,14 +196,17 @@ const SupabaseBackend = {
         return (data || []) as Course[];
     },
 
-    async addCourse(institutionId: string, name: string, code: string, duration?: number): Promise<Course> {
-        const newCourse: Course = { id: `c_${Date.now()}`, institutionId, name, code, duration };
+    async addCourse(institutionId: string, name: string, code: string, duration?: number, semester?: string, modality?: 'Presencial' | 'Online'): Promise<Course> {
+        const newCourse: Course = { id: `c_${Date.now()}`, institutionId, name, code, duration, semester, modality };
         if (!supabase) {
             const courses = getTable<Course>(DB_KEYS.COURSES);
             setTable(DB_KEYS.COURSES, [...courses, newCourse]);
             return newCourse;
         }
-        const { data } = await supabase.from('courses').insert([newCourse]).select().single();
+        const { data, error } = await supabase.from('courses').insert([newCourse]).select().single();
+        if (error || !data) {
+            throw new Error(error?.message || "Erro ao adicionar curso");
+        }
         return data as Course;
     },
 
@@ -207,8 +220,8 @@ const SupabaseBackend = {
     },
     // --------------
 
-    async addTeacher(institutionId: string, name: string, email: string, password?: string, avatar?: string, category?: TeacherCategory) {
-        const newUser = { id: `u_${Date.now()}`, email, name, role: UserRole.TEACHER, institutionId, approved: true, password: password || '123456', avatar, category, mustChangePassword: !!password };
+    async addTeacher(institutionId: string, name: string, email: string, password?: string, avatar?: string, category?: TeacherCategory, courses?: string[]) {
+        const newUser = { id: `u_${Date.now()}`, email, name, role: UserRole.TEACHER, institutionId, approved: true, password: password || '123456', avatar, category, courses, mustChangePassword: !!password };
         if (!supabase) {
             const users = getTable<User>(DB_KEYS.USERS);
             setTable(DB_KEYS.USERS, [...users, newUser]);
@@ -218,8 +231,37 @@ const SupabaseBackend = {
         return data as User;
     },
 
-    async addStudent(institutionId: string, name: string, email: string, password?: string, course?: string, level?: string, avatar?: string, shifts?: string[], classGroups?: string[]) {
-        const newUser = { id: `s_${Date.now()}`, email, name, role: UserRole.STUDENT, institutionId, approved: true, password: password || '123456', course, level, avatar, shifts, classGroups, mustChangePassword: !!password };
+    async addStudent(
+        institutionId: string, 
+        name: string, 
+        email: string, 
+        password?: string, 
+        course?: string, 
+        level?: string, 
+        avatar?: string, 
+        shifts?: string[], 
+        classGroups?: string[],
+        semester?: string,
+        modality?: 'Presencial' | 'Online' | 'Híbrido'
+    ) {
+        const newUser = { 
+            id: `s_${Date.now()}`, 
+            email, 
+            name, 
+            role: UserRole.STUDENT, 
+            institutionId, 
+            approved: true, 
+            password: password || '123456', 
+            course, 
+            level, 
+            avatar, 
+            shifts, 
+            classGroups,
+            semester,
+            modality,
+            mustChangePassword: !!password 
+        };
+        
         if (!supabase) {
             const users = getTable<User>(DB_KEYS.USERS);
             setTable(DB_KEYS.USERS, [...users, newUser]);

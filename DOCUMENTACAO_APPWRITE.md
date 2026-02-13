@@ -1,9 +1,7 @@
 
 # 🐘 Guia de Banco de Dados: Supabase
 
-> **Nota:** Este arquivo substitui a antiga documentação do Appwrite. Recomendamos renomear este arquivo para `DOCUMENTACAO_SUPABASE.md`.
-
-O **AvaliaDocente MZ** utiliza o Supabase (PostgreSQL) para persistência de dados em produção. Abaixo está o esquema completo necessário para o funcionamento do sistema.
+> **Nota:** Este arquivo contém o esquema SQL completo para configurar o Supabase (PostgreSQL).
 
 ## 1. Configuração Inicial
 
@@ -20,19 +18,22 @@ Copie e cole o seguinte código no **SQL Editor** do seu painel Supabase para cr
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- 2. Tabela de Usuários (Metadados)
--- Nota: Em produção, recomenda-se sincronizar esta tabela com auth.users via Triggers
 CREATE TABLE users (
-    id TEXT PRIMARY KEY, -- Pode ser UUID ou String customizada
+    id TEXT PRIMARY KEY,
     email TEXT NOT NULL,
     name TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('super_admin', 'institution_manager', 'teacher', 'student')),
     "institutionId" TEXT,
     approved BOOLEAN DEFAULT FALSE,
-    password TEXT, -- ⚠️ Hashing deve ser tratado na aplicação ou usar Supabase Auth
+    password TEXT,
     avatar TEXT,
-    course TEXT,
-    level TEXT,
-    "mustChangePassword" BOOLEAN DEFAULT FALSE, -- NOVO CAMPO
+    course TEXT, -- Curso principal (para Alunos)
+    courses TEXT[], -- Array de Cursos (para Docentes)
+    level TEXT, -- Ano curricular
+    semester TEXT, -- Semestre de Frequência (NOVO)
+    modality TEXT, -- Modalidade: Presencial, Online, Híbrido (NOVO)
+    "mustChangePassword" BOOLEAN DEFAULT FALSE,
+    category TEXT, -- 'assistente' ou 'assistente_estagiario'
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
@@ -41,9 +42,11 @@ CREATE TABLE institutions (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     code TEXT NOT NULL,
-    "managerEmails" TEXT[], -- Array de strings
+    "managerEmails" TEXT[],
     "inviteCode" TEXT,
     logo TEXT,
+    "isEvaluationOpen" BOOLEAN DEFAULT TRUE,
+    "evaluationPeriodName" TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
@@ -65,46 +68,62 @@ CREATE TABLE subjects (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- 5. Tabela de Questionários
+-- 5. Tabela de Cursos
+CREATE TABLE courses (
+    id TEXT PRIMARY KEY,
+    "institutionId" TEXT NOT NULL,
+    name TEXT NOT NULL,
+    code TEXT NOT NULL,
+    duration INTEGER,
+    semester TEXT,
+    modality TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 6. Tabela de Questionários
 CREATE TABLE questionnaires (
     id TEXT PRIMARY KEY,
     "institutionId" TEXT NOT NULL,
     title TEXT NOT NULL,
     active BOOLEAN DEFAULT TRUE,
-    questions JSONB, -- Armazena a estrutura das perguntas
+    questions JSONB,
     "targetRole" TEXT DEFAULT 'student',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- 6. Tabela de Respostas (Estudantes)
+-- 7. Tabela de Respostas (Estudantes)
 CREATE TABLE responses (
     id TEXT PRIMARY KEY,
+    "institutionId" TEXT NOT NULL,
     "questionnaireId" TEXT NOT NULL,
     "teacherId" TEXT,
     "subjectId" TEXT,
-    answers JSONB, -- Armazena array de {questionId, value}
+    answers JSONB,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- 7. Tabela de Auto-Avaliação (Docentes)
+-- 8. Tabela de Auto-Avaliação (Docentes)
 CREATE TABLE self_evals (
     "teacherId" TEXT PRIMARY KEY,
+    "institutionId" TEXT,
     header JSONB,
     answers JSONB,
+    comments TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- 8. Tabela de Avaliação Qualitativa (Gestores)
+-- 9. Tabela de Avaliação Qualitativa (Gestores)
 CREATE TABLE qualitative_evals (
     "teacherId" TEXT PRIMARY KEY,
     "institutionId" TEXT,
     "deadlineCompliance" INTEGER,
     "workQuality" INTEGER,
     score FLOAT,
+    comments TEXT,
     "evaluatedAt" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- 9. Tabela de Scores Finais (Relatórios)
+-- 10. Tabela de Scores Finais (Relatórios)
 CREATE TABLE scores (
     "teacherId" TEXT PRIMARY KEY,
     "studentScore" FLOAT,
@@ -117,20 +136,28 @@ CREATE TABLE scores (
 
 ## 3. Segurança (Row Level Security - RLS)
 
-Para proteger os dados em produção, você deve habilitar o RLS. Abaixo estão exemplos de políticas sugeridas:
+É crucial ativar o RLS para permitir que o frontend interaja com as tabelas novas. Execute:
 
-1.  **Habilitar RLS:**
-    Execute `ALTER TABLE users ENABLE ROW LEVEL SECURITY;` (e para todas as outras tabelas).
+```sql
+-- Habilitar RLS em todas as tabelas
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE institutions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subjects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE courses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE questionnaires ENABLE ROW LEVEL SECURITY;
+ALTER TABLE responses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE self_evals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE qualitative_evals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scores ENABLE ROW LEVEL SECURITY;
 
-2.  **Políticas Básicas (Exemplos):**
+-- Políticas para tabela COURSES
+CREATE POLICY "Permitir leitura pública de cursos" ON public.courses FOR SELECT USING (true);
+CREATE POLICY "Permitir criação de cursos" ON public.courses FOR INSERT WITH CHECK (true);
+CREATE POLICY "Permitir exclusão de cursos" ON public.courses FOR DELETE USING (true);
 
-    *   *Leitura Pública de Instituições:*
-        `CREATE POLICY "Instituições são públicas" ON institutions FOR SELECT USING (true);`
-
-    *   *Docentes veem apenas seus próprios dados:*
-        `CREATE POLICY "Docente vê seus dados" ON self_evals FOR ALL USING (auth.uid()::text = "teacherId");`
-
-    *   *Gestores veem tudo da sua instituição:*
-        `CREATE POLICY "Gestor vê dados da inst" ON users FOR SELECT USING ("institutionId" IN (SELECT "institutionId" FROM users WHERE id = auth.uid()::text AND role = 'institution_manager'));`
-
-> **Aviso:** O código atual utiliza uma tabela `users` personalizada para facilitar a migração do sistema legado. Em uma implementação definitiva, recomenda-se integrar a tabela `auth.users` nativa do Supabase com a tabela `public.users` através de Triggers PostgreSQL.
+-- Outras políticas (Exemplo permissivo para desenvolvimento)
+CREATE POLICY "Acesso público a institutions" ON institutions FOR ALL USING (true);
+CREATE POLICY "Acesso público a subjects" ON subjects FOR ALL USING (true);
+CREATE POLICY "Acesso público a users" ON users FOR ALL USING (true);
+-- Nota: Em produção, substitua (true) por verificações de auth.uid()
+```

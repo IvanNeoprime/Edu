@@ -9,6 +9,28 @@ Plataforma multi-institucional para avaliação de desempenho docente em univers
 *   **[DOCUMENTACAO_APPWRITE.md](./DOCUMENTACAO_APPWRITE.md):** (Recomendado renomear para `DOCUMENTACAO_SUPABASE.md`) Guia de Banco de Dados, Schema SQL e Configuração do Supabase.
 *   **[MANUAL_DE_TESTES.md](./MANUAL_DE_TESTES.md):** Roteiro passo-a-passo para testar as funcionalidades e regras de negócio.
 
+## 🚑 Solução de Problemas Comuns (Supabase)
+
+Se encontrar o erro `Could not find the table 'public.courses'`, execute este SQL no painel do Supabase:
+
+```sql
+CREATE TABLE IF NOT EXISTS public.courses (
+    id text NOT NULL PRIMARY KEY,
+    "institutionId" text NOT NULL,
+    name text NOT NULL,
+    code text NOT NULL,
+    duration integer,
+    created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS courses text[];
+
+ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Read" ON public.courses FOR SELECT USING (true);
+CREATE POLICY "Public Write" ON public.courses FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public Delete" ON public.courses FOR DELETE USING (true);
+```
+
 ## 🚀 Funcionalidades Principais
 
 1.  **Backend Híbrido Robusto:**

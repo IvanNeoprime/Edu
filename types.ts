@@ -18,8 +18,11 @@ export interface User {
   avatar?: string; // Base64 ou URL da foto de perfil
   mustChangePassword?: boolean; // Adicionado para controle de troca de senha
   // Novos campos para alunos
-  course?: string;
+  course?: string; // Mantido para Alunos (Curso Principal)
+  courses?: string[]; // Novo campo para Docentes (Múltiplos Cursos)
   level?: string; // Ano curricular (ex: 1, 2, 3)
+  semester?: string; // Semestre de Frequência (Novo)
+  modality?: 'Presencial' | 'Online' | 'Híbrido'; // Modalidade de Ensino (Novo)
   shifts?: ('Diurno' | 'Noturno')[]; // Lista de turnos do aluno
   classGroups?: string[]; // Lista de turmas do aluno (ex: ['A', 'B'])
   // Novo campo para docentes
@@ -32,6 +35,8 @@ export interface Course {
   name: string;
   code: string; // Sigla (ex: LEI)
   duration?: number; // Anos
+  semester?: string; // Novo: Semestre (ex: 1, 2, Anual)
+  modality?: 'Presencial' | 'Online'; // Novo: Modalidade
 }
 
 export interface Institution {
