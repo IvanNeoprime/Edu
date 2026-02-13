@@ -36,43 +36,15 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
       academicYear: new Date().getFullYear().toString()
   });
   
-  const [answers, setAnswers] = useState<SelfEvaluation['answers']>({
-      // G1
-      g1_gradSubjects: 0,
-      g1_postGradSubjects: 0,
-      // G2
-      g2_gradSupervision: 0,
-      g2_postGradSupervision: 0,
-      g2_regencySubjects: 0,
-      // G3
-      g3_theoryHours: 0,
-      g3_practicalHours: 0,
-      g3_consultationHours: 0,
-      // G4
-      g4_gradStudents: 0,
-      g4_postGradStudents: 0,
-      g4_passRate: 0,
-      // G5
-      g5_manuals: 0,
-      g5_supportTexts: 0,
-      // G6
-      g6_individualProjects: 0,
-      g6_collectiveProjects: 0,
-      g6_publishedArticles: 0,
-      g6_eventsComms: 0,
-      // G7
-      g7_collaboration: 0,
-      g7_institutionalTeams: 0,
-      // G8
-      g8_adminHours: 0
-  });
+  // Respostas agora são um dicionário dinâmico { key: value }
+  const [answers, setAnswers] = useState<Record<string, number>>({});
 
   const [selfComments, setSelfComments] = useState('');
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   
-  // Accordion state for G1-G8
-  const [expandedGroups, setExpandedGroups] = useState<string[]>(['g1', 'g2', 'g3']);
+  // Accordion state for groups
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8']);
 
   const toggleGroup = (group: string) => {
       setExpandedGroups(prev => prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]);
@@ -84,15 +56,10 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
   }, [user.id]);
 
   useEffect(() => {
-      if (header.category === 'assistente_estagiario') {
-          setAnswers(prev => ({
-              ...prev,
-              g2_gradSupervision: 0,
-              g2_postGradSupervision: 0,
-              g2_regencySubjects: 0
-          }));
+      if (user.category) {
+          setHeader(prev => ({...prev, category: user.category!}));
       }
-  }, [header.category]);
+  }, [user.category]);
 
   const loadData = async () => {
     const data = await BackendService.getTeacherStats(user.id);
@@ -122,7 +89,7 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
     const savedEval = await BackendService.getSelfEval(user.id);
     if (savedEval) {
         setHeader(savedEval.header);
-        setAnswers(savedEval.answers);
+        setAnswers(savedEval.answers || {});
         setSelfComments(savedEval.comments || '');
         setLastSaved(new Date()); 
     }
@@ -139,74 +106,33 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
       }
   };
   
+  // CÁLCULO DINÂMICO DA PONTUAÇÃO
   const calculateLiveScore = () => {
-    const a = answers;
     let score = 0;
-    // Note: The calculation logic remains fixed for score integrity, 
-    // even if labels are customized.
     
-    // Grupo 1: Actividade Docente (Máx 20 pts)
-    const g1 = Math.min(
-        (a.g1_gradSubjects && a.g1_gradSubjects > 0 ? 15 : 0) + 
-        (a.g1_postGradSubjects && a.g1_postGradSubjects > 0 ? 5 : 0), 
-    20);
-    score += g1;
+    selfEvalTemplate.groups.forEach(group => {
+        // Check group exclusion based on template settings
+        if (group.exclusiveTo && group.exclusiveTo.length > 0 && !group.exclusiveTo.includes(header.category)) return;
 
-    // Grupo 2: Supervisão (Máx 20 pts) - Apenas 'A'
-    if (header.category === 'assistente') {
-        const g2 = Math.min(
-            ((a.g2_gradSupervision || 0) * 6) + 
-            ((a.g2_postGradSupervision || 0) * 6) + 
-            ((a.g2_regencySubjects || 0) * 8), 
-        20);
-        score += g2;
-    }
+        let groupScore = 0;
+        group.items.forEach(item => {
+            // Check item exclusion
+            if (item.exclusiveTo && item.exclusiveTo.length > 0 && !item.exclusiveTo.includes(header.category)) return;
 
-    // Grupo 3: Carga Horária (Máx 35 pts)
-    const g3 = Math.min(
-        Math.min((a.g3_theoryHours || 0), 16) + 
-        Math.min((a.g3_practicalHours || 0), 14) + 
-        Math.min((a.g3_consultationHours || 0), 5),
-    35);
-    score += g3;
-
-    // Grupo 4: Rendimento Pedagógico (Máx 35 pts)
-    const g4 = Math.min(
-        (a.g4_gradStudents && a.g4_gradStudents > 0 ? 18 : 0) +
-        (a.g4_postGradStudents && a.g4_postGradStudents > 0 ? 12 : 0) +
-        (((a.g4_passRate || 0) / 100) * 5),
-    35);
-    score += g4;
-
-    // Grupo 5: Material Didático (Máx 30 pts)
-    const g5 = Math.min(
-        ((a.g5_manuals || 0) * 15) + 
-        ((a.g5_supportTexts || 0) * 5), 
-    30);
-    score += g5;
-
-    // Grupo 6: Investigação (Máx 35 pts)
-    const g6 = Math.min(
-        ((a.g6_individualProjects || 0) * 4) +
-        ((a.g6_collectiveProjects || 0) * 4) +
-        ((a.g6_publishedArticles || 0) * 7) +
-        ((a.g6_eventsComms || 0) * 3),
-    35);
-    score += g6;
-
-    // Grupo 7: Extensão (Máx 40 pts)
-    const g7 = Math.min(
-        ((a.g7_collaboration || 0) * 5) +
-        ((a.g7_institutionalTeams || 0) * 5),
-    40);
-    score += g7;
-
-    // Grupo 8: Administração (Máx 45 pts)
-    const g8 = Math.min((a.g8_adminHours || 0) * 2, 45); 
-    score += g8;
+            const val = answers[item.key] || 0;
+            const points = val * (item.scoreValue || 0);
+            groupScore += points;
+        });
+        
+        // Cap group score if maxPoints is defined
+        if (group.maxPoints > 0) {
+            groupScore = Math.min(groupScore, group.maxPoints);
+        }
+        
+        score += groupScore;
+    });
 
     const maxScore = header.category === 'assistente_estagiario' ? 125 : 175;
-    
     return Math.min(score, maxScore);
   };
 
@@ -217,11 +143,9 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
       setSaving(true);
       
       const cleanAnswers = { ...answers };
-      if (header.category === 'assistente_estagiario') {
-          cleanAnswers.g2_gradSupervision = 0;
-          cleanAnswers.g2_postGradSupervision = 0;
-          cleanAnswers.g2_regencySubjects = 0;
-      }
+      // Limpeza opcional: remover respostas de campos que não se aplicam mais
+      // (Não estritamente necessário pois o cálculo ignora, mas bom para dados limpos)
+      
       try {
         await BackendService.saveSelfEval({
             teacherId: user.id,
@@ -281,23 +205,49 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
       </div>
   );
 
-  // Helper to get dynamic label/desc
-  const getLabel = (groupId: string, key: string) => {
-      const g = selfEvalTemplate.groups.find(gr => gr.id === groupId);
-      const i = g?.items.find(it => it.key === key);
-      return i ? i.label : key;
-  };
-  const getDesc = (groupId: string, key: string) => {
-      const g = selfEvalTemplate.groups.find(gr => gr.id === groupId);
-      const i = g?.items.find(it => it.key === key);
-      return i ? i.description : '';
-  };
-
   return (
     <>
-      {/* ... (Print View unchanged) ... */}
-      <div className="hidden print:block font-serif">
-        {/* ... */}
+      {/* ... (Print View - Needs to be dynamic too) ... */}
+      <div className="hidden print:block font-serif p-8">
+          <div className="text-center mb-8 border-b pb-4">
+              {institution?.logo && <img src={institution.logo} className="h-20 mx-auto mb-2" alt="Logo"/>}
+              <h1 className="text-xl font-bold uppercase">{institution?.name || 'Universidade'}</h1>
+              <p>Ficha de Auto-Avaliação de Desempenho Docente</p>
+              <p className="text-sm">Ano Académico: {header.academicYear}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mb-6 text-sm border p-4 bg-gray-50">
+              <p><strong>Nome:</strong> {user.name}</p>
+              <p><strong>Categoria:</strong> {header.category}</p>
+              <p><strong>Regime:</strong> {header.contractRegime}</p>
+              <p><strong>Função:</strong> {header.function}</p>
+          </div>
+
+          <div className="space-y-6">
+              {selfEvalTemplate.groups.map(group => {
+                  if (group.exclusiveTo && group.exclusiveTo.length > 0 && !group.exclusiveTo.includes(header.category)) return null;
+                  return (
+                      <div key={group.id} className="break-inside-avoid border border-black">
+                          <div className="bg-gray-100 p-2 font-bold border-b border-black flex justify-between">
+                              <span>{group.title}</span>
+                              <span>Máx: {group.maxPoints} pts</span>
+                          </div>
+                          <div className="p-2 grid grid-cols-2 gap-4 text-sm">
+                              {group.items.map(item => {
+                                  if (item.exclusiveTo && item.exclusiveTo.length > 0 && !item.exclusiveTo.includes(header.category)) return null;
+                                  return (
+                                      <div key={item.key} className="flex justify-between border-b border-dotted pb-1">
+                                          <span>{item.label} (x{item.scoreValue}):</span>
+                                          <span className="font-bold">{answers[item.key] || 0}</span>
+                                      </div>
+                                  );
+                              })}
+                          </div>
+                      </div>
+                  );
+              })}
+          </div>
+          {/* ... footer ... */}
       </div>
 
       <div className="print:hidden bg-gray-50/50 min-h-screen pb-12">
@@ -366,12 +316,13 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                       <div className="bg-slate-900 p-6 text-white text-center">
                           <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-1">Pontuação Provisória</p>
                           <div className="flex items-center justify-center gap-1">
-                              <span className="text-5xl font-black tracking-tighter">{calculateLiveScore()}</span>
+                              <span className="text-5xl font-black tracking-tighter">{calculateLiveScore().toFixed(1)}</span>
                               <span className="text-xl font-normal text-slate-500 mt-3">/ {header.category === 'assistente_estagiario' ? 125 : 175}</span>
                           </div>
                       </div>
                       <div className="p-4 bg-gray-50 border-t flex flex-col gap-3">
                           <Button onClick={handleSaveSelfEval} className="w-full bg-blue-600 hover:bg-blue-700" disabled={saving || !isEvaluationOpen}>{saving ? 'Salvando...' : 'Salvar Avaliação'}</Button>
+                          <Button variant="outline" onClick={handleDownloadPDF} className="w-full"><Printer className="mr-2 h-4 w-4"/> Imprimir Ficha</Button>
                           {lastSaved && <p className="text-xs text-center text-gray-500">Última alteração: {lastSaved.toLocaleString()}</p>}
                       </div>
                   </Card>
@@ -385,115 +336,47 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                   </Card>
               </div>
 
-              {/* Coluna Esquerda: Formulário Dinâmico */}
+              {/* Coluna Esquerda: Formulário Dinâmico BASEADO NO TEMPLATE */}
               <div className="lg:col-span-8 order-2 lg:order-1 space-y-4">
                   
-                  {/* Grupo 1 */}
-                  <Card>
-                      <GroupHeader id="g1" title={selfEvalTemplate.groups.find(g=>g.id==='g1')?.title || "1. Actividade Docente"} max={20} />
-                      {expandedGroups.includes('g1') && (
-                          <CardContent className="p-6 space-y-4 animate-in slide-in-from-top-2">
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  <div>
-                                      <Label>{getLabel('g1', 'g1_gradSubjects')}</Label>
-                                      <Input type="number" min="0" value={answers.g1_gradSubjects} onChange={e => setAnswers({...answers, g1_gradSubjects: parseInt(e.target.value)||0})} />
-                                      <p className="text-xs text-gray-500 mt-1">{getDesc('g1', 'g1_gradSubjects')}</p>
-                                  </div>
-                                  <div>
-                                      <Label>{getLabel('g1', 'g1_postGradSubjects')}</Label>
-                                      <Input type="number" min="0" value={answers.g1_postGradSubjects} onChange={e => setAnswers({...answers, g1_postGradSubjects: parseInt(e.target.value)||0})} />
-                                      <p className="text-xs text-gray-500 mt-1">{getDesc('g1', 'g1_postGradSubjects')}</p>
-                                  </div>
-                              </div>
-                          </CardContent>
-                      )}
-                  </Card>
+                  {selfEvalTemplate.groups.map(group => {
+                      // Skip if group is exclusive to another category
+                      if (group.exclusiveTo && group.exclusiveTo.length > 0 && !group.exclusiveTo.includes(header.category)) return null;
 
-                  {/* Grupo 2 (Condicional) */}
-                  {header.category === 'assistente' && (
-                      <Card>
-                          <GroupHeader id="g2" title={selfEvalTemplate.groups.find(g=>g.id==='g2')?.title || "2. Supervisão"} max={20} />
-                          {expandedGroups.includes('g2') && (
-                              <CardContent className="p-6 space-y-4 animate-in slide-in-from-top-2">
-                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                      <div><Label>{getLabel('g2', 'g2_gradSupervision')}</Label><Input type="number" min="0" value={answers.g2_gradSupervision} onChange={e => setAnswers({...answers, g2_gradSupervision: parseInt(e.target.value)||0})} /></div>
-                                      <div><Label>{getLabel('g2', 'g2_postGradSupervision')}</Label><Input type="number" min="0" value={answers.g2_postGradSupervision} onChange={e => setAnswers({...answers, g2_postGradSupervision: parseInt(e.target.value)||0})} /></div>
-                                      <div><Label>{getLabel('g2', 'g2_regencySubjects')}</Label><Input type="number" min="0" value={answers.g2_regencySubjects} onChange={e => setAnswers({...answers, g2_regencySubjects: parseInt(e.target.value)||0})} /></div>
-                                  </div>
-                              </CardContent>
-                          )}
-                      </Card>
-                  )}
+                      return (
+                          <Card key={group.id}>
+                              <GroupHeader id={group.id} title={group.title} max={group.maxPoints} />
+                              {expandedGroups.includes(group.id) && (
+                                  <CardContent className="p-6 space-y-4 animate-in slide-in-from-top-2">
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                          {group.items.map(item => {
+                                              // Skip if item is exclusive to another category
+                                              if (item.exclusiveTo && item.exclusiveTo.length > 0 && !item.exclusiveTo.includes(header.category)) return null;
 
-                  {/* Grupo 3 */}
-                  <Card>
-                      <GroupHeader id="g3" title={selfEvalTemplate.groups.find(g=>g.id==='g3')?.title || "3. Carga Horária"} max={35} />
-                      {expandedGroups.includes('g3') && (
-                          <CardContent className="p-6 space-y-4 animate-in slide-in-from-top-2">
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                  <div><Label>{getLabel('g3', 'g3_theoryHours')}</Label><Input type="number" min="0" value={answers.g3_theoryHours} onChange={e => setAnswers({...answers, g3_theoryHours: parseInt(e.target.value)||0})} /></div>
-                                  <div><Label>{getLabel('g3', 'g3_practicalHours')}</Label><Input type="number" min="0" value={answers.g3_practicalHours} onChange={e => setAnswers({...answers, g3_practicalHours: parseInt(e.target.value)||0})} /></div>
-                                  <div><Label>{getLabel('g3', 'g3_consultationHours')}</Label><Input type="number" min="0" value={answers.g3_consultationHours} onChange={e => setAnswers({...answers, g3_consultationHours: parseInt(e.target.value)||0})} /></div>
-                              </div>
-                          </CardContent>
-                      )}
-                  </Card>
-
-                  {/* Grupo 4 */}
-                  <Card>
-                      <GroupHeader id="g4" title={selfEvalTemplate.groups.find(g=>g.id==='g4')?.title || "4. Rendimento"} max={35} />
-                      {expandedGroups.includes('g4') && (
-                          <CardContent className="p-6 space-y-4">
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                  <div><Label>{getLabel('g4', 'g4_gradStudents')}</Label><Input type="number" min="0" value={answers.g4_gradStudents} onChange={e => setAnswers({...answers, g4_gradStudents: parseInt(e.target.value)||0})} /></div>
-                                  <div><Label>{getLabel('g4', 'g4_postGradStudents')}</Label><Input type="number" min="0" value={answers.g4_postGradStudents} onChange={e => setAnswers({...answers, g4_postGradStudents: parseInt(e.target.value)||0})} /></div>
-                                  <div><Label>{getLabel('g4', 'g4_passRate')}</Label><Input type="number" min="0" max="100" value={answers.g4_passRate} onChange={e => setAnswers({...answers, g4_passRate: parseInt(e.target.value)||0})} /></div>
-                              </div>
-                          </CardContent>
-                      )}
-                  </Card>
-                  
-                  {/* Grupo 5 */}
-                  <Card>
-                      <GroupHeader id="g5" title={selfEvalTemplate.groups.find(g=>g.id==='g5')?.title || "5. Produção"} max={30} />
-                      {expandedGroups.includes('g5') && (
-                          <CardContent className="p-6 space-y-4">
-                              <div className="grid grid-cols-1 gap-4">
-                                  <div><Label>{getLabel('g5', 'g5_manuals')}</Label><Input type="number" min="0" value={answers.g5_manuals} onChange={e => setAnswers({...answers, g5_manuals: parseInt(e.target.value)||0})} /></div>
-                                  <div><Label>{getLabel('g5', 'g5_supportTexts')}</Label><Input type="number" min="0" value={answers.g5_supportTexts} onChange={e => setAnswers({...answers, g5_supportTexts: parseInt(e.target.value)||0})} /></div>
-                              </div>
-                          </CardContent>
-                      )}
-                  </Card>
-
-                  {/* Grupo 6 */}
-                  <Card>
-                      <GroupHeader id="g6" title={selfEvalTemplate.groups.find(g=>g.id==='g6')?.title || "6. Investigação"} max={35} />
-                      {expandedGroups.includes('g6') && (
-                          <CardContent className="p-6 space-y-4">
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  <div><Label>{getLabel('g6', 'g6_publishedArticles')}</Label><Input type="number" value={answers.g6_publishedArticles} onChange={e => setAnswers({...answers, g6_publishedArticles: parseInt(e.target.value)||0})} /></div>
-                                  <div><Label>{getLabel('g6', 'g6_eventsComms')}</Label><Input type="number" value={answers.g6_eventsComms} onChange={e => setAnswers({...answers, g6_eventsComms: parseInt(e.target.value)||0})} /></div>
-                                  <div><Label>{getLabel('g6', 'g6_individualProjects')}</Label><Input type="number" value={answers.g6_individualProjects} onChange={e => setAnswers({...answers, g6_individualProjects: parseInt(e.target.value)||0})} /></div>
-                                  <div><Label>{getLabel('g6', 'g6_collectiveProjects')}</Label><Input type="number" value={answers.g6_collectiveProjects} onChange={e => setAnswers({...answers, g6_collectiveProjects: parseInt(e.target.value)||0})} /></div>
-                              </div>
-                          </CardContent>
-                      )}
-                  </Card>
-                  
-                  {/* Grupo 7 e 8 - Simplificados na UI mas dinâmicos */}
-                  <Card>
-                      <GroupHeader id="g7" title="7. Extensão e Admin" max={85} />
-                       {expandedGroups.includes('g7') && (
-                          <CardContent className="p-6 space-y-4">
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  <div><Label>{getLabel('g7', 'g7_collaboration')}</Label><Input type="number" value={answers.g7_collaboration} onChange={e => setAnswers({...answers, g7_collaboration: parseInt(e.target.value)||0})} /></div>
-                                  <div><Label>{getLabel('g7', 'g7_institutionalTeams')}</Label><Input type="number" value={answers.g7_institutionalTeams} onChange={e => setAnswers({...answers, g7_institutionalTeams: parseInt(e.target.value)||0})} /></div>
-                                  <div><Label>{getLabel('g8', 'g8_adminHours')}</Label><Input type="number" value={answers.g8_adminHours} onChange={e => setAnswers({...answers, g8_adminHours: parseInt(e.target.value)||0})} /></div>
-                              </div>
-                          </CardContent>
-                      )}
-                  </Card>
+                                              return (
+                                                  <div key={item.key}>
+                                                      <Label className="flex justify-between">
+                                                          <span>{item.label}</span>
+                                                          <span className="text-xs text-gray-400 font-normal bg-gray-50 px-1 rounded border">
+                                                              x{item.scoreValue} pts
+                                                          </span>
+                                                      </Label>
+                                                      <Input 
+                                                          type="number" 
+                                                          min="0" 
+                                                          value={answers[item.key] || ''} // Handle empty string for better UX
+                                                          onChange={e => setAnswers({...answers, [item.key]: parseFloat(e.target.value) || 0})} 
+                                                      />
+                                                      <p className="text-xs text-gray-500 mt-1">{item.description}</p>
+                                                  </div>
+                                              )
+                                          })}
+                                      </div>
+                                  </CardContent>
+                              )}
+                          </Card>
+                      );
+                  })}
 
                   <Card>
                       <CardHeader><CardTitle>Observações Adicionais</CardTitle></CardHeader>

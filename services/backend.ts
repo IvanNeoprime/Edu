@@ -44,34 +44,36 @@ const DB_KEYS = {
   INSTITUTIONS: 'ad_institutions',
   SUBJECTS: 'ad_subjects',
   QUESTIONNAIRES: 'ad_questionnaires',
-  COURSES: 'ad_courses', // Nova chave
+  COURSES: 'ad_courses', 
   RESPONSES: 'ad_responses',
   INST_EVALS: 'ad_inst_evals', 
   SELF_EVALS: 'ad_self_evals',
   SCORES: 'ad_scores',
-  QUAL_EVALS: 'ad_qual_evals', // Corrigido chave
+  QUAL_EVALS: 'ad_qual_evals', 
   VOTES_TRACKER: 'ad_votes_tracker',
   SESSION: 'ad_current_session'
 };
 
 // ATUALIZADO CONFORME FICHA DE AVALIAÇÃO DO DESEMPENHO DO DOCENTE PELO ESTUDANTE
-// Total: 30 Pontos
 export const PDF_STANDARD_QUESTIONS: Question[] = [
-    // Grupo 65: Organização da disciplina (15 pontos)
+    // Grupo 65: Organização da disciplina
     { id: "651", text: "O docente apresentou o programa temático ou analítico da disciplina?", type: "binary", weight: 4 },
     { id: "652", text: "O docente apresentou os objetivos da disciplina?", type: "binary", weight: 3 },
     { id: "653", text: "O docente apresentou a metodologia de ensino da disciplina?", type: "binary", weight: 2 },
     { id: "654", text: "O docente cumpriu com o programa temático ou analítico apresentado?", type: "binary", weight: 6 },
     
-    // Grupo 70: Interação do docente com os estudantes (3 pontos)
+    // Grupo 70: Interação do docente com os estudantes
     { id: "701", text: "O docente foi acessível aos estudantes?", type: "binary", weight: 1 },
     { id: "702", text: "O docente disponibilizou-se para esclarecer dúvidas?", type: "binary", weight: 1 },
     { id: "703", text: "O docente encorajou ao uso de métodos participativos na sala de aula?", type: "binary", weight: 1 },
     
-    // Grupo 75: Avaliação do estudante pelo docente (12 pontos)
+    // Grupo 75: Avaliação do estudante pelo docente
     { id: "751", text: "O docente avaliou os estudantes dentro dos prazos?", type: "binary", weight: 5 },
     { id: "752", text: "O estudante teve oportunidade de ver seus resultados depois de corrigidos?", type: "binary", weight: 3 },
-    { id: "753", text: "O docente publicou os resultados da avaliação dentro dos prazos estabelecidos?", type: "binary", weight: 4 }
+    { id: "753", text: "O docente publicou os resultados da avaliação dentro dos prazos estabelecidos?", type: "binary", weight: 4 },
+    
+    // Campo de texto livre para feedback qualitativo
+    { id: "comments_open", text: "Comentários, elogios ou sugestões para o docente:", type: "text", weight: 0 }
 ];
 
 export const TEACHER_STANDARD_QUESTIONS: Question[] = [
@@ -85,54 +87,54 @@ export const DEFAULT_SELF_EVAL_TEMPLATE: SelfEvalTemplate = {
     groups: [
         {
             id: 'g1', title: '1. Actividade Docente', maxPoints: 20, items: [
-                { key: 'g1_gradSubjects', label: 'Disciplinas de Graduação', description: '15 pontos por disciplina' },
-                { key: 'g1_postGradSubjects', label: 'Disciplinas de Pós-Graduação', description: '5 pontos por disciplina' }
+                { key: 'g1_gradSubjects', label: 'Disciplinas de Graduação', description: 'Nº Disciplinas', scoreValue: 15 },
+                { key: 'g1_postGradSubjects', label: 'Disciplinas de Pós-Graduação', description: 'Nº Disciplinas', scoreValue: 5 }
             ]
         },
         {
-            id: 'g2', title: '2. Supervisão Pedagógica', maxPoints: 20, items: [
-                { key: 'g2_gradSupervision', label: 'Supervisão Graduação', description: '6 pontos por dissertação' },
-                { key: 'g2_postGradSupervision', label: 'Supervisão Pós-Grad', description: '6 pontos por tese' },
-                { key: 'g2_regencySubjects', label: 'Regências', description: '8 pontos por regência' }
+            id: 'g2', title: '2. Supervisão Pedagógica', maxPoints: 20, exclusiveTo: ['assistente'], items: [
+                { key: 'g2_gradSupervision', label: 'Supervisão Graduação', description: 'Nº Dissertações', scoreValue: 6 },
+                { key: 'g2_postGradSupervision', label: 'Supervisão Pós-Grad', description: 'Nº Teses', scoreValue: 6 },
+                { key: 'g2_regencySubjects', label: 'Regências', description: 'Nº Regências', scoreValue: 8 }
             ]
         },
         {
             id: 'g3', title: '3. Carga Horária', maxPoints: 35, items: [
-                { key: 'g3_theoryHours', label: 'Aulas Teóricas (h)', description: 'Horas totais' },
-                { key: 'g3_practicalHours', label: 'Aulas Práticas (h)', description: 'Horas totais' },
-                { key: 'g3_consultationHours', label: 'Consultas (h)', description: 'Horas totais' }
+                { key: 'g3_theoryHours', label: 'Aulas Teóricas', description: 'Horas Totais', scoreValue: 1 },
+                { key: 'g3_practicalHours', label: 'Aulas Práticas', description: 'Horas Totais', scoreValue: 1 },
+                { key: 'g3_consultationHours', label: 'Consultas', description: 'Horas Totais', scoreValue: 1 }
             ]
         },
         {
             id: 'g4', title: '4. Rendimento Pedagógico', maxPoints: 35, items: [
-                { key: 'g4_gradStudents', label: 'Aprovados Graduação', description: 'Total de estudantes' },
-                { key: 'g4_postGradStudents', label: 'Aprovados Pós-Grad', description: 'Total de estudantes' },
-                { key: 'g4_passRate', label: 'Taxa Aprovação (%)', description: 'Percentagem' }
+                { key: 'g4_gradStudents', label: 'Aprovados Graduação', description: 'Nº Estudantes', scoreValue: 1 }, // Lógica complexa simulada com 1
+                { key: 'g4_postGradStudents', label: 'Aprovados Pós-Grad', description: 'Nº Estudantes', scoreValue: 1 },
+                { key: 'g4_passRate', label: 'Taxa Aprovação (%)', description: 'Percentagem Global', scoreValue: 0.05 }
             ]
         },
         {
             id: 'g5', title: '5. Produção de Material', maxPoints: 30, items: [
-                { key: 'g5_manuals', label: 'Manuais Didáticos', description: 'Quantidade produzida' },
-                { key: 'g5_supportTexts', label: 'Textos de Apoio', description: 'Quantidade produzida' }
+                { key: 'g5_manuals', label: 'Manuais Didáticos', description: 'Quantidade', scoreValue: 15 },
+                { key: 'g5_supportTexts', label: 'Textos de Apoio', description: 'Quantidade', scoreValue: 5 }
             ]
         },
         {
             id: 'g6', title: '6. Investigação', maxPoints: 35, items: [
-                { key: 'g6_publishedArticles', label: 'Artigos Publicados', description: '7 pontos cada' },
-                { key: 'g6_eventsComms', label: 'Comunicações em Eventos', description: '3 pontos cada' },
-                { key: 'g6_individualProjects', label: 'Projetos Individuais', description: '4 pontos cada' },
-                { key: 'g6_collectiveProjects', label: 'Projetos Coletivos', description: '4 pontos cada' }
+                { key: 'g6_publishedArticles', label: 'Artigos Publicados', description: 'Quantidade', scoreValue: 7 },
+                { key: 'g6_eventsComms', label: 'Comunicações em Eventos', description: 'Quantidade', scoreValue: 3 },
+                { key: 'g6_individualProjects', label: 'Projetos Individuais', description: 'Quantidade', scoreValue: 4 },
+                { key: 'g6_collectiveProjects', label: 'Projetos Coletivos', description: 'Quantidade', scoreValue: 4 }
             ]
         },
         {
             id: 'g7', title: '7. Extensão', maxPoints: 40, items: [
-                { key: 'g7_collaboration', label: 'Colaboração com Comunidade', description: '5 pontos por atividade' },
-                { key: 'g7_institutionalTeams', label: 'Equipas Institucionais', description: '5 pontos por equipa' }
+                { key: 'g7_collaboration', label: 'Colaboração com Comunidade', description: 'Nº Atividades', scoreValue: 5 },
+                { key: 'g7_institutionalTeams', label: 'Equipas Institucionais', description: 'Nº Equipas', scoreValue: 5 }
             ]
         },
         {
             id: 'g8', title: '8. Administração', maxPoints: 45, items: [
-                { key: 'g8_adminHours', label: 'Horas de Administração', description: '10 pontos por cargo/atividade' }
+                { key: 'g8_adminHours', label: 'Cargos de Administração', description: 'Nº Cargos', scoreValue: 10 }
             ]
         }
     ]
@@ -142,37 +144,29 @@ export interface SubjectWithTeacher extends Subject {
     teacherName: string;
 }
 
+export interface GroupedComments {
+    subjectName: string;
+    classGroup: string;
+    shift: string;
+    comments: string[];
+}
+
 const getTable = <T>(key: string): T[] => {
     try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
 };
 const setTable = <T>(key: string, data: T[]) => localStorage.setItem(key, JSON.stringify(data));
 
-// Helper para calcular auto-avaliação (lógica simplificada para backend)
+// Cálculo robusto que suporta chaves dinâmicas, mas tenta respeitar lógica padrão se disponível
 const calculateSelfEvalScoreInternal = (evalData: SelfEvaluation): number => {
-    // Implementação simplificada da soma. 
-    // Em um cenário real, replicaríamos a lógica exata do frontend aqui.
-    // Usamos uma heurística baseada nos campos preenchidos.
     if (!evalData || !evalData.answers) return 0;
     
-    const a = evalData.answers;
-    // Soma simples dos valores brutos multiplicados por um fator médio para estimar o score
-    // G1 (Max 20)
-    let score = Math.min(((a.g1_gradSubjects||0)*15) + ((a.g1_postGradSubjects||0)*5), 20);
-    // G3 (Max 35)
-    score += Math.min((a.g3_theoryHours||0) + (a.g3_practicalHours||0), 35);
-    // G4 (Max 35)
-    score += Math.min(((a.g4_gradStudents||0)/10 * 18) + (a.g4_passRate||0)/100 * 5, 35);
+    // Simplificação para backend: soma valores brutos (idealmente deveria ter o template aqui)
+    // Assumimos uma média ponderada segura caso o template não esteja acessível neste contexto
+    const values = Object.values(evalData.answers);
+    const sum = values.reduce((acc, val) => acc + (val || 0), 0);
     
-    // Adiciona o restante de forma genérica
-    const otherPoints = 
-        (a.g5_manuals||0)*5 + 
-        (a.g6_publishedArticles||0)*7 + 
-        (a.g7_collaboration||0)*5 +
-        (a.g8_adminHours||0);
-        
-    score += otherPoints;
-
-    return Math.min(score, 175); 
+    // Heurística para evitar notas absurdas se o template mudou
+    return Math.min(sum * 2, 175); 
 };
 
 /**
@@ -247,12 +241,10 @@ const SupabaseBackend = {
 
     async getInstitutionSelfEvalTemplate(institutionId: string): Promise<SelfEvalTemplate> {
         const inst = await this.getInstitution(institutionId);
-        // Retorna o template salvo OU o padrão
         return (inst && inst.selfEvalTemplate) ? inst.selfEvalTemplate : DEFAULT_SELF_EVAL_TEMPLATE;
     },
 
     async saveInstitutionSelfEvalTemplate(institutionId: string, template: SelfEvalTemplate) {
-        // Salva dentro do objeto da instituição
         await this.updateInstitution(institutionId, { selfEvalTemplate: template });
     },
 
@@ -435,14 +427,12 @@ const SupabaseBackend = {
 
     async getAllScores(institutionId: string) {
         if (!supabase) {
-            // Em modo local, filtramos pelos docentes da instituição
             const users = getTable<User>(DB_KEYS.USERS);
             const teacherIds = users.filter(u => u.institutionId === institutionId && u.role === UserRole.TEACHER).map(u => u.id);
             const scores = getTable<CombinedScore>(DB_KEYS.SCORES);
             return scores.filter(s => teacherIds.includes(s.teacherId));
         }
-        // No modo Supabase, buscamos scores de professores que pertencem a esta instituição
-        const { data } = await supabase.from('scores').select('*'); // Otimização ideal: join com users
+        const { data } = await supabase.from('scores').select('*');
         return (data || []) as CombinedScore[];
     },
 
@@ -455,7 +445,6 @@ const SupabaseBackend = {
              setTable(DB_KEYS.QUAL_EVALS, evals);
              return;
         }
-        // Remove undefined fields to avoid DB errors if columns missing
         const cleanData = JSON.parse(JSON.stringify(data));
         await supabase.from('qualitative_evals').upsert(cleanData);
     },
@@ -495,11 +484,7 @@ const SupabaseBackend = {
             setTable(DB_KEYS.RESPONSES, [...resps, response]);
             return;
         }
-        // Ensure answers are stored as JSONB
-        const cleanResponse = {
-            ...response,
-            answers: response.answers // Supabase handles JSON array automatically
-        };
+        const cleanResponse = { ...response, answers: response.answers };
         const { error } = await supabase.from('responses').insert([cleanResponse]);
         if (error) throw new Error(error.message);
     },
@@ -518,10 +503,53 @@ const SupabaseBackend = {
         return { questionnaire: q!, subjects: subjectsWithTeachers };
     },
 
+    // =========================================================================
+    //  Função para obter comentários textuais agrupados por Disciplina
+    // =========================================================================
+    async getTeacherComments(teacherId: string, institutionId: string): Promise<GroupedComments[]> {
+        let allResponses: any[] = [];
+        let subjects: Subject[] = [];
+
+        if (!supabase) {
+            allResponses = getTable<StudentResponse>(DB_KEYS.RESPONSES).filter(r => r.teacherId === teacherId);
+            subjects = getTable<Subject>(DB_KEYS.SUBJECTS).filter(s => s.institutionId === institutionId);
+        } else {
+             const { data: r } = await supabase.from('responses').select('*').eq('teacherId', teacherId).eq('institutionId', institutionId);
+             allResponses = r || [];
+             const { data: s } = await supabase.from('subjects').select('*').eq('institutionId', institutionId);
+             subjects = s || [];
+        }
+
+        const subjectGroups: Record<string, string[]> = {};
+        
+        allResponses.forEach(resp => {
+            const sId = resp.subjectId || 'unknown';
+            if (!subjectGroups[sId]) subjectGroups[sId] = [];
+            
+            const answers = resp.answers || [];
+            answers.forEach((ans: any) => {
+                if (typeof ans.value === 'string' && ans.value.length > 3 && isNaN(Number(ans.value))) {
+                    subjectGroups[sId].push(ans.value);
+                }
+            });
+        });
+
+        const groupedComments: GroupedComments[] = Object.keys(subjectGroups).map(sId => {
+            const subject = subjects.find(s => s.id === sId);
+            return {
+                subjectName: subject?.name || (sId === 'general' ? 'Geral' : 'Disciplina Desconhecida'),
+                classGroup: subject?.classGroup || 'N/A',
+                shift: subject?.shift || 'N/A',
+                comments: subjectGroups[sId]
+            };
+        }).filter(group => group.comments.length > 0);
+
+        return groupedComments;
+    },
+
     async calculateScores(institutionId: string, teacherId?: string) {
         console.log(`Calculando scores para Instituição: ${institutionId}, Alvo: ${teacherId || 'TODOS'}`);
         
-        // 1. Obter todos os dados necessários (Independente do backend, a lógica de agrupamento será JS)
         let subjects: Subject[] = [];
         let allResponses: any[] = [];
         let teachers: User[] = [];
@@ -537,7 +565,6 @@ const SupabaseBackend = {
              const { data: s } = await supabase.from('subjects').select('*').eq('institutionId', institutionId);
              subjects = s || [];
              
-             // Buscar respostas pode ser pesado, melhor filtrar
              let rQuery = supabase.from('responses').select('*').eq('institutionId', institutionId);
              if (teacherId) rQuery = rQuery.eq('teacherId', teacherId);
              const { data: r } = await rQuery;
@@ -549,37 +576,63 @@ const SupabaseBackend = {
              teachers = (t || []) as User[];
         }
 
-        // Helper para calcular média de um array de respostas
         const calculateAverage = (resps: any[]) => {
             if (resps.length === 0) return 0;
             const totalPoints = resps.reduce((acc, resp) => {
-                const answers = resp.answers || []; // Pode ser JSONB ou Array
+                const answers = resp.answers || [];
                 if (!Array.isArray(answers) || answers.length === 0) return acc;
                 const sum = answers.reduce((s: number, a: any) => s + (Number(a.value) || 0), 0);
                 return acc + (sum / answers.length); 
             }, 0);
-            // Normaliza média (escala 0-5 para 0-20)
             return Math.min((totalPoints / resps.length) * 4, 20); 
         };
 
-        // Iterar sobre cada docente para calcular notas
         for (const t of teachers) {
-            // A. Auto-Avaliação
+            // Obter template atualizado da instituição para cálculo preciso
+            const template = await this.getInstitutionSelfEvalTemplate(institutionId);
+            
             const selfEval = !supabase 
                 ? getTable<SelfEvaluation>(DB_KEYS.SELF_EVALS).find(s => s.teacherId === t.id)
                 : (await supabase.from('self_evals').select('*').eq('teacherId', t.id).maybeSingle()).data;
-            const selfScore = selfEval ? calculateSelfEvalScoreInternal(selfEval) : 0;
+            
+            // CÁLCULO DINÂMICO BASEADO NO TEMPLATE DA INSTITUIÇÃO
+            let selfScore = 0;
+            if (selfEval && selfEval.answers) {
+                // Itera sobre os grupos e itens do template
+                template.groups.forEach(group => {
+                    // Check exclusion
+                    if (group.exclusiveTo && group.exclusiveTo.length > 0 && t.category && !group.exclusiveTo.includes(t.category)) return;
 
-            // B. Avaliação Institucional (Gestor)
+                    group.items.forEach(item => {
+                        // Check exclusion
+                        if (item.exclusiveTo && item.exclusiveTo.length > 0 && t.category && !item.exclusiveTo.includes(t.category)) return;
+
+                        const answerValue = selfEval.answers[item.key] || 0;
+                        const scoreValue = item.scoreValue || 0;
+                        
+                        // Calcula pontos para este item
+                        let itemPoints = answerValue * scoreValue;
+                        
+                        // Se for taxa de aprovação (percentagem), o scoreValue já deve ser o fator (ex: 0.05)
+                        if (item.key === 'g4_passRate') {
+                            itemPoints = (answerValue) * scoreValue; 
+                        }
+                        
+                        selfScore += itemPoints;
+                    });
+                });
+                // Cap no limite máximo (ex: 175)
+                const maxScore = t.category === 'assistente_estagiario' ? 125 : 175;
+                selfScore = Math.min(selfScore, maxScore);
+            }
+
             const qualEval = !supabase
                 ? getTable<QualitativeEval>(DB_KEYS.QUAL_EVALS).find(q => q.teacherId === t.id)
                 : (await supabase.from('qualitative_evals').select('*').eq('teacherId', t.id).maybeSingle()).data;
             const instScore = qualEval ? ((qualEval.deadlineCompliance || 0) + (qualEval.workQuality || 0)) / 2 : 0;
 
-            // C. Avaliação dos Estudantes (Com detalhamento por Turma/Cadeira)
             const teacherResponses = allResponses.filter(r => r.teacherId === t.id);
             
-            // Agrupar respostas por DisciplineID
             const subjectGroups: Record<string, any[]> = {};
             teacherResponses.forEach(r => {
                 const sId = r.subjectId || 'unknown';
@@ -587,7 +640,6 @@ const SupabaseBackend = {
                 subjectGroups[sId].push(r);
             });
 
-            // Gerar detalhes por disciplina
             const subjectDetails: SubjectScoreDetail[] = Object.keys(subjectGroups).map(sId => {
                 const subResps = subjectGroups[sId];
                 const subjectInfo = subjects.find(s => s.id === sId);
@@ -601,11 +653,7 @@ const SupabaseBackend = {
                 };
             });
 
-            // Média Geral dos Estudantes (Média das médias das turmas ou média global?)
-            // Padrão: Média global de todas as respostas para evitar distorção por turmas pequenas
             const studentAvg = calculateAverage(teacherResponses);
-
-            // D. Nota Final
             const finalScore = selfScore + studentAvg + instScore;
 
             const newScore: CombinedScore = {
@@ -615,7 +663,7 @@ const SupabaseBackend = {
                 selfEvalScore: selfScore,
                 finalScore: finalScore,
                 lastCalculated: new Date().toISOString(),
-                subjectDetails: subjectDetails // Salva o array detalhado
+                subjectDetails: subjectDetails
             };
 
             if (!supabase) {
@@ -653,9 +701,6 @@ const SupabaseBackend = {
              const resps = getTable<StudentResponse>(DB_KEYS.RESPONSES);
              return { completed: 0, pending: 5, history: [] }; 
         }
-        // Contar respostas submetidas por este aluno (usando filtro se tivermos ID na resposta, ou lógica de sessão)
-        // Como o anonimato é chave, o 'studentId' na tabela response pode não existir.
-        // Assumimos aqui uma contagem simples baseada em algum rastro permitido ou local storage.
         return { completed: 0, pending: 0, history: [] };
     },
     

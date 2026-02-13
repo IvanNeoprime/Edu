@@ -113,7 +113,8 @@ export interface SelfEvalItemConfig {
     key: string;
     label: string;
     description: string;
-    maxPoints?: number;
+    scoreValue: number; // Quantos pontos vale cada unidade deste item
+    exclusiveTo?: TeacherCategory[]; // Array de categorias permitidas (se vazio/undefined = todas)
 }
 
 export interface SelfEvalGroupConfig {
@@ -121,6 +122,7 @@ export interface SelfEvalGroupConfig {
     title: string;
     maxPoints: number;
     items: SelfEvalItemConfig[];
+    exclusiveTo?: TeacherCategory[]; // Array de categorias permitidas para o grupo
 }
 
 export interface SelfEvalTemplate {
@@ -138,46 +140,8 @@ export interface SelfEvaluation {
     workPeriod: string; // Laboral/PL
     academicYear: string;
   };
-  // Respostas baseadas na Ficha Oficial
-  answers: {
-    // Grupo 1
-    g1_gradSubjects?: number; 
-    g1_postGradSubjects?: number; 
-
-    // Grupo 2
-    g2_gradSupervision?: number; 
-    g2_postGradSupervision?: number; 
-    g2_regencySubjects?: number; 
-
-    // Grupo 3
-    g3_theoryHours?: number; 
-    g3_practicalHours?: number; 
-    g3_consultationHours?: number; 
-
-    // Grupo 4
-    g4_gradStudents?: number; 
-    g4_postGradStudents?: number; 
-    g4_passRate?: number; 
-
-    // Grupo 5
-    g5_manuals?: number; 
-    g5_supportTexts?: number; 
-
-    // Grupo 6
-    g6_individualProjects?: number; 
-    g6_collectiveProjects?: number; 
-    g6_publishedArticles?: number; 
-    g6_eventsComms?: number; 
-    g6_scientificActivities?: number; 
-    g6_reports?: number; 
-
-    // Grupo 7
-    g7_collaboration?: number; 
-    g7_institutionalTeams?: number; 
-
-    // Grupo 8
-    g8_adminHours?: number; 
-  };
+  // Respostas agora são um Record dinâmico, pois as chaves podem mudar
+  answers: Record<string, number>;
   // Novo campo: Avaliação Qualitativa descritiva do próprio docente
   comments?: string; 
 }
