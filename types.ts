@@ -14,28 +14,27 @@ export interface User {
   name: string;
   role: UserRole;
   institutionId?: string;
-  approved?: boolean;
-  avatar?: string;
-  mustChangePassword?: boolean;
-  password?: string;
+  approved?: boolean; // For teachers
+  avatar?: string; // Base64 ou URL da foto de perfil
+  mustChangePassword?: boolean; // Adicionado para controle de troca de senha
+  // Novos campos para alunos
   course?: string;
-  level?: string; // Ano de 1 a 6
-  semester?: '1' | '2';
-  studentCode?: string;
-  shifts?: ('Diurno' | 'Noturno')[];
-  classGroups?: string[];
+  level?: string; // Ano curricular (ex: 1, 2, 3)
+  shifts?: ('Diurno' | 'Noturno')[]; // Lista de turnos do aluno
+  classGroups?: string[]; // Lista de turmas do aluno (ex: ['A', 'B'])
+  // Novo campo para docentes
   category?: TeacherCategory;
-  modality?: 'Presencial' | 'Online';
 }
 
 export interface Institution {
   id: string;
   name: string;
   code: string;
-  logo?: string;
+  logo?: string; // Base64 ou URL do logotipo
   createdAt: string;
   managerEmails: string[];
   inviteCode?: string;
+  // Novos campos para gestão de período
   isEvaluationOpen?: boolean;
   evaluationPeriodName?: string;
 }
@@ -43,26 +42,28 @@ export interface Institution {
 export interface Subject {
   id: string;
   name: string;
-  code?: string;
+  code?: string; // Agora opcional
   institutionId: string;
   teacherId: string;
+  // Novos campos solicitados para contexto
   academicYear?: string;
   level?: string;
-  semester?: '1' | '2';
+  semester?: string;
   course?: string;
   teacherCategory?: TeacherCategory;
-  classGroup?: string;
-  shift?: 'Diurno' | 'Noturno';
-  modality?: 'Presencial' | 'Online';
+  classGroup?: string; // Identificador da Turma (ex: A, B)
+  shift?: 'Diurno' | 'Noturno'; // Novo campo restrito
+  modality?: 'Presencial' | 'Online'; // Novo campo de modalidade
 }
 
-export type QuestionType = 'binary' | 'scale_10' | 'stars' | 'text';
+export type QuestionType = 'binary' | 'scale_10' | 'stars' | 'text' | 'choice';
 
 export interface Question {
   id: string;
   text: string;
   type: QuestionType;
-  weight?: number;
+  weight?: number; // Pontos Obtidos
+  options?: string[]; // For multiple choice
 }
 
 export interface Questionnaire {
@@ -71,61 +72,73 @@ export interface Questionnaire {
   title: string;
   questions: Question[];
   active: boolean;
+  // Novo campo para definir público alvo
   targetRole?: 'student' | 'teacher'; 
 }
 
 export interface StudentResponse {
   id: string;
-  institutionId: string;
+  institutionId: string; // Adicionado para validação de período
   questionnaireId: string;
-  teacherId?: string;
-  subjectId?: string;
+  teacherId?: string; // Opcional se for um inquérito geral para docentes
+  subjectId?: string; // Opcional se for um inquérito geral
   answers: { questionId: string; value: number | string }[];
   timestamp: string;
 }
 
+export interface InstitutionalEval {
+  teacherId: string;
+  institutionId: string;
+  score: number;
+  evaluatedAt: string;
+}
+
+export interface SelfEvaluation {
+  teacherId: string;
+  institutionId: string; // Adicionado para validação
+  // Cabeçalho
+  header: {
+    category: TeacherCategory;
+    function: string;
+    contractRegime: string; // Tempo inteiro/parcial
+    workPeriod: string; // Laboral/PL
+    academicYear: string;
+  };
+  // Respostas específicas (Quantidades que serão multiplicadas pelos pontos)
+  answers: {
+    gradSubjects?: number;
+    postGradSubjects?: number;
+    theoryHours?: number;
+    practicalHours?: number;
+    consultationHours?: number;
+    gradSupervision?: number;
+    postGradSupervision?: number;
+    regencySubjects?: number;
+  };
+  // Novo campo: Avaliação Qualitativa descritiva do próprio docente
+  comments?: string; 
+}
+
+export interface QualitativeEval {
+  teacherId: string;
+  institutionId?: string;
+  deadlineCompliance?: number;
+  workQuality?: number;
+  score?: number;
+  evaluatedAt?: string;
+  comments?: string; // Adicionado para comentários do gestor
+}
+
 export interface CombinedScore {
   teacherId: string;
-  studentScore: number; 
+  studentScore: number; // Pontos calculados (Coeficiente aplicado)
   institutionalScore: number; 
-  selfEvalScore: number;
-  finalScore: number;
+  selfEvalScore: number; // Pontos absolutos
+  finalScore: number; // Soma total
   lastCalculated: string;
 }
 
 export interface Session {
   user: User | null;
   token: string | null;
-}
-
-// Added missing interfaces for TeacherDashboard
-export interface SelfEvaluation {
-  teacherId: string;
-  institutionId?: string;
-  header: {
-    category: TeacherCategory;
-    function: string;
-    contractRegime: string;
-    workPeriod: string;
-    academicYear: string;
-  };
-  answers: {
-    gradSubjects: number;
-    postGradSubjects: number;
-    theoryHours: number;
-    practicalHours: number;
-    consultationHours: number;
-    gradSupervision: number;
-    postGradSupervision: number;
-    regencySubjects: number;
-  };
-}
-
-export interface QualitativeEval {
-  teacherId: string;
-  recommendations: string;
-  strengths: string[];
-  // Added optional fields for saving management scores as used in dashboards
-  institutionId?: string;
-  score?: number;
 }

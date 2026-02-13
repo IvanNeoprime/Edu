@@ -18,9 +18,8 @@ O sistema utiliza o **LocalStorage** do navegador como banco de dados.
 
 ### Super Administrador (Acesso Total)
 Use esta conta para criar novas faculdades e gestores.
-*   **Email:** `admin@avaliadocente.ac.mz`
-*   **Nome:** `AAdmin`
-*   **Senha:** `admin`
+*   **Email:** `ivandromaoze138@gmail.com`
+*   **Senha:** `24191978a`
 
 ### Contas de Teste Rápido (Já configuradas)
 O sistema já vem com estes usuários criados na "Universidade Demo":
@@ -85,7 +84,7 @@ Para validar o funcionamento correto da fórmula **80% (Auto) + 12% (Aluno) + 8%
     *   O sistema processará todas as notas.
 
 ### PASSO E: Verificação de Resultados
-1.  Entre novamente como the **Docente** (`teste@demo.ac.mz`).
+1.  Entre novamente como o **Docente** (`teste@demo.ac.mz`).
 2.  Na aba "Resultados", verifique:
     *   O Gráfico de barras.
     *   O Score Final.
@@ -97,7 +96,7 @@ Para validar o funcionamento correto da fórmula **80% (Auto) + 12% (Aluno) + 8%
 
 Se você quiser apagar tudo e começar a bateria de testes do zero:
 
-1.  Entre como **Super Admin** (`admin@avaliadocente.ac.mz`).
+1.  Entre como **Super Admin** (`ivandromaoze138@gmail.com`).
 2.  Clique no botão vermelho **"Resetar Sistema Completo"** no topo direito.
 3.  Confirme as duas janelas de aviso.
 4.  O sistema será limpo e recarregará com os dados de semente (Demo) novamente.

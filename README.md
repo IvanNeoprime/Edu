@@ -23,9 +23,8 @@ Plataforma multi-institucional para avaliação de desempenho docente em univers
 
 ## 🔑 Credenciais de Acesso (Super Admin)
 
-*   **Email:** `admin@avaliadocente.ac.mz`
-*   **Nome:** `AAdmin`
-*   **Senha:** `admin`
+*   **Email:** `ivandromaoze138@gmail.com`
+*   **Senha:** `24191978a`
 
 ## 🧪 Credenciais de Teste (Modo Local)
 
