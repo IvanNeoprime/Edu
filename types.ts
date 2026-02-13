@@ -26,6 +26,14 @@ export interface User {
   category?: TeacherCategory;
 }
 
+export interface Course {
+  id: string;
+  institutionId: string;
+  name: string;
+  code: string; // Sigla (ex: LEI)
+  duration?: number; // Anos
+}
+
 export interface Institution {
   id: string;
   name: string;

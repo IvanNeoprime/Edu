@@ -1,6 +1,6 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { User, UserRole, Institution, Subject, Questionnaire, StudentResponse, CombinedScore, Question, SelfEvaluation, QualitativeEval, TeacherCategory } from '../types';
+import { User, UserRole, Institution, Subject, Questionnaire, StudentResponse, CombinedScore, Question, SelfEvaluation, QualitativeEval, TeacherCategory, Course } from '../types';
 
 // ==================================================================================
 // 🚀 CONFIGURAÇÃO GERAL (SUPABASE vs LOCAL)
@@ -44,6 +44,7 @@ const DB_KEYS = {
   INSTITUTIONS: 'ad_institutions',
   SUBJECTS: 'ad_subjects',
   QUESTIONNAIRES: 'ad_questionnaires',
+  COURSES: 'ad_courses', // Nova chave
   RESPONSES: 'ad_responses',
   INST_EVALS: 'ad_inst_evals', 
   SELF_EVALS: 'ad_self_evals',
@@ -86,12 +87,12 @@ const setTable = <T>(key: string, data: T[]) => localStorage.setItem(key, JSON.s
  */
 const SupabaseBackend = {
     async checkHealth() {
-        if (!supabase) return { ok: false, mode: 'supabase' };
+        if (!supabase) return { ok: false, mode: 'local' };
         try {
             const { error } = await supabase.from('institutions').select('id').limit(1);
-            if (error) return { ok: false, mode: 'supabase', error: error.message };
+            if (error) return { ok: false, mode: 'local', error: error.message };
             return { ok: true, mode: 'supabase' };
-        } catch (e: any) { return { ok: false, mode: 'supabase', error: e.message }; }
+        } catch (e: any) { return { ok: false, mode: 'local', error: e.message }; }
     },
 
     async login(email: string, password?: string) {
@@ -108,7 +109,8 @@ const SupabaseBackend = {
             approved: data.approved,
             avatar: data.avatar,
             category: data.category as TeacherCategory,
-            mustChangePassword: data.mustChangePassword
+            mustChangePassword: data.mustChangePassword,
+            course: data.course
         };
         localStorage.setItem(DB_KEYS.SESSION, JSON.stringify({ user, token: 'supa' }));
         return { user, token: 'supa' };
@@ -118,80 +120,141 @@ const SupabaseBackend = {
     async getSession() { const s = localStorage.getItem(DB_KEYS.SESSION); return s ? JSON.parse(s).user : null; },
     
     async getUsers() {
-        if (!supabase) return [];
+        if (!supabase) return getTable<User>(DB_KEYS.USERS);
         const { data } = await supabase.from('users').select('*');
         return (data || []) as User[];
     },
 
     async getInstitutions() {
-        if (!supabase) return [];
+        if (!supabase) return getTable<Institution>(DB_KEYS.INSTITUTIONS);
         const { data } = await supabase.from('institutions').select('*');
         return (data || []) as Institution[];
     },
 
     async getInstitution(id: string) {
-        if (!supabase) return undefined;
+        if (!supabase) return getTable<Institution>(DB_KEYS.INSTITUTIONS).find(i => i.id === id);
         const { data } = await supabase.from('institutions').select('*').eq('id', id).single();
         return data as Institution;
     },
 
-    // Fix: Added missing updateInstitution method
     async updateInstitution(id: string, data: Partial<Institution>) {
-        if (!supabase) return;
+        if (!supabase) {
+            const insts = getTable<Institution>(DB_KEYS.INSTITUTIONS);
+            setTable(DB_KEYS.INSTITUTIONS, insts.map(i => i.id === id ? { ...i, ...data } : i));
+            return;
+        }
         await supabase.from('institutions').update(data).eq('id', id);
     },
 
     async createInstitution(data: any) {
-        if (!supabase) throw new Error("Supabase não iniciado");
         const newItem = { ...data, id: `inst_${Date.now()}`, createdAt: new Date().toISOString() };
+        if (!supabase) {
+            const insts = getTable<Institution>(DB_KEYS.INSTITUTIONS);
+            setTable(DB_KEYS.INSTITUTIONS, [...insts, newItem]);
+            return newItem;
+        }
         const { data: res } = await supabase.from('institutions').insert([newItem]).select().single();
         return res as Institution;
     },
 
     async deleteInstitution(id: string) {
-        if (!supabase) return;
+        if (!supabase) {
+            const insts = getTable<Institution>(DB_KEYS.INSTITUTIONS);
+            setTable(DB_KEYS.INSTITUTIONS, insts.filter(i => i.id !== id));
+            return;
+        }
         await supabase.from('institutions').delete().eq('id', id);
     },
 
-    // Fix: Added missing inviteManager method
     async inviteManager(institutionId: string, email: string, name: string, password?: string) {
-        if (!supabase) throw new Error("Supabase não iniciado");
         const newUser = { id: `u_${Date.now()}`, email, name, role: UserRole.INSTITUTION_MANAGER, institutionId, approved: true, password: password || '123456', mustChangePassword: !!password };
+        if (!supabase) {
+            const users = getTable<User>(DB_KEYS.USERS);
+            setTable(DB_KEYS.USERS, [...users, newUser]);
+            return newUser;
+        }
         const { data } = await supabase.from('users').insert([newUser]).select().single();
         return data as User;
     },
 
+    // --- CURSOS ---
+    async getInstitutionCourses(institutionId: string): Promise<Course[]> {
+        if (!supabase) {
+            return getTable<Course>(DB_KEYS.COURSES).filter(c => c.institutionId === institutionId);
+        }
+        const { data } = await supabase.from('courses').select('*').eq('institutionId', institutionId);
+        return (data || []) as Course[];
+    },
+
+    async addCourse(institutionId: string, name: string, code: string, duration?: number): Promise<Course> {
+        const newCourse: Course = { id: `c_${Date.now()}`, institutionId, name, code, duration };
+        if (!supabase) {
+            const courses = getTable<Course>(DB_KEYS.COURSES);
+            setTable(DB_KEYS.COURSES, [...courses, newCourse]);
+            return newCourse;
+        }
+        const { data } = await supabase.from('courses').insert([newCourse]).select().single();
+        return data as Course;
+    },
+
+    async deleteCourse(id: string) {
+        if (!supabase) {
+            const courses = getTable<Course>(DB_KEYS.COURSES);
+            setTable(DB_KEYS.COURSES, courses.filter(c => c.id !== id));
+            return;
+        }
+        await supabase.from('courses').delete().eq('id', id);
+    },
+    // --------------
+
     async addTeacher(institutionId: string, name: string, email: string, password?: string, avatar?: string, category?: TeacherCategory) {
-        if (!supabase) throw new Error("Supabase não iniciado");
         const newUser = { id: `u_${Date.now()}`, email, name, role: UserRole.TEACHER, institutionId, approved: true, password: password || '123456', avatar, category, mustChangePassword: !!password };
+        if (!supabase) {
+            const users = getTable<User>(DB_KEYS.USERS);
+            setTable(DB_KEYS.USERS, [...users, newUser]);
+            return newUser;
+        }
         const { data } = await supabase.from('users').insert([newUser]).select().single();
         return data as User;
     },
 
     async addStudent(institutionId: string, name: string, email: string, password?: string, course?: string, level?: string, avatar?: string, shifts?: string[], classGroups?: string[]) {
-        if (!supabase) throw new Error("Supabase não iniciado");
         const newUser = { id: `s_${Date.now()}`, email, name, role: UserRole.STUDENT, institutionId, approved: true, password: password || '123456', course, level, avatar, shifts, classGroups, mustChangePassword: !!password };
+        if (!supabase) {
+            const users = getTable<User>(DB_KEYS.USERS);
+            setTable(DB_KEYS.USERS, [...users, newUser]);
+            return newUser;
+        }
         const { data } = await supabase.from('users').insert([newUser]).select().single();
         return data as User;
     },
 
     async getInstitutionSubjects(institutionId: string) {
-        if (!supabase) return [];
+        if (!supabase) return getTable<Subject>(DB_KEYS.SUBJECTS).filter(s => s.institutionId === institutionId);
         const { data } = await supabase.from('subjects').select('*').eq('institutionId', institutionId);
         return (data || []) as Subject[];
     },
 
     async assignSubject(data: any) {
-        if (!supabase) throw new Error("Supabase não iniciado");
         const newItem = { ...data, id: `sub_${Date.now()}` };
+        if (!supabase) {
+            const subs = getTable<Subject>(DB_KEYS.SUBJECTS);
+            setTable(DB_KEYS.SUBJECTS, [...subs, newItem]);
+            return newItem;
+        }
         const { data: res } = await supabase.from('subjects').insert([newItem]).select().single();
         return res as Subject;
     },
 
     async getInstitutionQuestionnaire(institutionId: string, role: 'student' | 'teacher' = 'student') {
-        if (!supabase) return null;
-        const { data } = await supabase.from('questionnaires').select('*').eq('institutionId', institutionId).eq('targetRole', role).maybeSingle();
-        if (data) return data as Questionnaire;
+        if (!supabase) {
+            const qs = getTable<Questionnaire>(DB_KEYS.QUESTIONNAIRES);
+            const found = qs.find(q => q.institutionId === institutionId && q.targetRole === role);
+            if(found) return found;
+        } else {
+             const { data } = await supabase.from('questionnaires').select('*').eq('institutionId', institutionId).eq('targetRole', role).maybeSingle();
+             if (data) return data as Questionnaire;
+        }
         
         return {
             id: `def_${role}_${institutionId}`,
@@ -204,7 +267,12 @@ const SupabaseBackend = {
     },
 
     async saveQuestionnaire(data: Questionnaire) {
-        if (!supabase) return;
+        if (!supabase) {
+            const qs = getTable<Questionnaire>(DB_KEYS.QUESTIONNAIRES);
+            const filtered = qs.filter(q => q.id !== data.id);
+            setTable(DB_KEYS.QUESTIONNAIRES, [...filtered, data]);
+            return;
+        }
         await supabase.from('questionnaires').upsert(data);
     },
 
@@ -217,7 +285,6 @@ const SupabaseBackend = {
     async getAllScores(institutionId: string) {
         if (!supabase) return [];
         const { data } = await supabase.from('scores').select('*');
-        // Filtro manual ou via query dependendo da estrutura
         return (data || []) as CombinedScore[];
     },
 
@@ -233,23 +300,34 @@ const SupabaseBackend = {
     },
 
     async saveSelfEval(data: SelfEvaluation) {
-        if (!supabase) return;
+        if (!supabase) {
+            const evals = getTable<SelfEvaluation>(DB_KEYS.SELF_EVALS);
+            const filtered = evals.filter(e => e.teacherId !== data.teacherId);
+            setTable(DB_KEYS.SELF_EVALS, [...filtered, data]);
+            return;
+        }
         await supabase.from('self_evals').upsert(data);
     },
 
     async getSelfEval(teacherId: string) {
-        if (!supabase) return undefined;
+        if (!supabase) {
+            const evals = getTable<SelfEvaluation>(DB_KEYS.SELF_EVALS);
+            return evals.find(e => e.teacherId === teacherId);
+        }
         const { data } = await supabase.from('self_evals').select('*').eq('teacherId', teacherId).maybeSingle();
         return data as SelfEvaluation;
     },
 
     async submitAnonymousResponse(userId: string, response: any) {
-        if (!supabase) return;
+        if (!supabase) {
+            const resps = getTable<StudentResponse>(DB_KEYS.RESPONSES);
+            setTable(DB_KEYS.RESPONSES, [...resps, response]);
+            return;
+        }
         await supabase.from('responses').insert([response]);
     },
 
     async getAvailableSurveys(institutionId: string, userRole: UserRole = UserRole.STUDENT) {
-        if (!supabase) return null;
         const target = userRole === UserRole.TEACHER ? 'teacher' : 'student';
         const q = await this.getInstitutionQuestionnaire(institutionId, target);
         const subjects = await this.getInstitutionSubjects(institutionId);
@@ -264,18 +342,24 @@ const SupabaseBackend = {
     },
 
     async calculateScores(institutionId: string) {
-        // Lógica de cálculo pesada (pode ser movida para Supabase Edge Functions no futuro)
         console.log("Calculando scores para:", institutionId);
-        // Por agora, o frontend chama este método para disparar o processo
     },
 
     async updateUser(id: string, data: Partial<User>) {
-        if (!supabase) return;
+        if (!supabase) {
+            const users = getTable<User>(DB_KEYS.USERS);
+            setTable(DB_KEYS.USERS, users.map(u => u.id === id ? { ...u, ...data } : u));
+            return;
+        }
         await supabase.from('users').update(data).eq('id', id);
     },
 
     async changePassword(userId: string, newPassword?: string) {
-        if (!supabase) return;
+        if (!supabase) {
+            const users = getTable<User>(DB_KEYS.USERS);
+            setTable(DB_KEYS.USERS, users.map(u => u.id === userId ? { ...u, password: newPassword, mustChangePassword: false } : u));
+            return;
+        }
         await supabase.from('users').update({ password: newPassword, mustChangePassword: false }).eq('id', userId);
     },
 
@@ -302,12 +386,4 @@ const SupabaseBackend = {
     }
 };
 
-/**
- * 🟡 MOCK BACKEND (Fallback)
- */
-const MockBackend = {
-    ...SupabaseBackend, // Reaproveita assinaturas
-    // Implementações específicas de LocalStorage se necessário...
-};
-
-export const BackendService = isUsingSupabase ? SupabaseBackend : MockBackend;
+export const BackendService = SupabaseBackend;
