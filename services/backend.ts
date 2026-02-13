@@ -1,6 +1,6 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { User, UserRole, Institution, Subject, Questionnaire, StudentResponse, CombinedScore, Question, SelfEvaluation, QualitativeEval, TeacherCategory, Course } from '../types';
+import { User, UserRole, Institution, Subject, Questionnaire, StudentResponse, CombinedScore, Question, SelfEvaluation, QualitativeEval, TeacherCategory, Course, SubjectScoreDetail } from '../types';
 
 // ==================================================================================
 // 🚀 CONFIGURAÇÃO GERAL (SUPABASE vs LOCAL)
@@ -453,98 +453,111 @@ const SupabaseBackend = {
     async calculateScores(institutionId: string, teacherId?: string) {
         console.log(`Calculando scores para Instituição: ${institutionId}, Alvo: ${teacherId || 'TODOS'}`);
         
+        // 1. Obter todos os dados necessários (Independente do backend, a lógica de agrupamento será JS)
+        let subjects: Subject[] = [];
+        let allResponses: any[] = [];
+        let teachers: User[] = [];
+        
         if (!supabase) {
-            // ... (Lógica Local Existente) ...
-            const scores = getTable<CombinedScore>(DB_KEYS.SCORES);
-            const users = getTable<User>(DB_KEYS.USERS);
-            const selfEvals = getTable<SelfEvaluation>(DB_KEYS.SELF_EVALS);
-            const responses = getTable<StudentResponse>(DB_KEYS.RESPONSES);
-            const qualEvals = getTable<QualitativeEval>(DB_KEYS.QUAL_EVALS);
-
-            const targets = teacherId 
-                ? [users.find(u => u.id === teacherId)!] 
+             subjects = getTable<Subject>(DB_KEYS.SUBJECTS);
+             allResponses = getTable<StudentResponse>(DB_KEYS.RESPONSES);
+             const users = getTable<User>(DB_KEYS.USERS);
+             teachers = teacherId 
+                ? [users.find(u => u.id === teacherId)!].filter(Boolean)
                 : users.filter(u => u.institutionId === institutionId && u.role === UserRole.TEACHER);
+        } else {
+             const { data: s } = await supabase.from('subjects').select('*').eq('institutionId', institutionId);
+             subjects = s || [];
+             
+             // Buscar respostas pode ser pesado, melhor filtrar
+             let rQuery = supabase.from('responses').select('*').eq('institutionId', institutionId);
+             if (teacherId) rQuery = rQuery.eq('teacherId', teacherId);
+             const { data: r } = await rQuery;
+             allResponses = r || [];
 
-            targets.forEach(t => {
-                if (!t) return;
-                const selfEval = selfEvals.find(s => s.teacherId === t.id);
-                const selfScore = selfEval ? calculateSelfEvalScoreInternal(selfEval) : 0; 
+             let tQuery = supabase.from('users').select('*').eq('role', 'teacher').eq('institutionId', institutionId);
+             if (teacherId) tQuery = tQuery.eq('id', teacherId);
+             const { data: t } = await tQuery;
+             teachers = (t || []) as User[];
+        }
 
-                const teacherResponses = responses.filter(r => r.teacherId === t.id);
-                let studentAvg = 0;
-                if (teacherResponses.length > 0) {
-                    const totalPoints = teacherResponses.reduce((acc, resp) => {
-                        const respSum = resp.answers.reduce((rAcc, ans) => rAcc + Number(ans.value), 0);
-                        return acc + (respSum / resp.answers.length); 
-                    }, 0);
-                    studentAvg = Math.min((totalPoints / teacherResponses.length) * 4, 20); 
-                }
+        // Helper para calcular média de um array de respostas
+        const calculateAverage = (resps: any[]) => {
+            if (resps.length === 0) return 0;
+            const totalPoints = resps.reduce((acc, resp) => {
+                const answers = resp.answers || []; // Pode ser JSONB ou Array
+                if (!Array.isArray(answers) || answers.length === 0) return acc;
+                const sum = answers.reduce((s: number, a: any) => s + (Number(a.value) || 0), 0);
+                return acc + (sum / answers.length); 
+            }, 0);
+            // Normaliza média (escala 0-5 para 0-20)
+            return Math.min((totalPoints / resps.length) * 4, 20); 
+        };
 
-                const qualEval = qualEvals.find(q => q.teacherId === t.id);
-                const instScore = qualEval ? ((qualEval.deadlineCompliance || 0) + (qualEval.workQuality || 0)) / 2 : 0;
+        // Iterar sobre cada docente para calcular notas
+        for (const t of teachers) {
+            // A. Auto-Avaliação
+            const selfEval = !supabase 
+                ? getTable<SelfEvaluation>(DB_KEYS.SELF_EVALS).find(s => s.teacherId === t.id)
+                : (await supabase.from('self_evals').select('*').eq('teacherId', t.id).maybeSingle()).data;
+            const selfScore = selfEval ? calculateSelfEvalScoreInternal(selfEval) : 0;
 
-                const newScore: CombinedScore = {
-                    teacherId: t.id,
-                    studentScore: studentAvg,
-                    institutionalScore: instScore,
-                    selfEvalScore: selfScore,
-                    finalScore: selfScore + studentAvg + instScore, 
-                    lastCalculated: new Date().toISOString()
+            // B. Avaliação Institucional (Gestor)
+            const qualEval = !supabase
+                ? getTable<QualitativeEval>(DB_KEYS.QUAL_EVALS).find(q => q.teacherId === t.id)
+                : (await supabase.from('qualitative_evals').select('*').eq('teacherId', t.id).maybeSingle()).data;
+            const instScore = qualEval ? ((qualEval.deadlineCompliance || 0) + (qualEval.workQuality || 0)) / 2 : 0;
+
+            // C. Avaliação dos Estudantes (Com detalhamento por Turma/Cadeira)
+            const teacherResponses = allResponses.filter(r => r.teacherId === t.id);
+            
+            // Agrupar respostas por DisciplineID
+            const subjectGroups: Record<string, any[]> = {};
+            teacherResponses.forEach(r => {
+                const sId = r.subjectId || 'unknown';
+                if (!subjectGroups[sId]) subjectGroups[sId] = [];
+                subjectGroups[sId].push(r);
+            });
+
+            // Gerar detalhes por disciplina
+            const subjectDetails: SubjectScoreDetail[] = Object.keys(subjectGroups).map(sId => {
+                const subResps = subjectGroups[sId];
+                const subjectInfo = subjects.find(s => s.id === sId);
+                return {
+                    subjectName: subjectInfo?.name || 'Disciplina Desconhecida',
+                    classGroup: subjectInfo?.classGroup || 'N/A',
+                    shift: subjectInfo?.shift || 'N/A',
+                    course: subjectInfo?.course || 'Geral',
+                    score: calculateAverage(subResps),
+                    responseCount: subResps.length
                 };
+            });
 
+            // Média Geral dos Estudantes (Média das médias das turmas ou média global?)
+            // Padrão: Média global de todas as respostas para evitar distorção por turmas pequenas
+            const studentAvg = calculateAverage(teacherResponses);
+
+            // D. Nota Final
+            const finalScore = selfScore + studentAvg + instScore;
+
+            const newScore: CombinedScore = {
+                teacherId: t.id,
+                studentScore: studentAvg,
+                institutionalScore: instScore,
+                selfEvalScore: selfScore,
+                finalScore: finalScore,
+                lastCalculated: new Date().toISOString(),
+                subjectDetails: subjectDetails // Salva o array detalhado
+            };
+
+            if (!supabase) {
+                const scores = getTable<CombinedScore>(DB_KEYS.SCORES);
                 const idx = scores.findIndex(s => s.teacherId === t.id);
                 if (idx >= 0) scores[idx] = newScore;
                 else scores.push(newScore);
-            });
-            setTable(DB_KEYS.SCORES, scores);
-        } else {
-            // 🔥 Lógica Supabase Real (Calcula usando dados do banco) 🔥
-            
-            // 1. Identificar Docentes Alvo
-            let query = supabase.from('users').select('id').eq('role', 'teacher').eq('institutionId', institutionId);
-            if (teacherId) query = query.eq('id', teacherId);
-            const { data: teachers, error } = await query;
-            
-            if (error || !teachers) throw new Error("Erro ao buscar docentes.");
-
-            for (const t of teachers) {
-                // A. Buscar Auto-Avaliação
-                const { data: selfEval } = await supabase.from('self_evals').select('*').eq('teacherId', t.id).maybeSingle();
-                const selfScore = selfEval ? calculateSelfEvalScoreInternal(selfEval) : 0;
-
-                // B. Buscar Respostas dos Alunos
-                const { data: responses } = await supabase.from('responses').select('answers').eq('teacherId', t.id);
-                
-                let studentAvg = 0;
-                if (responses && responses.length > 0) {
-                    // Calcula média
-                    const totalPoints = responses.reduce((acc: number, r: any) => {
-                        // r.answers é um array JSONB de { questionId, value }
-                        if (!Array.isArray(r.answers) || r.answers.length === 0) return acc;
-                        const sum = r.answers.reduce((s: number, a: any) => s + (Number(a.value) || 0), 0);
-                        return acc + (sum / r.answers.length);
-                    }, 0);
-                    // Normaliza (assumindo escala 0-5 nas respostas -> transformar em 0-20)
-                    studentAvg = Math.min((totalPoints / responses.length) * 4, 20);
-                }
-
-                // C. Buscar Avaliação do Gestor
-                const { data: qualEval } = await supabase.from('qualitative_evals').select('*').eq('teacherId', t.id).maybeSingle();
-                const instScore = qualEval ? ((qualEval.deadlineCompliance || 0) + (qualEval.workQuality || 0)) / 2 : 0;
-
-                // D. Salvar Score Final
-                const finalScore = selfScore + studentAvg + instScore; // Soma direta (assumindo pesos já aplicados nas parciais)
-
-                const scoreData = {
-                    teacherId: t.id,
-                    studentScore: studentAvg,
-                    institutionalScore: instScore,
-                    selfEvalScore: selfScore,
-                    finalScore: finalScore,
-                    lastCalculated: new Date().toISOString()
-                };
-
-                await supabase.from('scores').upsert(scoreData, { onConflict: 'teacherId' });
+                setTable(DB_KEYS.SCORES, scores);
+            } else {
+                await supabase.from('scores').upsert(newScore, { onConflict: 'teacherId' });
             }
         }
     },

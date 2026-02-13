@@ -172,13 +172,23 @@ export interface QualitativeEval {
   comments?: string; // Adicionado para comentários do gestor
 }
 
+export interface SubjectScoreDetail {
+    subjectName: string;
+    classGroup: string;
+    shift: string;
+    course: string;
+    score: number; // Média de 0 a 20
+    responseCount: number;
+}
+
 export interface CombinedScore {
   teacherId: string;
-  studentScore: number; // Pontos calculados (Coeficiente aplicado)
+  studentScore: number; // Pontos calculados (Coeficiente aplicado - Média Geral)
   institutionalScore: number; 
   selfEvalScore: number; // Pontos absolutos
   finalScore: number; // Soma total
   lastCalculated: string;
+  subjectDetails?: SubjectScoreDetail[]; // Novo: Detalhamento por turma
 }
 
 export interface Session {

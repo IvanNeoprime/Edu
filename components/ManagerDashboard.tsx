@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { BackendService, PDF_STANDARD_QUESTIONS } from '../services/backend';
 import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution, SelfEvaluation, Course } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, cn } from './ui';
-import { Users, BookOpen, Calculator, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, Star, BarChartHorizontal, GraduationCap, Download, Printer, Image as ImageIcon, RefreshCw, Settings, Save, X, Edit, Scale, Award, FileSpreadsheet, ListChecks, FileText, Layers, AlertTriangle, Menu } from 'lucide-react';
+import { Users, BookOpen, Calculator, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, Star, BarChartHorizontal, GraduationCap, Download, Printer, Image as ImageIcon, RefreshCw, Settings, Save, X, Edit, Scale, Award, FileSpreadsheet, ListChecks, FileText, Layers, AlertTriangle, Menu, Eye } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -39,6 +39,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [qualEvals, setQualEvals] = useState<Record<string, { deadlines: number, quality: number, comments: string }>>({});
   const [expandedTeacher, setExpandedTeacher] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [expandedDetails, setExpandedDetails] = useState<string | null>(null); // ID do professor para ver detalhes na tabela
 
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
@@ -602,6 +603,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             studentScore: score?.studentScore || 0,
             institutionalScore: score?.institutionalScore || 0,
             finalScore: score?.finalScore || 0,
+            subjectDetails: score?.subjectDetails || [], // Novo: Detalhes
             val20,
             classification: hasScore ? getAppreciation(val20) : 'Pendente'
         };
@@ -842,32 +844,62 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                     </div>
                     
                     <div className="mb-6">
-                        <table className="w-full border-collapse border-2 border-black">
+                        <table className="w-full border-collapse border-2 border-black mb-6">
                             <thead>
                                 <tr className="font-bold bg-gray-100">
-                                    <td className="border border-black p-1">Componente</td>
-                                    <td className="border border-black p-1 text-center">Pontos</td>
+                                    <td className="border border-black p-1">Componente de Avaliação</td>
+                                    <td className="border border-black p-1 text-center">Pontos Obtidos</td>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td className="border border-black p-1">Auto-avaliação</td>
+                                    <td className="border border-black p-1">Auto-avaliação (Peso 80%)</td>
                                     <td className="border border-black p-1 text-center">{printingScore.selfEvalScore.toFixed(1)}</td>
                                 </tr>
                                  <tr>
-                                    <td className="border border-black p-1">Avaliação Estudante</td>
+                                    <td className="border border-black p-1">Avaliação pelo Estudante (Peso 12%)</td>
                                     <td className="border border-black p-1 text-center">{printingScore.studentScore.toFixed(1)}</td>
                                 </tr>
                                  <tr>
-                                    <td className="border border-black p-1">Avaliação Institucional</td>
+                                    <td className="border border-black p-1">Avaliação Institucional (Peso 8%)</td>
                                     <td className="border border-black p-1 text-center">{printingScore.institutionalScore.toFixed(1)}</td>
                                 </tr>
-                                <tr className="font-bold">
-                                    <td className="border border-black p-1">Total</td>
+                                <tr className="font-bold bg-gray-50">
+                                    <td className="border border-black p-1">Classificação Final</td>
                                     <td className="border border-black p-1 text-center">{printingScore.finalScore.toFixed(1)}</td>
                                 </tr>
                             </tbody>
                         </table>
+
+                        {printingScore.subjectDetails && printingScore.subjectDetails.length > 0 && (
+                            <div className="mt-8">
+                                <h3 className="font-bold text-sm mb-2 uppercase border-b border-black pb-1">Detalhamento Pedagógico por Turma</h3>
+                                <table className="w-full border-collapse border border-black text-xs">
+                                    <thead>
+                                        <tr className="bg-gray-100">
+                                            <th className="border border-black p-1 text-left">Disciplina</th>
+                                            <th className="border border-black p-1 text-left">Curso</th>
+                                            <th className="border border-black p-1 text-center">Turma</th>
+                                            <th className="border border-black p-1 text-center">Turno</th>
+                                            <th className="border border-black p-1 text-center">Nº Avaliações</th>
+                                            <th className="border border-black p-1 text-center">Média (0-20)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {printingScore.subjectDetails.map((det, idx) => (
+                                            <tr key={idx}>
+                                                <td className="border border-black p-1">{det.subjectName}</td>
+                                                <td className="border border-black p-1">{det.course}</td>
+                                                <td className="border border-black p-1 text-center">{det.classGroup}</td>
+                                                <td className="border border-black p-1 text-center">{det.shift}</td>
+                                                <td className="border border-black p-1 text-center">{det.responseCount}</td>
+                                                <td className="border border-black p-1 text-center font-bold">{det.score.toFixed(1)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
                 </main>
             </div>
@@ -1178,53 +1210,97 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                         </td>
                                     </tr>
                                 ) : fullReportData.map(score => {
+                                    const isExpanded = expandedDetails === score.teacherId;
                                     return (
-                                        <tr key={score.teacherId} className="hover:bg-gray-50 transition-colors">
-                                            <td className="p-4">
-                                                <div className="font-medium text-gray-900">{score.teacherName}</div>
-                                                <div className="text-xs text-gray-500">{score.teacherEmail}</div>
-                                            </td>
-                                            <td className="p-4 text-gray-600 capitalize">{score.teacherCategory.replace('_', ' ')}</td>
-                                            {score.hasScore ? (
-                                                <>
-                                                    <td className="p-4 text-center">{score.selfEvalScore.toFixed(1)}</td>
-                                                    <td className="p-4 text-center">{score.studentScore.toFixed(1)}</td>
-                                                    <td className="p-4 text-center">{score.institutionalScore.toFixed(1)}</td>
-                                                    <td className="p-4 text-center font-bold text-base">{score.finalScore.toFixed(1)}</td>
-                                                    <td className="p-4 text-center">
-                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                                            score.val20 >= 14 ? 'bg-green-100 text-green-800' :
-                                                            score.val20 >= 10 ? 'bg-yellow-100 text-yellow-800' :
-                                                            'bg-red-100 text-red-800'
-                                                        }`}>
-                                                            {score.classification}
-                                                        </span>
-                                                    </td>
-                                                </>
-                                            ) : (
-                                                <td colSpan={5} className="p-4 text-center text-gray-400 italic bg-gray-50/50">
-                                                    Aguardando cálculo...
+                                        <React.Fragment key={score.teacherId}>
+                                            <tr className="hover:bg-gray-50 transition-colors">
+                                                <td className="p-4">
+                                                    <div className="font-medium text-gray-900">{score.teacherName}</div>
+                                                    <div className="text-xs text-gray-500">{score.teacherEmail}</div>
                                                 </td>
-                                            )}
-                                            
-                                            <td className="p-4 text-center">
+                                                <td className="p-4 text-gray-600 capitalize">{score.teacherCategory.replace('_', ' ')}</td>
                                                 {score.hasScore ? (
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="sm" 
-                                                        title="Imprimir Individual"
-                                                        onClick={() => {
-                                                            const user = teachers.find(t => t.id === score.teacherId);
-                                                            if (user) handlePrintReport(user);
-                                                        }}
-                                                    >
-                                                        <Printer className="h-4 w-4 text-gray-400 hover:text-black"/>
-                                                    </Button>
+                                                    <>
+                                                        <td className="p-4 text-center">{score.selfEvalScore.toFixed(1)}</td>
+                                                        <td className="p-4 text-center">{score.studentScore.toFixed(1)}</td>
+                                                        <td className="p-4 text-center">{score.institutionalScore.toFixed(1)}</td>
+                                                        <td className="p-4 text-center font-bold text-base">{score.finalScore.toFixed(1)}</td>
+                                                        <td className="p-4 text-center">
+                                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                                                score.val20 >= 14 ? 'bg-green-100 text-green-800' :
+                                                                score.val20 >= 10 ? 'bg-yellow-100 text-yellow-800' :
+                                                                'bg-red-100 text-red-800'
+                                                            }`}>
+                                                                {score.classification}
+                                                            </span>
+                                                        </td>
+                                                    </>
                                                 ) : (
-                                                    <span className="text-xs text-gray-400">-</span>
+                                                    <td colSpan={5} className="p-4 text-center text-gray-400 italic bg-gray-50/50">
+                                                        Aguardando cálculo...
+                                                    </td>
                                                 )}
-                                            </td>
-                                        </tr>
+                                                
+                                                <td className="p-4 text-center flex items-center justify-center gap-2">
+                                                    {score.hasScore && (
+                                                        <>
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="sm" 
+                                                                title="Ver Detalhes"
+                                                                onClick={() => setExpandedDetails(isExpanded ? null : score.teacherId)}
+                                                            >
+                                                                {isExpanded ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+                                                            </Button>
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="sm" 
+                                                                title="Imprimir Relatório"
+                                                                onClick={() => {
+                                                                    const user = teachers.find(t => t.id === score.teacherId);
+                                                                    if (user) handlePrintReport(user);
+                                                                }}
+                                                            >
+                                                                <Printer className="h-4 w-4 text-gray-400 hover:text-black"/>
+                                                            </Button>
+                                                        </>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                            {isExpanded && score.subjectDetails && score.subjectDetails.length > 0 && (
+                                                <tr className="bg-blue-50/50 animate-in fade-in">
+                                                    <td colSpan={8} className="p-4">
+                                                        <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
+                                                            <div className="bg-blue-50 px-4 py-2 text-xs font-bold text-blue-800 uppercase tracking-wide border-b border-blue-100">
+                                                                Detalhamento por Disciplina
+                                                            </div>
+                                                            <table className="w-full text-xs">
+                                                                <thead>
+                                                                    <tr className="text-gray-500 bg-gray-50/50 border-b">
+                                                                        <th className="p-2 text-left">Disciplina</th>
+                                                                        <th className="p-2 text-center">Turma</th>
+                                                                        <th className="p-2 text-center">Turno</th>
+                                                                        <th className="p-2 text-center">Avaliações</th>
+                                                                        <th className="p-2 text-center">Média (0-20)</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {score.subjectDetails.map((det, idx) => (
+                                                                        <tr key={idx} className="border-b last:border-0 hover:bg-gray-50">
+                                                                            <td className="p-2 font-medium">{det.subjectName}</td>
+                                                                            <td className="p-2 text-center">{det.classGroup}</td>
+                                                                            <td className="p-2 text-center">{det.shift}</td>
+                                                                            <td className="p-2 text-center">{det.responseCount}</td>
+                                                                            <td className="p-2 text-center font-bold text-blue-600">{det.score.toFixed(1)}</td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
                                     )
                                 })}
                             </tbody>
