@@ -390,9 +390,9 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                         </div>
                     </div>
                     
-                    {/* Botão Mobile Hamburger */}
+                    {/* Botão Mobile Hamburger (Único visível para navegação local) */}
                     <button 
-                        className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-md"
+                        className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
                         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                     >
                         {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
@@ -421,27 +421,29 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                     </nav>
                 </div>
 
-                {/* Menu Mobile Dropdown */}
+                {/* Menu Mobile Dropdown (Absolute Overlay - TIGELINHA) */}
                 {isMobileMenuOpen && (
-                    <div className="md:hidden mt-4 pt-4 border-t grid gap-2 animate-in slide-in-from-top-5">
-                        <button 
-                            onClick={() => { setActiveTab('stats'); setIsMobileMenuOpen(false); }} 
-                            className={`w-full text-left px-4 py-3 rounded-md flex items-center gap-3 ${activeTab === 'stats' ? 'bg-slate-100 font-semibold' : 'hover:bg-gray-50'}`}
-                        >
-                            <TrendingUp size={18}/> Resultados
-                        </button>
-                        <button 
-                            onClick={() => { setActiveTab('self-eval'); setIsMobileMenuOpen(false); }} 
-                            className={`w-full text-left px-4 py-3 rounded-md flex items-center gap-3 ${activeTab === 'self-eval' ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'hover:bg-gray-50'}`}
-                        >
-                            <UserIcon size={18}/> Auto-Avaliação
-                        </button>
-                        <button 
-                            onClick={() => { setActiveTab('surveys'); setIsMobileMenuOpen(false); }} 
-                            className={`w-full text-left px-4 py-3 rounded-md flex items-center gap-3 ${activeTab === 'surveys' ? 'bg-emerald-50 text-emerald-700 font-semibold' : 'hover:bg-gray-50'}`}
-                        >
-                            <FileCheck size={18}/> Inquéritos e Pares
-                        </button>
+                    <div className="md:hidden absolute top-full left-0 w-full bg-white shadow-xl border-b z-50 rounded-b-xl animate-in slide-in-from-top-2 p-2">
+                         <div className="grid gap-1">
+                            <button 
+                                onClick={() => { setActiveTab('stats'); setIsMobileMenuOpen(false); }} 
+                                className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'stats' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}
+                            >
+                                <TrendingUp size={18}/> Resultados
+                            </button>
+                            <button 
+                                onClick={() => { setActiveTab('self-eval'); setIsMobileMenuOpen(false); }} 
+                                className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'self-eval' ? 'bg-indigo-600 text-white' : 'hover:bg-gray-100 text-gray-700'}`}
+                            >
+                                <UserIcon size={18}/> Auto-Avaliação
+                            </button>
+                            <button 
+                                onClick={() => { setActiveTab('surveys'); setIsMobileMenuOpen(false); }} 
+                                className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'surveys' ? 'bg-emerald-600 text-white' : 'hover:bg-gray-100 text-gray-700'}`}
+                            >
+                                <FileCheck size={18}/> Inquéritos e Pares
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>

@@ -931,7 +931,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
       <div className="print:hidden max-w-7xl mx-auto p-4 md:p-8 space-y-8 animate-in fade-in duration-500">
         
-        {/* HEADER RESPONSIVO COM HAMBURGER */}
+        {/* HEADER RESPONSIVO COM HAMBURGER LOCAL */}
         <div className="bg-white p-4 rounded-xl shadow-sm border mb-6 relative z-30">
             <div className="flex justify-between items-center">
                 <div>
@@ -975,30 +975,33 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                 </button>
             </div>
 
-            {/* Mobile Dropdown Menu */}
+            {/* Mobile Dropdown Menu (Fixed Overlay Tigelinha) */}
             {isMobileMenuOpen && (
-                <div className="md:hidden mt-4 pt-4 border-t grid gap-2 animate-in slide-in-from-top-2">
-                    <button onClick={() => {setActiveTab('overview'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'overview' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}>
-                        <BarChartHorizontal size={18} /> Visão Geral
-                    </button>
-                    <button onClick={() => {setActiveTab('stats'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'stats' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}>
-                        <ListChecks size={18} /> Relatórios e Pautas
-                    </button>
-                    <button onClick={() => {setActiveTab('courses'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'courses' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}>
-                        <BookOpen size={18} /> Cursos e Disciplinas
-                    </button>
-                    <button onClick={() => {setActiveTab('teachers'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'teachers' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}>
-                        <Users size={18} /> Gestão de Docentes
-                    </button>
-                    <button onClick={() => {setActiveTab('students'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'students' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}>
-                        <GraduationCap size={18} /> Gestão de Estudantes
-                    </button>
-                    <button onClick={() => {setActiveTab('questionnaire'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'questionnaire' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}>
-                        <FileQuestion size={18} /> Configurar Questionário
-                    </button>
-                    <button onClick={() => {setActiveTab('settings'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'settings' ? 'bg-black text-white' : 'hover:bg-gray-100'}`}>
-                        <Settings size={18} /> Configurações
-                    </button>
+                <div className="md:hidden absolute top-full left-0 w-full bg-white shadow-xl border-b z-50 rounded-b-xl animate-in slide-in-from-top-2 p-2">
+                    <div className="grid gap-1">
+                        <button onClick={() => {setActiveTab('overview'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'overview' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}>
+                            <BarChartHorizontal size={18} /> Visão Geral
+                        </button>
+                        <button onClick={() => {setActiveTab('stats'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'stats' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}>
+                            <ListChecks size={18} /> Relatórios e Pautas
+                        </button>
+                        <button onClick={() => {setActiveTab('courses'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'courses' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}>
+                            <BookOpen size={18} /> Cursos e Disciplinas
+                        </button>
+                        <button onClick={() => {setActiveTab('teachers'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'teachers' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}>
+                            <Users size={18} /> Gestão de Docentes
+                        </button>
+                        <button onClick={() => {setActiveTab('students'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'students' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}>
+                            <GraduationCap size={18} /> Gestão de Estudantes
+                        </button>
+                        <button onClick={() => {setActiveTab('questionnaire'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'questionnaire' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}>
+                            <FileQuestion size={18} /> Configurar Questionário
+                        </button>
+                        <div className="border-t my-1"></div>
+                        <button onClick={() => {setActiveTab('settings'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'settings' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}>
+                            <Settings size={18} /> Configurações da Instituição
+                        </button>
+                    </div>
                 </div>
             )}
         </div>

@@ -7,7 +7,7 @@ import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { ManagerDashboard } from './components/ManagerDashboard';
 import { TeacherDashboard } from './components/TeacherDashboard';
 import { StudentDashboard } from './components/StudentDashboard';
-import { GraduationCap, ShieldCheck, ArrowRight, UserPlus, LogIn, User as UserIcon, Database, HardDrive, Key, BookOpen, AlertCircle, Menu } from 'lucide-react';
+import { GraduationCap, ShieldCheck, ArrowRight, UserPlus, LogIn, User as UserIcon, Database, HardDrive, Key, BookOpen, AlertCircle, Menu, X, LogOut, ChevronDown } from 'lucide-react';
 
 function ChangePasswordModal({ user, onPasswordChanged }: { user: User, onPasswordChanged: () => void }) {
   const [newPassword, setNewPassword] = useState('');
@@ -84,6 +84,7 @@ export default function App() {
   const [appLoading, setAppLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [systemMode, setSystemMode] = useState<string>('local');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // Auth State
   const [email, setEmail] = useState(''); 
@@ -136,6 +137,7 @@ export default function App() {
       setUser(null);
       setEmail('');
       setPassword('');
+      setMobileMenuOpen(false);
   }
 
   // --- Router Logic ---
@@ -152,9 +154,10 @@ export default function App() {
 
   const renderAppLayout = (children: React.ReactNode) => (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b sticky top-0 z-10 shadow-sm print:hidden">
+      <nav className="bg-white border-b sticky top-0 z-50 shadow-sm print:hidden">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex justify-between h-16">
+                  {/* Logo Area */}
                   <div className="flex items-center gap-2">
                       <div className="bg-black text-white p-1.5 rounded-lg shrink-0">
                         <GraduationCap className="h-5 w-5" />
@@ -162,21 +165,23 @@ export default function App() {
                       <span className="font-bold text-lg hidden sm:block tracking-tight truncate">AvaliaDocente MZ</span>
                       <span className="font-bold text-lg sm:hidden tracking-tight">ADMZ</span>
                   </div>
-                  <div className="flex items-center gap-2 md:gap-4">
-                      {/* Storage Badge in Navbar */}
-                      <div className="hidden md:flex items-center gap-1.5 px-3 py-1 bg-gray-100 rounded-full text-xs font-medium text-gray-500 border">
+
+                  {/* Desktop Actions */}
+                  <div className="hidden md:flex items-center gap-2 md:gap-4">
+                      {/* Storage Badge */}
+                      <div className="flex items-center gap-1.5 px-3 py-1 bg-gray-100 rounded-full text-xs font-medium text-gray-500 border">
                           {systemMode === 'supabase' ? (
                               <><Database size={12} className="text-green-600" /> Conectado</>
                           ) : (
-                              <><HardDrive size={12} className="text-orange-500" /> Armazenamento Local</>
+                              <><HardDrive size={12} className="text-orange-500" /> Local</>
                           )}
                       </div>
 
                       <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 md:h-9 md:w-9 rounded-full bg-gray-200 overflow-hidden border border-gray-300 shrink-0">
-                              {user?.avatar ? <img src={user.avatar} className="h-full w-full object-cover" /> : <UserIcon className="h-4 w-4 md:h-5 md:w-5 m-2 text-gray-500" />}
+                          <div className="h-9 w-9 rounded-full bg-gray-200 overflow-hidden border border-gray-300 shrink-0">
+                              {user?.avatar ? <img src={user.avatar} className="h-full w-full object-cover" /> : <UserIcon className="h-5 w-5 m-2 text-gray-500" />}
                           </div>
-                          <div className="text-right hidden sm:block leading-tight">
+                          <div className="text-right leading-tight">
                               <div className="text-sm font-medium truncate max-w-[150px]">{user?.name}</div>
                               <div className="text-xs text-gray-500 capitalize flex items-center justify-end gap-1">
                                   {user?.role === UserRole.TEACHER && !user?.approved && (
@@ -186,11 +191,67 @@ export default function App() {
                               </div>
                           </div>
                       </div>
-                      <div className="h-6 w-px bg-gray-200 mx-1 md:mx-2"></div>
-                      <Button variant="ghost" size="sm" onClick={handleLogout} className="text-red-600 hover:text-red-700 hover:bg-red-50 px-2 md:px-4">Sair</Button>
+                      <div className="h-6 w-px bg-gray-200 mx-1"></div>
+                      <Button variant="ghost" size="sm" onClick={handleLogout} className="text-red-600 hover:text-red-700 hover:bg-red-50">Sair</Button>
+                  </div>
+
+                  {/* Mobile Profile Trigger (Replaces Hamburger) */}
+                  <div className="md:hidden flex items-center">
+                    <button 
+                        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                        className="flex items-center gap-2 focus:outline-none bg-gray-50 p-1 pr-2 rounded-full border"
+                    >
+                        <div className="h-8 w-8 rounded-full bg-gray-200 overflow-hidden border border-gray-300 shrink-0">
+                            {user?.avatar ? <img src={user.avatar} className="h-full w-full object-cover" /> : <UserIcon className="h-5 w-5 m-1.5 text-gray-500" />}
+                        </div>
+                        <ChevronDown size={14} className={`text-gray-500 transition-transform duration-200 ${mobileMenuOpen ? 'rotate-180' : ''}`} />
+                    </button>
                   </div>
               </div>
           </div>
+
+          {/* Mobile User Menu Dropdown (Triggered by Avatar) */}
+          {mobileMenuOpen && (
+              <div className="md:hidden absolute top-16 right-0 w-full sm:w-80 bg-white border-b sm:border-l sm:border-b shadow-xl z-50 animate-in slide-in-from-top-2">
+                  <div className="p-4 space-y-4">
+                      {/* User Info Card */}
+                      <div className="flex items-center gap-4 bg-gray-50 p-4 rounded-xl border">
+                          <div className="h-12 w-12 rounded-full bg-white border-2 border-gray-200 overflow-hidden shrink-0 flex items-center justify-center">
+                              {user?.avatar ? <img src={user.avatar} className="h-full w-full object-cover" /> : <UserIcon className="h-6 w-6 text-gray-400" />}
+                          </div>
+                          <div className="overflow-hidden">
+                              <p className="font-bold text-gray-900 truncate">{user?.name}</p>
+                              <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                              <p className="text-xs text-blue-600 font-medium capitalize mt-1 px-2 py-0.5 bg-blue-50 rounded-full inline-block">
+                                  {user?.role.replace('_', ' ')}
+                              </p>
+                          </div>
+                      </div>
+
+                      {/* System Status */}
+                      <div className="flex items-center justify-between px-2 text-sm text-gray-600">
+                          <span>Status do Sistema:</span>
+                          <span className="flex items-center gap-1.5 font-medium">
+                              {systemMode === 'supabase' ? (
+                                  <><Database size={14} className="text-green-600" /> Online</>
+                              ) : (
+                                  <><HardDrive size={14} className="text-orange-500" /> Modo Local</>
+                              )}
+                          </span>
+                      </div>
+
+                      <div className="border-t pt-2">
+                          <Button 
+                            variant="destructive" 
+                            className="w-full flex items-center gap-2 justify-center" 
+                            onClick={handleLogout}
+                          >
+                              <LogOut size={16} /> Sair do Sistema
+                          </Button>
+                      </div>
+                  </div>
+              </div>
+          )}
       </nav>
       <main className="pb-16 md:pb-0">
         {children}
