@@ -3,8 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { User, CombinedScore, SelfEvaluation, TeacherCategory, Questionnaire, UserRole, Question, QualitativeEval, Institution } from '../types';
 import { BackendService } from '../services/backend';
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label, Select } from './ui';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
-import { Download, TrendingUp, FileText, BarChart3, Save, FileQuestion, Star, CheckCircle2, Lock, Printer, AlertCircle, Info, Calculator, FileCheck, ClipboardList, Shield } from 'lucide-react';
+import { Download, TrendingUp, FileText, BarChart3, Save, FileQuestion, Star, CheckCircle2, Lock, Printer, AlertCircle, Info, Calculator, FileCheck, ClipboardList, Shield, Table2 } from 'lucide-react';
 
 interface Props {
   user: User;
@@ -203,33 +202,17 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
   const isFormLocked = !!lastSaved || !isEvaluationOpen;
   const isIntern = header.category === 'assistente_estagiario';
   
-  const scoreChartData = stats ? [
-      { name: 'Av. Alunos', value: stats.studentScore, fill: '#3b82f6' }, // Blue
-      { name: 'Auto-Avaliação', value: stats.selfEvalScore, fill: '#8b5cf6' }, // Violet
-      { name: 'Institucional', value: stats.institutionalScore, fill: '#10b981' }, // Emerald
-  ] : [];
-
-  // Data for Radar Chart (Comparing Achieved vs Max Possible in each category roughly scaled to 100 for visibility)
-  // Max approx points: Student (20), Self (100 -> scaled to 80), Inst (10 -> scaled to 10?) 
-  // Simplified Radar: normalize all to 0-100% scale for comparison
-  const radarData = stats ? [
-      { subject: 'Pedagógico (Alunos)', A: (stats.studentScore / 20) * 100, fullMark: 100 },
-      { subject: 'Desempenho (Auto)', A: (stats.selfEvalScore / 100) * 100, fullMark: 100 }, // Assuming 100 max raw self points for viz
-      { subject: 'Compromisso (Inst)', A: (stats.institutionalScore / 20) * 100, fullMark: 100 },
-  ] : [];
-
-
   return (
     <>
       {/* --- INÍCIO DO CONTEÚDO PARA IMPRESSÃO --- */}
-      <div className="hidden print:block">
+      <div className="hidden print:block font-serif">
         <div className="p-4">
           <header className="flex justify-between items-center border-b pb-4 mb-6">
             <div className="flex items-center gap-4">
               {institution?.logo && <img src={institution.logo} className="h-16 w-16 object-contain" alt="Logo"/>}
               <div>
                 <h1 className="text-2xl font-bold">{institution?.name}</h1>
-                <p className="text-gray-600">Relatório de Desempenho do Docente</p>
+                <p className="text-gray-600">Boletim de Desempenho Docente</p>
               </div>
             </div>
             <div className="text-right">
@@ -240,33 +223,34 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
           
           {stats ? (
             <div className="space-y-8">
-              <section className="text-center bg-gray-100 p-6 rounded-lg">
-                <h2 className="text-lg font-medium text-gray-600">Classificação Final do Semestre</h2>
-                <p className="text-7xl font-extrabold text-black tracking-tighter my-2">{stats.finalScore.toFixed(2)}</p>
-                <p className="text-sm text-gray-500">Calculado em: {new Date(stats.lastCalculated).toLocaleDateString()}</p>
-              </section>
-
-              <section className="grid grid-cols-3 gap-6 text-center">
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <h3 className="font-semibold text-blue-800">Avaliação (Alunos)</h3>
-                  <p className="text-3xl font-bold">{stats.studentScore.toFixed(2)}</p>
-                </div>
-                <div className="bg-purple-50 p-4 rounded-lg">
-                  <h3 className="font-semibold text-purple-800">Auto-Avaliação</h3>
-                  <p className="text-3xl font-bold">{stats.selfEvalScore.toFixed(2)}</p>
-                </div>
-                <div className="bg-green-50 p-4 rounded-lg">
-                  <h3 className="font-semibold text-green-800">Institucional</h3>
-                  <p className="text-3xl font-bold">{stats.institutionalScore.toFixed(2)}</p>
-                </div>
+              <section className="border border-gray-300 rounded p-4">
+                 <h2 className="text-sm font-bold uppercase mb-4 border-b pb-2">Resultados Consolidados</h2>
+                 <table className="w-full text-sm border-collapse">
+                    <tbody>
+                        <tr className="border-b border-gray-200">
+                            <td className="py-2 font-medium">Avaliação Pedagógica (Alunos)</td>
+                            <td className="py-2 text-right font-bold">{stats.studentScore.toFixed(2)}</td>
+                        </tr>
+                        <tr className="border-b border-gray-200">
+                            <td className="py-2 font-medium">Auto-Avaliação de Desempenho</td>
+                            <td className="py-2 text-right font-bold">{stats.selfEvalScore.toFixed(2)}</td>
+                        </tr>
+                        <tr className="border-b border-gray-200">
+                            <td className="py-2 font-medium">Avaliação Institucional (Gestão)</td>
+                            <td className="py-2 text-right font-bold">{stats.institutionalScore.toFixed(2)}</td>
+                        </tr>
+                        <tr className="bg-gray-50">
+                            <td className="py-3 font-bold uppercase">Nota Final do Semestre</td>
+                            <td className="py-3 text-right font-black text-lg">{stats.finalScore.toFixed(2)}</td>
+                        </tr>
+                    </tbody>
+                 </table>
               </section>
               
               {qualEval?.comments && (
-                <section>
-                  <h2 className="text-xl font-semibold mb-2">Comentários do Gestor</h2>
-                  <div className="p-4 border rounded-lg bg-gray-50 italic">
-                    <p className="text-gray-700">"{qualEval.comments}"</p>
-                  </div>
+                <section className="border border-gray-300 rounded p-4">
+                  <h2 className="text-sm font-bold uppercase mb-2">Observações da Gestão</h2>
+                  <p className="text-sm italic text-gray-700 leading-relaxed">{qualEval.comments}</p>
                 </section>
               )}
 
@@ -302,7 +286,7 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                         <CardTitle className="flex items-center gap-2">
                             <FileText className="h-5 w-5 text-indigo-600" /> Relatório de Desempenho
                         </CardTitle>
-                        <Button variant="outline" onClick={handleDownloadPDF}><Printer className="mr-2 h-4 w-4" /> Imprimir Relatório</Button>
+                        <Button variant="outline" onClick={handleDownloadPDF}><Printer className="mr-2 h-4 w-4" /> Imprimir Boletim</Button>
                     </CardHeader>
                     <CardContent className="space-y-8 pt-6">
                         {!stats ? (
@@ -320,87 +304,48 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                                             </div>
                                         </CardContent>
                                     </Card>
-                                    
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <Card className="bg-blue-50 border-blue-100">
-                                            <CardContent className="p-4 text-center">
-                                                <p className="text-xs text-blue-600 font-bold uppercase">Alunos</p>
-                                                <p className="text-xl font-black text-blue-900">{stats.studentScore.toFixed(1)}</p>
-                                            </CardContent>
-                                        </Card>
-                                        <Card className="bg-emerald-50 border-emerald-100">
-                                            <CardContent className="p-4 text-center">
-                                                <p className="text-xs text-emerald-600 font-bold uppercase">Institucional</p>
-                                                <p className="text-xl font-black text-emerald-900">{stats.institutionalScore.toFixed(1)}</p>
-                                            </CardContent>
-                                        </Card>
-                                        <Card className="bg-violet-50 border-violet-100 col-span-2">
-                                            <CardContent className="p-4 flex justify-between items-center">
-                                                <div>
-                                                    <p className="text-xs text-violet-600 font-bold uppercase">Auto-Avaliação</p>
-                                                    <p className="text-2xl font-black text-violet-900">{stats.selfEvalScore.toFixed(1)}</p>
-                                                </div>
-                                                <div className="h-10 w-10 rounded-full bg-violet-200 flex items-center justify-center text-violet-700">
-                                                    <CheckCircle2 size={20} />
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    </div>
                                 </div>
 
-                                {/* Coluna 2: Gráfico Donut */}
-                                <div className="lg:col-span-1">
-                                    <div className="h-full flex flex-col justify-center items-center">
-                                        <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Composição da Nota</h4>
-                                        <div className="h-[220px] w-full relative">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <PieChart>
-                                                    <Pie
-                                                        data={scoreChartData}
-                                                        dataKey="value"
-                                                        nameKey="name"
-                                                        cx="50%"
-                                                        cy="50%"
-                                                        innerRadius={60}
-                                                        outerRadius={80}
-                                                        paddingAngle={5}
-                                                        stroke="none"
-                                                    >
-                                                        {scoreChartData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.fill} />)}
-                                                    </Pie>
-                                                    <Tooltip />
-                                                    <Legend verticalAlign="bottom" iconType="circle" />
-                                                </PieChart>
-                                            </ResponsiveContainer>
-                                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                                <span className="text-2xl font-bold text-gray-300">100%</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                {/* Coluna 3: Gráfico Radar */}
-                                <div className="lg:col-span-1">
-                                    <div className="h-full flex flex-col justify-center items-center">
-                                        <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Triângulo de Competências</h4>
-                                        <div className="h-[220px] w-full">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                                                    <PolarGrid stroke="#e2e8f0" />
-                                                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10, fontWeight: 'bold' }} />
-                                                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                                                    <Radar
-                                                        name="Performance %"
-                                                        dataKey="A"
-                                                        stroke="#6366f1"
-                                                        fill="#6366f1"
-                                                        fillOpacity={0.4}
-                                                    />
-                                                    <Tooltip />
-                                                </RadarChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    </div>
+                                {/* Coluna 2 e 3: Tabela de Detalhes */}
+                                <div className="lg:col-span-2">
+                                    <Card className="border-none shadow-none bg-gray-50">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm uppercase tracking-wider text-gray-500 font-bold flex items-center gap-2"><Table2 size={16}/> Composição da Nota</CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="p-0">
+                                            <table className="w-full text-left">
+                                                <thead className="bg-gray-100 text-xs font-medium text-gray-500 uppercase tracking-wider border-y border-gray-200">
+                                                    <tr>
+                                                        <th className="px-6 py-3">Componente</th>
+                                                        <th className="px-6 py-3 text-center">Peso</th>
+                                                        <th className="px-6 py-3 text-right">Pontuação</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-200 bg-white text-sm">
+                                                    <tr>
+                                                        <td className="px-6 py-4 font-medium text-gray-900">Avaliação Pedagógica (Alunos)</td>
+                                                        <td className="px-6 py-4 text-center text-gray-500">~12%</td>
+                                                        <td className="px-6 py-4 text-right font-bold text-blue-600">{stats.studentScore.toFixed(2)}</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td className="px-6 py-4 font-medium text-gray-900">Auto-Avaliação de Desempenho</td>
+                                                        <td className="px-6 py-4 text-center text-gray-500">~80%</td>
+                                                        <td className="px-6 py-4 text-right font-bold text-violet-600">{stats.selfEvalScore.toFixed(2)}</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td className="px-6 py-4 font-medium text-gray-900">Avaliação Institucional (Gestão)</td>
+                                                        <td className="px-6 py-4 text-center text-gray-500">~8%</td>
+                                                        <td className="px-6 py-4 text-right font-bold text-emerald-600">{stats.institutionalScore.toFixed(2)}</td>
+                                                    </tr>
+                                                    <tr className="bg-gray-50">
+                                                        <td className="px-6 py-4 font-bold uppercase text-gray-900">Total</td>
+                                                        <td className="px-6 py-4 text-center text-gray-500">100%</td>
+                                                        <td className="px-6 py-4 text-right font-black text-gray-900 text-lg">{stats.finalScore.toFixed(2)}</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </CardContent>
+                                    </Card>
                                 </div>
                                 
                                 {qualEval?.comments && (
@@ -516,7 +461,18 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                       <CardHeader className="bg-gradient-to-br from-indigo-50 to-white"><CardTitle className="text-indigo-900 flex items-center gap-2"><Calculator className="h-5 w-5" /> Resumo em Tempo Real</CardTitle></CardHeader>
                       <CardContent className="pt-6 space-y-6">
                           <div className="text-center"><p className="text-sm font-medium text-gray-500 mb-1">Pontuação Quantitativa</p><div className="text-5xl font-extrabold text-indigo-600 tracking-tight">{calculateLiveScore()}</div><p className="text-xs text-gray-400 mt-2">pontos acumulados</p></div>
-                          <div className="h-[200px] w-full"><ResponsiveContainer width="100%" height="100%"><BarChart data={getDetailedBreakdown()} layout="vertical" margin={{top:0, left:0, right:30, bottom:0}}><XAxis type="number" hide /><YAxis dataKey="name" type="category" width={80} tick={{fontSize: 10}} /><Tooltip cursor={{fill: 'transparent'}} contentStyle={{fontSize: '12px'}} /><Bar dataKey="subtotal" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={20}><Cell fill="#8b5cf6" /></Bar></BarChart></ResponsiveContainer></div>
+                          <div className="bg-gray-50 rounded-lg p-2 border overflow-hidden">
+                             <table className="w-full text-xs">
+                                 <tbody>
+                                     {getDetailedBreakdown().map((item, i) => (
+                                         <tr key={i} className="border-b border-gray-100 last:border-0">
+                                             <td className="py-2 pl-2 text-gray-600">{item.name}</td>
+                                             <td className="py-2 pr-2 text-right font-bold text-indigo-600">{item.subtotal} pts</td>
+                                         </tr>
+                                     ))}
+                                 </tbody>
+                             </table>
+                          </div>
                           {lastSaved && (<div className="pt-4 border-t"><div className="flex items-center gap-2 text-green-700 bg-green-50 p-3 rounded-lg text-sm mb-3"><CheckCircle2 className="h-4 w-4" /><span>Salvo em: {lastSaved.toLocaleTimeString()}</span></div></div>)}
                       </CardContent>
                   </Card>

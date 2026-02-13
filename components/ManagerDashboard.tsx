@@ -4,8 +4,7 @@ import { BackendService } from '../services/backend';
 // import { AIService } from '../services/ai'; // Removed AI Service
 import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution, SelfEvaluation } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, cn } from './ui';
-import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, GraduationCap, PieChart as PieIcon, Download, Printer, Image as ImageIcon, Sparkles, RefreshCw, ScanText, Eye, Settings, Building2, Save, FileText, X, TrendingUp, ClipboardList, CheckCircle2, Lock, Shield, Edit } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
+import { Users, Check, BookOpen, Calculator, AlertCircle, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, UserPlus, Star, List, Type, BarChartHorizontal, Key, GraduationCap, PieChart as PieIcon, Download, Printer, Image as ImageIcon, Sparkles, RefreshCw, ScanText, Eye, Settings, Building2, Save, FileText, X, TrendingUp, ClipboardList, CheckCircle2, Lock, Shield, Edit, Table2 } from 'lucide-react';
 
 interface Props {
   institutionId: string;
@@ -19,25 +18,6 @@ interface NewSubjectItem {
     classGroup: string;
     shift: 'Diurno' | 'Noturno';
 }
-
-// Custom Tooltip for Charts
-const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-white p-4 border border-slate-100 shadow-xl rounded-xl">
-          <p className="font-bold text-slate-800 mb-2">{label}</p>
-          {payload.map((entry: any, index: number) => (
-            <div key={index} className="flex items-center gap-2 text-xs font-medium">
-                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color || entry.fill }}></div>
-                <span className="text-slate-500">{entry.name}:</span>
-                <span className="text-slate-900 font-bold">{Number(entry.value).toFixed(2)}</span>
-            </div>
-          ))}
-        </div>
-      );
-    }
-    return null;
-};
 
 export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'teachers' | 'students' | 'qualitative' | 'questionnaire' | 'stats' | 'settings'>('overview');
@@ -503,37 +483,35 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
   const avgScore = allScores.length > 0 ? (allScores.reduce((acc, curr) => acc + curr.finalScore, 0) / allScores.length).toFixed(1) : '0';
 
-  // --- DATA PREPARATION FOR CHARTS ---
+  // --- DATA PREPARATION FOR TABLES ---
 
-  const chartData = useMemo(() => allScores.map(score => {
-      const teacher = teachers.find(t => t.id === score.teacherId);
-      return {
-          name: teacher ? teacher.name.split(' ').slice(0, 2).join(' ') : 'N/A', // First 2 names
-          fullName: teacher?.name,
-          finalScore: score.finalScore,
-          studentScore: score.studentScore,
-          selfEvalScore: score.selfEvalScore,
-          institutionalScore: score.institutionalScore
-      }
-  }).sort((a,b) => b.finalScore - a.finalScore).slice(0, 15), [allScores, teachers]); // Show top 15
+  const sortedScores = useMemo(() => {
+      return [...allScores].sort((a,b) => b.finalScore - a.finalScore).map(score => {
+        const teacher = teachers.find(t => t.id === score.teacherId);
+        return {
+            ...score,
+            teacherName: teacher?.name || 'Desconhecido',
+            teacherEmail: teacher?.email
+        };
+      });
+  }, [allScores, teachers]);
 
   const gradeDistribution = useMemo(() => {
-      const dist = [
-          { name: 'Excelente (≥18)', value: 0, fill: '#10b981' }, // Emerald
-          { name: 'Bom (14-17)', value: 0, fill: '#3b82f6' },      // Blue
-          { name: 'Suficiente (10-13)', value: 0, fill: '#f59e0b' }, // Amber
-          { name: 'Insuficiente (<10)', value: 0, fill: '#ef4444' }  // Red
-      ];
+      const dist = {
+          excellent: 0, // >= 18
+          good: 0,      // 14-17
+          sufficient: 0,// 10-13
+          insufficient: 0 // < 10
+      };
 
       allScores.forEach(s => {
-          // Convert max 130 to 20 scale for categorization
           const val20 = (s.finalScore / 130) * 20;
-          if (val20 >= 18) dist[0].value++;
-          else if (val20 >= 14) dist[1].value++;
-          else if (val20 >= 10) dist[2].value++;
-          else dist[3].value++;
+          if (val20 >= 18) dist.excellent++;
+          else if (val20 >= 14) dist.good++;
+          else if (val20 >= 10) dist.sufficient++;
+          else dist.insufficient++;
       });
-      return dist.filter(d => d.value > 0);
+      return dist;
   }, [allScores]);
 
 
@@ -669,56 +647,89 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                 </footer>
             </div>
         ) : (
-            // --- RELATÓRIO DE RESUMO (ANTIGO) ---
-            <div className="p-6">
-                <header className="text-center mb-10">
-                    <div className="flex justify-center items-center gap-4 mb-4">
-                        {institution?.logo && <img src={institution.logo} className="h-20 w-20 object-contain" alt="Logo"/>}
+            // --- RELATÓRIO DE RESUMO EM TABELA (GLOBAL) ---
+            <div className="p-8 font-sans">
+                <header className="mb-8 border-b-2 border-gray-800 pb-4">
+                    <div className="flex justify-between items-end">
                         <div>
-                            <h1 className="text-3xl font-bold text-gray-800">{institution?.name}</h1>
-                            <p className="text-lg text-gray-600">Relatório de Desempenho Global de Docentes</p>
+                             <h1 className="text-2xl font-bold uppercase tracking-wide text-gray-900">{institution?.name}</h1>
+                             <p className="text-sm font-medium text-gray-600 uppercase">Relatório de Desempenho Docente</p>
+                        </div>
+                        <div className="text-right text-xs text-gray-500">
+                            <p>Data de Emissão: {new Date().toLocaleDateString()}</p>
+                            <p>Total de Docentes: {teachers.length}</p>
                         </div>
                     </div>
-                    <p className="text-sm text-gray-500">Data de Emissão: {new Date().toLocaleDateString()}</p>
                 </header>
 
-                <section className="mb-8 p-4 border rounded-lg bg-gray-50">
-                    <h2 className="text-lg font-semibold text-gray-700 mb-3 text-center">Resumo Geral do Período</h2>
-                    <div className="flex justify-around items-center text-center">
-                        <div><p className="text-2xl font-bold text-gray-800">{teachers.length}</p><p className="text-sm text-gray-600">Total de Docentes</p></div>
-                        <div className="border-l h-12 border-gray-200"></div>
-                        <div><p className="text-2xl font-bold text-gray-800">{allScores.length}</p><p className="text-sm text-gray-600">Avaliações Processadas</p></div>
-                        <div className="border-l h-12 border-gray-200"></div>
-                        <div><p className="text-2xl font-bold text-gray-800">{avgScore}</p><p className="text-sm text-gray-600">Média Institucional</p></div>
-                    </div>
-                </section>
-                
-                <section>
-                    <h2 className="text-xl font-semibold mb-4 text-gray-800">Resultados Detalhados por Docente</h2>
-                    <table className="w-full text-sm border-collapse border border-gray-300">
+                <section className="mb-8">
+                     <h2 className="text-sm font-bold uppercase text-gray-800 mb-2 border-l-4 border-gray-800 pl-2">Resumo Estatístico</h2>
+                     <table className="w-full text-sm border-collapse border border-gray-300">
                         <thead className="bg-gray-100">
                             <tr>
-                                <th className="p-3 border border-gray-300 font-semibold text-left">Docente</th>
-                                <th className="p-3 border border-gray-300 font-semibold text-center">Av. Alunos</th>
-                                <th className="p-3 border border-gray-300 font-semibold text-center">Auto-Av.</th>
-                                <th className="p-3 border border-gray-300 font-semibold text-center">Av. Institucional</th>
-                                <th className="p-3 border border-gray-300 font-semibold text-center">Nota Final</th>
+                                <th className="border border-gray-300 p-2 text-left">Indicador</th>
+                                <th className="border border-gray-300 p-2 text-center">Valor</th>
+                                <th className="border border-gray-300 p-2 text-left">Distribuição de Classificações</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {allScores.sort((a,b) => b.finalScore - a.finalScore).map((score, index) => (
-                                <tr key={score.teacherId} className={`break-inside-avoid ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                                    <td className="p-2 border border-gray-300 text-left">{teachers.find(t => t.id === score.teacherId)?.name || 'N/A'}</td>
-                                    <td className="p-2 border border-gray-300 text-center">{score.studentScore.toFixed(2)}</td>
-                                    <td className="p-2 border border-gray-300 text-center">{score.selfEvalScore.toFixed(2)}</td>
-                                    <td className="p-2 border border-gray-300 text-center">{score.institutionalScore.toFixed(2)}</td>
-                                    <td className="p-2 border border-gray-300 text-center font-bold text-gray-800">{score.finalScore.toFixed(2)}</td>
-                                </tr>
-                            ))}
+                            <tr>
+                                <td className="border border-gray-300 p-2 font-medium">Média Institucional</td>
+                                <td className="border border-gray-300 p-2 text-center font-bold">{avgScore}</td>
+                                <td className="border border-gray-300 p-2" rowSpan={3}>
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                        <div>Excelente (≥18): <strong>{gradeDistribution.excellent}</strong></div>
+                                        <div>Bom (14-17): <strong>{gradeDistribution.good}</strong></div>
+                                        <div>Suficiente (10-13): <strong>{gradeDistribution.sufficient}</strong></div>
+                                        <div>Insuficiente (&lt;10): <strong>{gradeDistribution.insufficient}</strong></div>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td className="border border-gray-300 p-2 font-medium">Avaliações Processadas</td>
+                                <td className="border border-gray-300 p-2 text-center">{allScores.length}</td>
+                            </tr>
+                        </tbody>
+                     </table>
+                </section>
+                
+                <section>
+                    <h2 className="text-sm font-bold uppercase text-gray-800 mb-2 border-l-4 border-gray-800 pl-2">Detalhamento de Notas</h2>
+                    <table className="w-full text-sm border-collapse border border-gray-300">
+                        <thead className="bg-gray-100">
+                            <tr>
+                                <th className="p-2 border border-gray-300 text-left w-10">#</th>
+                                <th className="p-2 border border-gray-300 text-left">Docente</th>
+                                <th className="p-2 border border-gray-300 text-center">Av. Alunos (20)</th>
+                                <th className="p-2 border border-gray-300 text-center">Auto-Av. (100)</th>
+                                <th className="p-2 border border-gray-300 text-center">Inst. (10)</th>
+                                <th className="p-2 border border-gray-300 text-center bg-gray-200">Nota Final</th>
+                                <th className="p-2 border border-gray-300 text-center">Classificação (0-20)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {sortedScores.map((score, index) => {
+                                const final20 = calculateClassification20(score.finalScore);
+                                return (
+                                    <tr key={score.teacherId} className="hover:bg-gray-50">
+                                        <td className="p-2 border border-gray-300 text-center">{index + 1}</td>
+                                        <td className="p-2 border border-gray-300 font-medium">{score.teacherName}</td>
+                                        <td className="p-2 border border-gray-300 text-center">{score.studentScore.toFixed(1)}</td>
+                                        <td className="p-2 border border-gray-300 text-center">{score.selfEvalScore.toFixed(1)}</td>
+                                        <td className="p-2 border border-gray-300 text-center">{score.institutionalScore.toFixed(1)}</td>
+                                        <td className="p-2 border border-gray-300 text-center font-bold bg-gray-50">{score.finalScore.toFixed(1)}</td>
+                                        <td className="p-2 border border-gray-300 text-center font-bold">
+                                            {final20.toFixed(1)} ({getAppreciation(final20)})
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </section>
-                <footer className="mt-16 pt-4 border-t border-gray-300 text-center text-xs text-gray-500"><p className="font-semibold">{institution?.name}</p><p>Relatório gerado pelo Sistema AvaliaDocente MZ</p></footer>
+                <footer className="mt-8 text-center text-xs text-gray-500 border-t pt-2">
+                    Sistema AvaliaDocente MZ - Relatório Gerado Automaticamente
+                </footer>
             </div>
         )}
       </div>
@@ -803,89 +814,64 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Gráfico 1: Distribuição de Classificações (Donut) */}
+                    {/* Resumo em Tabela Minimalista */}
                     <Card className="lg:col-span-1 border-none shadow-md overflow-hidden bg-white">
-                        <CardHeader className="border-b border-gray-100 pb-2">
-                            <CardTitle className="text-base text-slate-700 font-bold">Distribuição de Notas</CardTitle>
+                        <CardHeader className="border-b border-gray-100 pb-2 bg-gray-50">
+                            <CardTitle className="text-sm uppercase tracking-wider text-gray-500 font-bold">Resumo Estatístico</CardTitle>
                         </CardHeader>
-                        <CardContent className="flex flex-col items-center justify-center p-6">
-                            <div className="h-[250px] w-full relative">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <PieChart>
-                                        <Pie
-                                            data={gradeDistribution}
-                                            dataKey="value"
-                                            nameKey="name"
-                                            cx="50%"
-                                            cy="50%"
-                                            innerRadius={60}
-                                            outerRadius={80}
-                                            paddingAngle={5}
-                                            stroke="none"
-                                        >
-                                            {gradeDistribution.map((entry, index) => (
-                                                <Cell key={`cell-${index}`} fill={entry.fill} />
-                                            ))}
-                                        </Pie>
-                                        <Tooltip content={<CustomTooltip />} />
-                                        <Legend verticalAlign="bottom" height={36} iconType="circle" />
-                                    </PieChart>
-                                </ResponsiveContainer>
-                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                    <div className="text-center">
-                                        <span className="text-3xl font-bold text-slate-800">{allScores.length}</span>
-                                        <p className="text-xs text-slate-400 uppercase tracking-widest">Avaliações</p>
-                                    </div>
-                                </div>
-                            </div>
+                        <CardContent className="p-0">
+                            <table className="w-full text-sm">
+                                <tbody className="divide-y divide-gray-100">
+                                    <tr><td className="p-4 text-gray-500">Total de Avaliações</td><td className="p-4 text-right font-bold">{allScores.length}</td></tr>
+                                    <tr><td className="p-4 text-gray-500">Média Institucional</td><td className="p-4 text-right font-bold text-blue-600">{avgScore}</td></tr>
+                                    <tr className="bg-gray-50/50"><td colSpan={2} className="p-2 text-xs font-bold text-center uppercase tracking-widest text-gray-400">Distribuição</td></tr>
+                                    <tr><td className="p-3 pl-6 text-green-700 font-medium">Excelente (≥18)</td><td className="p-3 text-right font-bold">{gradeDistribution.excellent}</td></tr>
+                                    <tr><td className="p-3 pl-6 text-blue-700 font-medium">Bom (14-17)</td><td className="p-3 text-right font-bold">{gradeDistribution.good}</td></tr>
+                                    <tr><td className="p-3 pl-6 text-yellow-700 font-medium">Suficiente (10-13)</td><td className="p-3 text-right font-bold">{gradeDistribution.sufficient}</td></tr>
+                                    <tr><td className="p-3 pl-6 text-red-700 font-medium">Insuficiente (&lt;10)</td><td className="p-3 text-right font-bold">{gradeDistribution.insufficient}</td></tr>
+                                </tbody>
+                            </table>
                         </CardContent>
                     </Card>
 
-                    {/* Gráfico 2: Ranking de Docentes (Horizontal Bar) */}
+                    {/* Ranking em Tabela Minimalista */}
                     <Card className="lg:col-span-2 border-none shadow-md bg-white">
-                        <CardHeader className="border-b border-gray-100 pb-2">
-                            <CardTitle className="text-base text-slate-700 font-bold">Ranking de Desempenho (Top 15)</CardTitle>
+                        <CardHeader className="border-b border-gray-100 pb-2 bg-gray-50">
+                            <CardTitle className="text-sm uppercase tracking-wider text-gray-500 font-bold flex items-center gap-2"><Table2 size={16}/> Ranking de Desempenho (Top 15)</CardTitle>
                         </CardHeader>
-                        <CardContent className="p-4">
-                            <div className="h-[300px] w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart
-                                        layout="vertical"
-                                        data={chartData}
-                                        margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                                    >
-                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                                        <XAxis type="number" domain={[0, 150]} hide />
-                                        <YAxis
-                                            dataKey="name"
-                                            type="category"
-                                            width={100}
-                                            tick={{ fontSize: 11, fill: '#64748b' }}
-                                            axisLine={false}
-                                            tickLine={false}
-                                        />
-                                        <Tooltip content={<CustomTooltip />} cursor={{fill: '#f8fafc'}} />
-                                        <Bar
-                                            dataKey="finalScore"
-                                            name="Nota Final"
-                                            radius={[0, 4, 4, 0]}
-                                            barSize={12}
-                                        >
-                                            {chartData.map((entry, index) => (
-                                                <Cell
-                                                    key={`cell-${index}`}
-                                                    fill={
-                                                        entry.finalScore >= 110 ? '#10b981' : // Emerald
-                                                        entry.finalScore >= 90 ? '#3b82f6' :  // Blue
-                                                        entry.finalScore >= 65 ? '#f59e0b' :  // Amber
-                                                        '#ef4444'                              // Red
-                                                    }
-                                                />
-                                            ))}
-                                        </Bar>
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
+                        <CardContent className="p-0 overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-gray-100 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        <th className="p-3 w-10">#</th>
+                                        <th className="p-3">Docente</th>
+                                        <th className="p-3 text-center">Final</th>
+                                        <th className="p-3 text-center">Situação</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 text-sm">
+                                    {sortedScores.slice(0, 15).map((score, index) => {
+                                        const final20 = calculateClassification20(score.finalScore);
+                                        return (
+                                            <tr key={index} className="hover:bg-gray-50 transition-colors">
+                                                <td className="p-3 font-medium text-gray-400">{index + 1}</td>
+                                                <td className="p-3 font-medium text-gray-900">{score.teacherName}</td>
+                                                <td className="p-3 text-center font-bold text-gray-800">{score.finalScore.toFixed(1)}</td>
+                                                <td className="p-3 text-center">
+                                                    <span className={cn(
+                                                        "px-2 py-0.5 rounded text-xs font-bold uppercase",
+                                                        final20 >= 14 ? "bg-green-100 text-green-800" :
+                                                        final20 >= 10 ? "bg-yellow-100 text-yellow-800" : "bg-red-100 text-red-800"
+                                                    )}>
+                                                        {getAppreciation(final20)}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
+                                    {sortedScores.length === 0 && <tr><td colSpan={4} className="p-4 text-center text-gray-500">Sem dados.</td></tr>}
+                                </tbody>
+                            </table>
                         </CardContent>
                     </Card>
                 </div>
