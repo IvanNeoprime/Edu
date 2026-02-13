@@ -269,15 +269,16 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                       <CardTitle className="text-base flex items-center gap-2"><Check className="h-4 w-4"/> Status de Avaliação</CardTitle>
                   </CardHeader>
                   <CardContent className="pt-0">
-                      <div style={{ width: '100%', height: 200 }}>
+                      {/* FIX: Container com altura explícita para evitar erro do Recharts */}
+                      <div className="w-full h-[250px] min-h-[250px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie
                                     data={chartData}
                                     cx="50%"
                                     cy="50%"
-                                    innerRadius={50}
-                                    outerRadius={70}
+                                    innerRadius={60}
+                                    outerRadius={80}
                                     paddingAngle={5}
                                     dataKey="value"
                                 >
@@ -285,7 +286,7 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                                         <Cell key={`cell-${index}`} fill={entry.color} />
                                     ))}
                                 </Pie>
-                                <Legend />
+                                <Legend verticalAlign="bottom" height={36}/>
                                 <Tooltip />
                             </PieChart>
                         </ResponsiveContainer>

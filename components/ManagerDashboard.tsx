@@ -1595,7 +1595,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                 </Card>
                 <Card className="h-fit">
                     <CardHeader>
-                        <CardTitle>Matricular Novo Estudante</CardTitle>
+                        <CardTitle>Registrar Estudante</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handleAddStudent} className="space-y-4">
@@ -1669,7 +1669,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                 <Input value={newStudentClassGroups} onChange={e => setNewStudentClassGroups(e.target.value)} placeholder="Ex: A, B" />
                             </div>
 
-                            <Button type="submit" className="w-full">Matricular</Button>
+                            <Button type="submit" className="w-full">Registrar</Button>
                         </form>
                     </CardContent>
                 </Card>
