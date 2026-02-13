@@ -1,6 +1,6 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { User, UserRole, Institution, Subject, Questionnaire, StudentResponse, CombinedScore, Question, SelfEvaluation, QualitativeEval, TeacherCategory, Course, SubjectScoreDetail } from '../types';
+import { User, UserRole, Institution, Subject, Questionnaire, StudentResponse, CombinedScore, Question, SelfEvaluation, QualitativeEval, TeacherCategory, Course, SubjectScoreDetail, SelfEvalTemplate } from '../types';
 
 // ==================================================================================
 // 🚀 CONFIGURAÇÃO GERAL (SUPABASE vs LOCAL)
@@ -80,6 +80,63 @@ export const TEACHER_STANDARD_QUESTIONS: Question[] = [
     { id: "inst_03", text: "A comunicação com a direção é eficiente?", type: "binary", weight: 1 },
     { id: "inst_04", text: "Existe apoio para investigação?", type: "binary", weight: 1 }
 ];
+
+export const DEFAULT_SELF_EVAL_TEMPLATE: SelfEvalTemplate = {
+    groups: [
+        {
+            id: 'g1', title: '1. Actividade Docente', maxPoints: 20, items: [
+                { key: 'g1_gradSubjects', label: 'Disciplinas de Graduação', description: '15 pontos por disciplina' },
+                { key: 'g1_postGradSubjects', label: 'Disciplinas de Pós-Graduação', description: '5 pontos por disciplina' }
+            ]
+        },
+        {
+            id: 'g2', title: '2. Supervisão Pedagógica', maxPoints: 20, items: [
+                { key: 'g2_gradSupervision', label: 'Supervisão Graduação', description: '6 pontos por dissertação' },
+                { key: 'g2_postGradSupervision', label: 'Supervisão Pós-Grad', description: '6 pontos por tese' },
+                { key: 'g2_regencySubjects', label: 'Regências', description: '8 pontos por regência' }
+            ]
+        },
+        {
+            id: 'g3', title: '3. Carga Horária', maxPoints: 35, items: [
+                { key: 'g3_theoryHours', label: 'Aulas Teóricas (h)', description: 'Horas totais' },
+                { key: 'g3_practicalHours', label: 'Aulas Práticas (h)', description: 'Horas totais' },
+                { key: 'g3_consultationHours', label: 'Consultas (h)', description: 'Horas totais' }
+            ]
+        },
+        {
+            id: 'g4', title: '4. Rendimento Pedagógico', maxPoints: 35, items: [
+                { key: 'g4_gradStudents', label: 'Aprovados Graduação', description: 'Total de estudantes' },
+                { key: 'g4_postGradStudents', label: 'Aprovados Pós-Grad', description: 'Total de estudantes' },
+                { key: 'g4_passRate', label: 'Taxa Aprovação (%)', description: 'Percentagem' }
+            ]
+        },
+        {
+            id: 'g5', title: '5. Produção de Material', maxPoints: 30, items: [
+                { key: 'g5_manuals', label: 'Manuais Didáticos', description: 'Quantidade produzida' },
+                { key: 'g5_supportTexts', label: 'Textos de Apoio', description: 'Quantidade produzida' }
+            ]
+        },
+        {
+            id: 'g6', title: '6. Investigação', maxPoints: 35, items: [
+                { key: 'g6_publishedArticles', label: 'Artigos Publicados', description: '7 pontos cada' },
+                { key: 'g6_eventsComms', label: 'Comunicações em Eventos', description: '3 pontos cada' },
+                { key: 'g6_individualProjects', label: 'Projetos Individuais', description: '4 pontos cada' },
+                { key: 'g6_collectiveProjects', label: 'Projetos Coletivos', description: '4 pontos cada' }
+            ]
+        },
+        {
+            id: 'g7', title: '7. Extensão', maxPoints: 40, items: [
+                { key: 'g7_collaboration', label: 'Colaboração com Comunidade', description: '5 pontos por atividade' },
+                { key: 'g7_institutionalTeams', label: 'Equipas Institucionais', description: '5 pontos por equipa' }
+            ]
+        },
+        {
+            id: 'g8', title: '8. Administração', maxPoints: 45, items: [
+                { key: 'g8_adminHours', label: 'Horas de Administração', description: '10 pontos por cargo/atividade' }
+            ]
+        }
+    ]
+};
 
 export interface SubjectWithTeacher extends Subject {
     teacherName: string;
@@ -186,6 +243,17 @@ const SupabaseBackend = {
             return;
         }
         await supabase.from('institutions').update(data).eq('id', id);
+    },
+
+    async getInstitutionSelfEvalTemplate(institutionId: string): Promise<SelfEvalTemplate> {
+        const inst = await this.getInstitution(institutionId);
+        // Retorna o template salvo OU o padrão
+        return (inst && inst.selfEvalTemplate) ? inst.selfEvalTemplate : DEFAULT_SELF_EVAL_TEMPLATE;
+    },
+
+    async saveInstitutionSelfEvalTemplate(institutionId: string, template: SelfEvalTemplate) {
+        // Salva dentro do objeto da instituição
+        await this.updateInstitution(institutionId, { selfEvalTemplate: template });
     },
 
     async createInstitution(data: any) {
