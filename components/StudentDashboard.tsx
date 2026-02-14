@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { User, Questionnaire, Question, Institution } from '../types';
 import { BackendService, SubjectWithTeacher } from '../services/backend';
 import { Card, CardContent, CardHeader, CardTitle, Button, Select, Label, Input } from './ui';
-import { Lock, Send, CheckCircle2, AlertCircle, Star, User as UserIcon, BookOpen, PieChart as PieChartIcon, Check, CalendarClock } from 'lucide-react';
+import { Lock, Send, CheckCircle2, AlertCircle, Star, User as UserIcon, BookOpen, PieChart as PieChartIcon, Check, CalendarClock, ArrowRight, Library } from 'lucide-react';
 import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface Props {
@@ -14,11 +14,10 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
   const [activeTab, setActiveTab] = useState<'survey' | 'stats'>('survey');
   const [data, setData] = useState<{questionnaire: Questionnaire, subjects: SubjectWithTeacher[]} | null>(null);
   const [institution, setInstitution] = useState<Institution | null>(null);
-  const [progress, setProgress] = useState<{completed: number, pending: number}>({ completed: 0, pending: 0 });
+  const [progress, setProgress] = useState<{completed: number, pending: number, evaluatedSubjectIds: string[]}>({ completed: 0, pending: 0, evaluatedSubjectIds: [] });
   
-  // Estados para seleção em duas etapas
-  const [selectedTeacherId, setSelectedTeacherId] = useState('');
-  const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  // Estado para armazenar a disciplina que está sendo avaliada no momento
+  const [currentSubject, setCurrentSubject] = useState<SubjectWithTeacher | null>(null);
   
   // Answer value can be string (for text/choice) or number
   const [answers, setAnswers] = useState<Record<string, string | number>>({}); 
@@ -32,16 +31,20 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
             setData(d);
             if(d) {
                 BackendService.getStudentProgress(user.id).then(p => {
-                    // Calculo de pendentes aproximado: total subjects - completed (simplified)
-                    const totalSubjects = d.subjects.length;
-                    setProgress({ completed: p.completed, pending: Math.max(0, totalSubjects - p.completed) });
+                    const totalSubjects = d.subjects.length; // This is raw total, not filtered yet
+                    // No need to calculate global pending here, we do it in the view
+                    setProgress({ 
+                        completed: p.completed, 
+                        pending: 0, 
+                        evaluatedSubjectIds: p.evaluatedSubjectIds 
+                    });
                 });
             }
         });
     }
   }, [user.institutionId, user.id]);
 
-  // Filtrar disciplinas disponíveis para o aluno com base nos Turnos e Turmas
+  // Filtrar disciplinas disponíveis para o aluno AUTOMATICAMENTE baseado no Curso
   const mySubjects = useMemo(() => {
       if (!data) return [];
       return data.subjects.filter(s => {
@@ -49,46 +52,26 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
           const shiftMatch = s.shift && user.shifts ? user.shifts.includes(s.shift) : true;
           
           // 2. Verificação de Turma: Se a disciplina tem turma (ex: A), o aluno deve pertencer a essa turma.
-          // Se a disciplina não tem turma definida, é visível para todos do turno.
           const classMatch = s.classGroup && user.classGroups 
                 ? user.classGroups.includes(s.classGroup) 
                 : true;
 
-          // 3. Verificação de Curso
-          const courseMatch = user.course && s.course ? s.course.toLowerCase().includes(user.course.toLowerCase()) || user.course.toLowerCase().includes(s.course.toLowerCase()) : true;
+          // 3. Verificação de Curso (CRÍTICO: Filtra apenas disciplinas do curso do aluno)
+          const courseMatch = user.course && s.course 
+                ? s.course.toLowerCase().includes(user.course.toLowerCase()) || user.course.toLowerCase().includes(s.course.toLowerCase()) 
+                : true;
           
           return shiftMatch && classMatch && courseMatch;
       });
   }, [data, user.shifts, user.classGroups, user.course]);
 
-  // Extrair lista única de docentes disponíveis baseada nas disciplinas FILTRADAS
-  const uniqueTeachers = useMemo(() => {
-      const seen = new Set();
-      const teachers: { id: string, name: string }[] = [];
-      
-      mySubjects.forEach(s => {
-          if (!seen.has(s.teacherId)) {
-              seen.add(s.teacherId);
-              teachers.push({ id: s.teacherId, name: s.teacherName });
-          }
-      });
-      return teachers;
-  }, [mySubjects]);
-
-  // Filtrar disciplinas do docente selecionado (dentro do subset já filtrado)
-  const availableSubjectsForTeacher = useMemo(() => {
-      if (!selectedTeacherId) return [];
-      return mySubjects.filter(s => s.teacherId === selectedTeacherId);
-  }, [mySubjects, selectedTeacherId]);
-
-  const handleTeacherChange = (teacherId: string) => {
-      setSelectedTeacherId(teacherId);
-      setSelectedSubjectId(''); // Reseta disciplina ao trocar docente
-      setAnswers({});
-  };
+  // Atualizar contadores baseados na lista filtrada
+  const pendingCount = useMemo(() => {
+      return mySubjects.filter(s => !progress.evaluatedSubjectIds.includes(s.id)).length;
+  }, [mySubjects, progress.evaluatedSubjectIds]);
 
   const handleSubmit = async () => {
-    if (!data || !selectedSubjectId || !user.institutionId) return;
+    if (!data || !currentSubject || !user.institutionId) return;
     
     const qCount = data.questionnaire.questions.length;
     const aCount = Object.keys(answers).length;
@@ -100,23 +83,26 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
 
     setSubmitting(true);
     try {
-        const subject = data.subjects.find(s => s.id === selectedSubjectId);
-        if (!subject) throw new Error("Disciplina inválida");
-
         await BackendService.submitAnonymousResponse(user.id, {
             institutionId: user.institutionId,
             questionnaireId: data.questionnaire.id,
-            subjectId: selectedSubjectId,
-            teacherId: subject.teacherId,
+            subjectId: currentSubject.id,
+            teacherId: currentSubject.teacherId,
             answers: Object.entries(answers).map(([k, v]) => ({ questionId: k, value: v }))
         });
         setSuccess(true);
-        // Update stats
-        setProgress(prev => ({ completed: prev.completed + 1, pending: Math.max(0, prev.pending - 1) }));
+        // Atualiza progresso localmente
+        setProgress(prev => ({ 
+            ...prev, 
+            completed: prev.completed + 1, 
+            evaluatedSubjectIds: [...prev.evaluatedSubjectIds, currentSubject.id] 
+        }));
+        
         setAnswers({});
-        setSelectedSubjectId('');
-        setSelectedTeacherId('');
-        setTimeout(() => setSuccess(false), 3000);
+        setTimeout(() => {
+            setSuccess(false);
+            setCurrentSubject(null); // Volta para a lista
+        }, 2000);
     } catch (e: any) {
         alert(e.message || "Erro ao submeter");
     } finally {
@@ -153,12 +139,12 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                           <span>0 (Ruim)</span>
                           <span>10 (Excelente)</span>
                       </div>
-                      <div className="flex gap-1">
+                      <div className="flex gap-1 overflow-x-auto pb-2">
                         {[0,1,2,3,4,5,6,7,8,9,10].map(num => (
                              <button
                                 key={num}
                                 onClick={() => setAnswers(prev => ({ ...prev, [q.id]: num }))}
-                                className={`flex-1 h-10 rounded-md text-sm font-medium border transition-all ${
+                                className={`h-10 w-10 shrink-0 rounded-md text-sm font-medium border transition-all ${
                                     val === num 
                                     ? 'bg-blue-600 text-white border-blue-700 shadow-md scale-110' 
                                     : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
@@ -231,32 +217,28 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
 
   const chartData = [
       { name: 'Avaliado', value: progress.completed, color: '#22c55e' },
-      { name: 'Pendente', value: progress.pending, color: '#e5e7eb' },
+      { name: 'Pendente', value: pendingCount, color: '#e5e7eb' },
   ];
   
-  const isEvaluationOpen = institution?.isEvaluationOpen ?? true; // Assume aberto se não definido
+  const isEvaluationOpen = institution?.isEvaluationOpen ?? true; 
 
   return (
-    <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-8 animate-in fade-in duration-500">
-      <header className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500">
+      <header className="flex flex-col md:flex-row justify-between md:items-center gap-4 border-b pb-6">
         <div>
-            <h1 className="text-3xl font-bold text-gray-900">{data.questionnaire.title}</h1>
+            <h1 className="text-3xl font-bold text-gray-900">{institution?.name || 'Painel do Estudante'}</h1>
             <p className="text-gray-500 mt-1 flex items-center gap-2">
-                Avaliação anónima
+                <span className="font-semibold text-gray-700">{user.course || 'Curso Geral'}</span>
+                <span className="text-gray-300">•</span>
                 {user.shifts && user.shifts.length > 0 && (
-                    <span className="text-xs bg-black text-white px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full flex items-center gap-1 border">
                         <CalendarClock size={12}/> {user.shifts.join(' + ')}
-                    </span>
-                )}
-                {user.classGroups && user.classGroups.length > 0 && (
-                    <span className="text-xs border px-2 py-0.5 rounded-full bg-white">
-                        Turmas: {user.classGroups.join(', ')}
                     </span>
                 )}
             </p>
         </div>
-        <div className="flex bg-gray-100 p-1 rounded-lg">
-            <button onClick={() => setActiveTab('survey')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'survey' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Avaliar</button>
+        <div className="flex bg-gray-100 p-1 rounded-lg shrink-0">
+            <button onClick={() => setActiveTab('survey')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'survey' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Avaliações</button>
             <button onClick={() => setActiveTab('stats')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'stats' ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-gray-900'}`}>Meu Progresso</button>
         </div>
       </header>
@@ -302,8 +284,8 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                   </Card>
                   <Card>
                       <CardContent className="pt-6">
-                          <div className="text-3xl font-bold text-gray-400">{progress.pending}</div>
-                          <p className="text-gray-500 text-sm">Disciplinas Pendentes (Estimado)</p>
+                          <div className="text-3xl font-bold text-gray-400">{pendingCount}</div>
+                          <p className="text-gray-500 text-sm">Disciplinas Pendentes</p>
                       </CardContent>
                   </Card>
               </div>
@@ -329,97 +311,115 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                         <p className="text-center">O período para submissão de avaliações ("{institution?.evaluationPeriodName || 'Atual'}") foi encerrado pela instituição.</p>
                     </CardContent>
                 </Card>
-            ) : (
-                <div className="space-y-6">
-                    <div className="inline-flex items-center gap-2 text-xs text-blue-800 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
-                        <Lock className="h-3 w-3" /> 100% Anónimo e Seguro
-                    </div>
-                    {/* Selection Card */}
-                    <Card>
-                        <CardHeader className="bg-gray-50 border-b pb-4">
-                            <CardTitle className="text-base text-gray-700">Seleção de Avaliação</CardTitle>
-                            {uniqueTeachers.length === 0 && (
-                                <p className="text-xs text-orange-500 mt-1 flex items-center gap-1">
-                                    <AlertCircle size={12} />
-                                    Nenhuma disciplina encontrada compatível com seus turnos ({user.shifts?.join(', ') || 'N/A'}).
-                                </p>
-                            )}
-                        </CardHeader>
-                        <CardContent className="pt-6 space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label className="flex items-center gap-2">
-                                        <UserIcon className="h-4 w-4" /> 1. Selecione o Docente
-                                    </Label>
-                                    <Select 
-                                        value={selectedTeacherId} 
-                                        onChange={e => handleTeacherChange(e.target.value)} 
-                                        className="bg-white"
-                                        disabled={uniqueTeachers.length === 0}
-                                    >
-                                        <option value="">Escolha o docente...</option>
-                                        {uniqueTeachers.map(t => (
-                                            <option key={t.id} value={t.id}>{t.name}</option>
-                                        ))}
-                                    </Select>
-                                </div>
-                                
-                                <div className="space-y-2">
-                                    <Label className="flex items-center gap-2">
-                                        <BookOpen className="h-4 w-4" /> 2. Selecione a Disciplina
-                                    </Label>
-                                    <Select 
-                                        value={selectedSubjectId} 
-                                        onChange={e => setSelectedSubjectId(e.target.value)} 
-                                        className="bg-white"
-                                        disabled={!selectedTeacherId}
-                                    >
-                                        <option value="">Escolha a disciplina...</option>
-                                        {availableSubjectsForTeacher.length === 0 && selectedTeacherId && (
-                                            <option disabled>Sem disciplinas compatíveis</option>
-                                        )}
-                                        {availableSubjectsForTeacher.map(s => (
-                                            <option key={s.id} value={s.id}>
-                                                {s.name} ({s.code || 'S/C'}) - {s.shift} {s.classGroup ? `(Turma ${s.classGroup})` : ''}
-                                            </option>
-                                        ))}
-                                    </Select>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {selectedSubjectId && (
-                        <div className="space-y-6 animate-in slide-in-from-bottom-4 fade-in duration-500">
-                            
-                            {data.questionnaire.questions.map((q, idx) => (
-                                <Card key={q.id} className="overflow-visible">
-                                    <CardContent className="pt-6">
-                                        <div className="mb-4">
-                                            <span className="text-xs font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded mr-2">
-                                                #{idx + 1}
-                                            </span>
-                                            <span className="font-medium text-gray-900 text-lg block mt-1">{q.text}</span>
-                                        </div>
-                                        <div className="mt-2">
-                                            {renderQuestionInput(q)}
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))}
-
-                            <div className="sticky bottom-4 pt-4 pb-8 bg-gradient-to-t from-gray-50 to-transparent pointer-events-none flex justify-center">
-                                <Button 
-                                    size="lg" 
-                                    className="w-full max-w-sm shadow-xl text-base font-semibold h-12 bg-black hover:bg-gray-800 pointer-events-auto" 
-                                    onClick={handleSubmit} 
-                                    disabled={submitting}
-                                >
-                                    {submitting ? 'Enviando...' : <><Send className="mr-2 h-4 w-4" /> Enviar Avaliação</>}
-                                </Button>
-                            </div>
+            ) : currentSubject ? (
+                // --- FORMULÁRIO DE AVALIAÇÃO ---
+                <div className="space-y-6 animate-in slide-in-from-right-8 fade-in duration-300">
+                    <div className="flex items-center justify-between mb-4">
+                        <button 
+                            onClick={() => { setCurrentSubject(null); setAnswers({}); }}
+                            className="text-sm text-gray-500 hover:text-gray-900 flex items-center gap-1"
+                        >
+                            ← Voltar para lista
+                        </button>
+                        <div className="inline-flex items-center gap-2 text-xs text-blue-800 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
+                            <Lock className="h-3 w-3" /> Avaliação Anónima
                         </div>
-                    )}
+                    </div>
+
+                    <div className="bg-slate-900 text-white p-6 rounded-xl shadow-lg mb-6">
+                        <h2 className="text-2xl font-bold">{currentSubject.name}</h2>
+                        <p className="text-slate-400 flex items-center gap-2 mt-1">
+                            <UserIcon size={16}/> {currentSubject.teacherName}
+                        </p>
+                    </div>
+
+                    {data.questionnaire.questions.map((q, idx) => (
+                        <Card key={q.id} className="overflow-visible border-l-4 border-l-transparent hover:border-l-blue-500 transition-all">
+                            <CardContent className="pt-6">
+                                <div className="mb-4">
+                                    <span className="text-xs font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded mr-2">
+                                        #{idx + 1}
+                                    </span>
+                                    <span className="font-medium text-gray-900 text-lg block mt-1">{q.text}</span>
+                                </div>
+                                <div className="mt-2">
+                                    {renderQuestionInput(q)}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ))}
+
+                    <div className="sticky bottom-4 pt-4 pb-8 bg-gradient-to-t from-gray-50 via-gray-50/90 to-transparent pointer-events-none flex justify-center z-10">
+                        <Button 
+                            size="lg" 
+                            className="w-full max-w-sm shadow-xl text-base font-semibold h-12 bg-black hover:bg-gray-800 pointer-events-auto" 
+                            onClick={handleSubmit} 
+                            disabled={submitting}
+                        >
+                            {submitting ? 'Enviando...' : <><Send className="mr-2 h-4 w-4" /> Enviar Avaliação</>}
+                        </Button>
+                    </div>
+                </div>
+            ) : (
+                // --- LISTA DE DISCIPLINAS (GRID) ---
+                <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                            <Library className="h-5 w-5"/> Minhas Disciplinas
+                        </h2>
+                        {mySubjects.length === 0 && (
+                            <span className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded-md border border-orange-100">
+                                Nenhuma encontrada para seu turno/turma.
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {mySubjects.map(subject => {
+                            const isEvaluated = progress.evaluatedSubjectIds.includes(subject.id);
+                            return (
+                                <div 
+                                    key={subject.id} 
+                                    className={`relative group bg-white border rounded-xl p-5 shadow-sm transition-all duration-300 ${isEvaluated ? 'opacity-75 hover:opacity-100 border-green-200' : 'hover:shadow-md hover:border-blue-300 border-gray-200'}`}
+                                >
+                                    <div className="flex justify-between items-start mb-3">
+                                        <div className={`p-2 rounded-lg ${isEvaluated ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-700'}`}>
+                                            <BookOpen size={20} />
+                                        </div>
+                                        {isEvaluated ? (
+                                            <span className="text-xs font-bold text-green-700 bg-green-100 px-2 py-1 rounded-full flex items-center gap-1">
+                                                <CheckCircle2 size={12}/> Concluído
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs font-bold text-yellow-700 bg-yellow-100 px-2 py-1 rounded-full flex items-center gap-1">
+                                                Pendente
+                                            </span>
+                                        )}
+                                    </div>
+                                    
+                                    <h3 className="font-bold text-gray-900 mb-1 line-clamp-1" title={subject.name}>{subject.name}</h3>
+                                    <p className="text-sm text-gray-500 mb-4 flex items-center gap-1">
+                                        <UserIcon size={12}/> {subject.teacherName}
+                                    </p>
+                                    
+                                    <div className="text-xs text-gray-400 mb-4 flex gap-2">
+                                        <span className="bg-gray-50 px-1.5 py-0.5 rounded border">{subject.shift}</span>
+                                        {subject.classGroup && <span className="bg-gray-50 px-1.5 py-0.5 rounded border">Turma {subject.classGroup}</span>}
+                                    </div>
+
+                                    <Button 
+                                        onClick={() => setCurrentSubject(subject)}
+                                        disabled={isEvaluated}
+                                        variant={isEvaluated ? "outline" : "primary"}
+                                        className="w-full"
+                                    >
+                                        {isEvaluated ? 'Avaliado' : 'Avaliar Agora'} 
+                                        {!isEvaluated && <ArrowRight size={14} className="ml-2"/>}
+                                    </Button>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
         </>

@@ -289,8 +289,8 @@ const SupabaseBackend = {
         return (data || []) as Course[];
     },
 
-    async addCourse(institutionId: string, name: string, code: string, duration?: number, semester?: string, modality?: 'Presencial' | 'Online'): Promise<Course> {
-        const newCourse: Course = { id: `c_${Date.now()}`, institutionId, name, code, duration, semester, modality };
+    async addCourse(institutionId: string, name: string, code: string, duration?: number, semester?: string, modality?: 'Presencial' | 'Online', classGroups?: string[]): Promise<Course> {
+        const newCourse: Course = { id: `c_${Date.now()}`, institutionId, name, code, duration, semester, modality, classGroups };
         if (!supabase) {
             const courses = getTable<Course>(DB_KEYS.COURSES);
             setTable(DB_KEYS.COURSES, [...courses, newCourse]);
@@ -480,12 +480,20 @@ const SupabaseBackend = {
 
     async submitAnonymousResponse(userId: string, response: any) {
         if (!supabase) {
-            const resps = getTable<StudentResponse>(DB_KEYS.RESPONSES);
-            setTable(DB_KEYS.RESPONSES, [...resps, response]);
+            // Em modo local, armazenamos o userId dentro da resposta para rastreamento (simulação)
+            const resps = getTable<any>(DB_KEYS.RESPONSES);
+            setTable(DB_KEYS.RESPONSES, [...resps, { ...response, _local_userId: userId }]);
             return;
         }
+        // Em Supabase, para anonimato real, não enviamos o userId na tabela de respostas públicas.
+        // Mas para rastrear progresso, idealmente teríamos uma tabela separada 'votes_tracker'.
+        // Para este MVP, vamos confiar no client-side tracking via Votes Tracker se implementado,
+        // ou inserir um hash se necessário. Simplificação: insert direto.
         const cleanResponse = { ...response, answers: response.answers };
         const { error } = await supabase.from('responses').insert([cleanResponse]);
+        
+        // Se houver uma tabela de rastreamento (votes_tracker), inseriríamos aqui.
+        // Como o schema atual não tem, pulamos. O 'getStudentProgress' abaixo tentará inferir.
         if (error) throw new Error(error.message);
     },
 
@@ -696,12 +704,35 @@ const SupabaseBackend = {
         await supabase.from('users').update({ password: newPassword, mustChangePassword: false }).eq('id', userId);
     },
 
-    async getStudentProgress(studentId: string) {
+    async getStudentProgress(studentId: string): Promise<{ completed: number, pending: number, history: any[], evaluatedSubjectIds: string[] }> {
+        let evaluatedSubjectIds: string[] = [];
+        
         if (!supabase) {
-             const resps = getTable<StudentResponse>(DB_KEYS.RESPONSES);
-             return { completed: 0, pending: 5, history: [] }; 
+             const resps = getTable<any>(DB_KEYS.RESPONSES);
+             // No modo local, usamos a flag _local_userId inserida no submitAnonymousResponse
+             evaluatedSubjectIds = resps.filter(r => r._local_userId === studentId).map(r => r.subjectId);
+        } else {
+            // Em modo Supabase, como a tabela 'responses' é anônima,
+            // idealmente usaríamos uma tabela 'votes_tracker' (userId, subjectId).
+            // Para manter compatibilidade com o schema atual sem migrações complexas,
+            // vamos retornar vazio ou simular baseado em LocalStorage do lado do cliente se persistido.
+            // *Solução Pragmática:* Assumimos que o frontend vai controlar isso visualmente por enquanto,
+            // ou que não há persistência de "Visto" entre sessões em máquinas diferentes para anonimato total.
+            // Contudo, se quisermos persistência:
+            // const { data } = await supabase.from('votes_tracker').select('subjectId').eq('userId', studentId);
+            // evaluatedSubjectIds = data?.map(d => d.subjectId) || [];
+            
+            // Como não temos 'votes_tracker' no schema, retornamos vazio para segurança.
+            // O frontend pode usar localStorage 'my_votes' como fallback se desejar.
+            evaluatedSubjectIds = [];
         }
-        return { completed: 0, pending: 0, history: [] };
+        
+        return { 
+            completed: evaluatedSubjectIds.length, 
+            pending: 0, 
+            history: [],
+            evaluatedSubjectIds
+        };
     },
     
     async resetSystem() {

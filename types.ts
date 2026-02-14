@@ -38,6 +38,7 @@ export interface Course {
   duration?: number; // Anos
   semester?: string; // Novo: Semestre (ex: 1, 2, Anual)
   modality?: 'Presencial' | 'Online'; // Novo: Modalidade
+  classGroups?: string[]; // Novo: Lista de Turmas do Curso (ex: A, B, C)
 }
 
 export interface Institution {

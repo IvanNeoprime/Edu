@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { BackendService, PDF_STANDARD_QUESTIONS, DEFAULT_SELF_EVAL_TEMPLATE, GroupedComments } from '../services/backend';
 import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution, SelfEvaluation, Course, SelfEvalTemplate } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, cn } from './ui';
-import { Users, BookOpen, Calculator, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, Star, BarChartHorizontal, GraduationCap, Download, Printer, Image as ImageIcon, RefreshCw, Settings, Save, X, Edit, Scale, Award, FileSpreadsheet, ListChecks, FileText, Layers, AlertTriangle, Menu, Eye, MessageSquare, RotateCcw } from 'lucide-react';
+import { Users, BookOpen, Calculator, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, Star, BarChartHorizontal, GraduationCap, Download, Printer, Image as ImageIcon, RefreshCw, Settings, Save, X, Edit, Scale, Award, FileSpreadsheet, ListChecks, FileText, Layers, AlertTriangle, Menu, Eye, MessageSquare, RotateCcw, LayoutList } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -59,6 +59,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [newCourseDuration, setNewCourseDuration] = useState('4');
   const [newCourseSemester, setNewCourseSemester] = useState('1'); 
   const [newCourseModality, setNewCourseModality] = useState<'Presencial' | 'Online'>('Presencial');
+  const [newCourseClassGroups, setNewCourseClassGroups] = useState(''); // Novo estado para Turmas (Criação de curso)
   
   // Estado para Disciplinas do Curso (Estrutura Curricular)
   const [courseSubjects, setCourseSubjects] = useState<CurricularSubject[]>([]);
@@ -114,7 +115,8 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [newStudentAvatar, setNewStudentAvatar] = useState('');
   // Multi-selection states
   const [newStudentShifts, setNewStudentShifts] = useState<string[]>([]);
-  const [newStudentClassGroups, setNewStudentClassGroups] = useState('');
+  const [newStudentClassGroups, setNewStudentClassGroups] = useState<string[]>([]);
+  const [newStudentClassGroupsInput, setNewStudentClassGroupsInput] = useState(''); // Fallback manual
   
   // Novos Estados para Aluno (Semestre e Modalidade)
   const [newStudentSemester, setNewStudentSemester] = useState('1');
@@ -131,6 +133,12 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         BackendService.getAllScores(institutionId).then(setAllScores);
     }
   }, [activeTab, institutionId]);
+
+  // Reset student class groups when course changes
+  useEffect(() => {
+      setNewStudentClassGroups([]);
+      setNewStudentClassGroupsInput('');
+  }, [newStudentCourse]);
 
   const loadQuestionnaire = async () => {
     const q = await BackendService.getInstitutionQuestionnaire(institutionId);
@@ -311,21 +319,46 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       e.preventDefault();
       if (!newCourseName || !newCourseCode) return;
       try {
-          const result = await BackendService.addCourse(institutionId, newCourseName, newCourseCode, parseInt(newCourseDuration), newCourseSemester, newCourseModality);
+          // Parse as turmas (se houver)
+          const classGroupsList = newCourseClassGroups
+            .split(',')
+            .map(s => s.trim())
+            .filter(s => s.length > 0);
+            
+          const result = await BackendService.addCourse(institutionId, newCourseName, newCourseCode, parseInt(newCourseDuration), newCourseSemester, newCourseModality, classGroupsList);
+          
           if (result) {
             setCourses(prev => [...prev, result]);
+            
+            // Se houver disciplinas adicionadas
             if (courseSubjects.length > 0) {
                 const year = new Date().getFullYear().toString();
+                // Definir turmas padrão se o usuário não inseriu nenhuma
+                const finalClassGroups = classGroupsList.length > 0 ? classGroupsList : ['A'];
+
                 for (const sub of courseSubjects) {
-                    await BackendService.assignSubject({
-                        name: sub.name, code: `${newCourseCode}-${sub.level}${sub.semester}`, teacherId: undefined, institutionId: institutionId, academicYear: year, level: sub.level, semester: sub.semester, course: newCourseName, classGroup: 'A', shift: 'Diurno', modality: newCourseModality as any
-                    });
+                    // Para cada disciplina, criamos uma entrada para cada turma definida no curso
+                    for (const group of finalClassGroups) {
+                        await BackendService.assignSubject({
+                            name: sub.name, 
+                            code: `${newCourseCode}-${sub.level}${sub.semester}`, 
+                            teacherId: undefined, 
+                            institutionId: institutionId, 
+                            academicYear: year, 
+                            level: sub.level, 
+                            semester: sub.semester, 
+                            course: newCourseName, 
+                            classGroup: group, // Atribui a turma específica
+                            shift: 'Diurno', 
+                            modality: newCourseModality as any
+                        });
+                    }
                 }
                 await loadData();
             }
           }
-          setNewCourseName(''); setNewCourseCode(''); setNewCourseDuration('4'); setNewCourseSemester('1'); setNewCourseModality('Presencial'); setCourseSubjects([]);
-          alert(`Curso "${newCourseName}" criado com ${courseSubjects.length} disciplinas!`);
+          setNewCourseName(''); setNewCourseCode(''); setNewCourseDuration('4'); setNewCourseSemester('1'); setNewCourseModality('Presencial'); setNewCourseClassGroups(''); setCourseSubjects([]);
+          alert(`Curso "${newCourseName}" criado com sucesso!`);
       } catch(e: any) { alert("Erro ao adicionar curso: " + e.message); }
   };
 
@@ -371,10 +404,16 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       if (!newStudentName.trim() || !newStudentEmail.trim() || !newStudentPwd.trim()) { alert("Por favor, preencha Nome, Email e Senha."); return; }
       if (!newStudentCourse) { alert("Por favor, selecione um Curso para o estudante."); return; }
       if (newStudentShifts.length === 0) { alert("Selecione pelo menos um turno."); return; }
+      
+      // Determine class groups: Either selected from buttons OR manual input
+      let finalClassGroups = newStudentClassGroups;
+      if (finalClassGroups.length === 0 && newStudentClassGroupsInput.trim()) {
+          finalClassGroups = newStudentClassGroupsInput.split(',').map(s => s.trim()).filter(s => s.length > 0);
+      }
+
       try {
-          const classGroups = newStudentClassGroups.split(',').map(s => s.trim()).filter(s => s.length > 0);
-          await BackendService.addStudent(institutionId, newStudentName, newStudentEmail, newStudentPwd, newStudentCourse, newStudentLevel, newStudentAvatar, newStudentShifts, classGroups, newStudentSemester, newStudentModality);
-          setNewStudentName(''); setNewStudentEmail(''); setNewStudentPwd(''); setNewStudentCourse(''); setNewStudentLevel(''); setNewStudentAvatar(''); setNewStudentClassGroups(''); setNewStudentShifts([]); setNewStudentSemester('1'); setNewStudentModality('Presencial');
+          await BackendService.addStudent(institutionId, newStudentName, newStudentEmail, newStudentPwd, newStudentCourse, newStudentLevel, newStudentAvatar, newStudentShifts, finalClassGroups, newStudentSemester, newStudentModality);
+          setNewStudentName(''); setNewStudentEmail(''); setNewStudentPwd(''); setNewStudentCourse(''); setNewStudentLevel(''); setNewStudentAvatar(''); setNewStudentClassGroups([]); setNewStudentClassGroupsInput(''); setNewStudentShifts([]); setNewStudentSemester('1'); setNewStudentModality('Presencial');
           await loadData(); alert(`Estudante cadastrado com sucesso!`);
       } catch (error: any) { alert("Erro ao cadastrar estudante: " + error.message); }
   };
@@ -527,8 +566,20 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       doc.save("relatorio_desempenho_docente.pdf");
   };
 
+  // Helper para obter o objeto do curso selecionado
+  const selectedCourseObj = useMemo(() => {
+      return courses.find(c => c.name === newStudentCourse);
+  }, [newStudentCourse, courses]);
+
+  // Helper para o Subject Builder do Professor
+  const tempSubjectCourseObj = useMemo(() => {
+      return courses.find(c => c.name === tempSubject.course);
+  }, [tempSubject.course, courses]);
+
   return (
     <div className="min-h-screen bg-gray-50/50">
+      {/* ... (Previous code remains unchanged) ... */}
+      
       {/* --- PREVIEW MODALS --- */}
       {previewMode !== 'none' && (
           <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
@@ -623,48 +674,35 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                 <div className="print:hidden flex justify-between items-center mb-8 sticky top-0 bg-white/95 backdrop-blur py-4 border-b">
                     <h2 className="text-xl font-bold">Relatório de Comentários</h2>
                     <div className="flex gap-2">
-                        <Button onClick={() => window.print()} className="bg-blue-600 text-white hover:bg-blue-700">
-                            <Printer className="mr-2 h-4 w-4"/> Imprimir Respostas
-                        </Button>
-                        <Button variant="outline" onClick={() => setViewingCommentsFor(null)}>
-                            <X className="mr-2 h-4 w-4"/> Fechar
-                        </Button>
+                        <Button onClick={() => window.print()} className="bg-blue-600 text-white hover:bg-blue-700"><Printer className="mr-2 h-4 w-4"/> Imprimir Respostas</Button>
+                        <Button variant="outline" onClick={() => setViewingCommentsFor(null)}><X className="mr-2 h-4 w-4"/> Fechar</Button>
                     </div>
                 </div>
-
                 <div className="text-center mb-8">
                      {institution?.logo && <img src={institution.logo} className="h-16 object-contain mx-auto mb-2" alt="Logo"/>}
                      <h1 className="text-xl font-bold uppercase tracking-wide">{institution?.name}</h1>
                      <p className="text-sm text-gray-500 uppercase">Relatório de Feedback Qualitativo (Respostas)</p>
                      <p className="text-xs mt-1">Gerado em: {new Date().toLocaleDateString()}</p>
                 </div>
-
                 <div className="mb-8 border-b pb-4">
                     <p><strong>Docente:</strong> {viewingCommentsFor.name}</p>
                     <p><strong>Cargo:</strong> {viewingCommentsFor.jobTitle || 'Docente'}</p>
                     <p><strong>Email:</strong> {viewingCommentsFor.email}</p>
                 </div>
-
                 {teacherComments.length === 0 ? (
-                    <div className="text-center py-12 text-gray-400 italic border-2 border-dashed rounded-lg">
-                        Nenhum comentário textual foi registrado para este docente ainda.
-                    </div>
+                    <div className="text-center py-12 text-gray-400 italic border-2 border-dashed rounded-lg">Nenhum comentário textual foi registrado para este docente ainda.</div>
                 ) : (
                     <div className="space-y-8">
                         {teacherComments.map((group, idx) => (
                             <div key={idx} className="break-inside-avoid">
                                 <div className="bg-gray-100 p-3 rounded-t-lg border border-gray-300 font-bold text-gray-800 flex justify-between items-center">
                                     <span>{group.subjectName}</span>
-                                    <span className="text-xs font-normal bg-white px-2 py-1 rounded border">
-                                        Turma {group.classGroup} • {group.shift}
-                                    </span>
+                                    <span className="text-xs font-normal bg-white px-2 py-1 rounded border">Turma {group.classGroup} • {group.shift}</span>
                                 </div>
                                 <div className="border border-t-0 border-gray-300 rounded-b-lg p-4 bg-white">
                                     <ul className="list-disc pl-5 space-y-2">
                                         {group.comments.map((comment, cIdx) => (
-                                            <li key={cIdx} className="text-sm text-gray-800 leading-relaxed pl-1">
-                                                {comment}
-                                            </li>
+                                            <li key={cIdx} className="text-sm text-gray-800 leading-relaxed pl-1">{comment}</li>
                                         ))}
                                     </ul>
                                 </div>
@@ -676,7 +714,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         </div>
       )}
 
-      {/* ... (Existing Modal editingUser code) ... */}
+      {/* --- EDIT USER MODAL --- */}
       {editingUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in">
             <Card className="w-full max-w-md shadow-2xl">
@@ -685,18 +723,9 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                 </CardHeader>
                 <CardContent>
                     <form onSubmit={handleSaveEditUser} className="space-y-4">
-                        <div className="space-y-2">
-                            <Label>Nome Completo</Label>
-                            <Input value={editName} onChange={e => setEditName(e.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Email Institucional</Label>
-                            <Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Função/Cargo (Job Title)</Label>
-                            <Input value={editJobTitle} onChange={e => setEditJobTitle(e.target.value)} placeholder="Ex: Diretor, Regente, Docente..." />
-                        </div>
+                        <div className="space-y-2"><Label>Nome Completo</Label><Input value={editName} onChange={e => setEditName(e.target.value)} /></div>
+                        <div className="space-y-2"><Label>Email Institucional</Label><Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} /></div>
+                        <div className="space-y-2"><Label>Função/Cargo (Job Title)</Label><Input value={editJobTitle} onChange={e => setEditJobTitle(e.target.value)} placeholder="Ex: Diretor, Regente, Docente..." /></div>
                         <div className="flex justify-end gap-2 pt-2">
                             <Button type="button" variant="ghost" onClick={() => setEditingUser(null)}>Cancelar</Button>
                             <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">Salvar Alterações</Button>
@@ -707,7 +736,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         </div>
       )}
       
-      {/* ... (Existing Print Views) ... */}
+      {/* --- PRINT LAYOUT --- */}
       <div className="hidden print:block font-serif">
         {printingTeacher && printingScore ? (
             <div className="p-4 text-sm break-after-page">
@@ -728,13 +757,11 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                         <p>Divisão Pedagógica</p>
                         <h2 className="text-base">FOLHA DE CLASSIFICAÇÃO ANUAL DE DOCENTES</h2>
                     </div>
-                    
                     <div className="space-y-1 mb-6">
                         <p><strong>Nome:</strong> {printingTeacher.name}</p>
                         <p><strong>Categoria:</strong> {printingTeacher.category}</p>
                         <p><strong>Função:</strong> {printingSelfEval?.header.function || printingTeacher.jobTitle || 'Docente'}</p>
                     </div>
-                    
                     <div className="mb-6">
                         <table className="w-full border-collapse border-2 border-black mb-6">
                             <thead>
@@ -762,7 +789,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                 </tr>
                             </tbody>
                         </table>
-
                         {printingScore.subjectDetails && printingScore.subjectDetails.length > 0 && (
                             <div className="mt-8">
                                 <h3 className="font-bold text-sm mb-2 uppercase border-b border-black pb-1">Detalhamento Pedagógico por Turma</h3>
@@ -783,7 +809,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                                 <td className="border border-black p-1">{det.subjectName}</td>
                                                 <td className="border border-black p-1">{det.course}</td>
                                                 <td className="border border-black p-1 text-center">{det.classGroup}</td>
-                                                <td className="border border-black p-1 text-center">{det.shift}</td>
+                                                <td className="border border-black p-1 text-center">{det.shift === 'Diurno' ? 'Laboral' : 'Pós-Laboral'}</td>
                                                 <td className="border border-black p-1 text-center">{det.responseCount}</td>
                                                 <td className="border border-black p-1 text-center font-bold">{det.score.toFixed(1)}</td>
                                             </tr>
@@ -802,7 +828,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         
         {/* HEADER RESPONSIVO */}
         <div className="bg-white p-4 rounded-xl shadow-sm border mb-6 relative z-30">
-            {/* ... (Existing Header) ... */}
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-xl md:text-3xl font-bold tracking-tight text-gray-900 truncate max-w-[200px] md:max-w-none">{institution?.name || 'Painel de Gestão'}</h1>
@@ -818,7 +843,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                         <Button variant={activeTab === 'courses' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('courses')} className="gap-2"><BookOpen size={16} /> Cursos</Button>
                         <Button variant={activeTab === 'teachers' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('teachers')} className="gap-2"><Users size={16} /> Docentes</Button>
                         <Button variant={activeTab === 'students' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('students')} className="gap-2"><GraduationCap size={16} /> Estudantes</Button>
-                        {/* Renamed Tab */}
                         <Button variant={activeTab === 'evaluations' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('evaluations')} className="gap-2"><FileQuestion size={16} /> Modelos</Button>
                     </div>
                 </div>
@@ -842,7 +866,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             )}
         </div>
 
-        {/* ... (Overview logic unchanged) ... */}
+        {/* ... (Overview, Stats, Evaluations content unchanged) ... */}
         {activeTab === 'overview' && (
              <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
                  <Card className="shadow-sm">
@@ -967,32 +991,24 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
              </div>
         )}
         
-        {/* --- ABA STATS (ATUALIZADA) --- */}
+        {/* ... (Stats, Evaluations, Courses content unchanged) ... */}
         {activeTab === 'stats' && (
              <div className="space-y-6">
+                 {/* ... Stats Content ... */}
                  <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center bg-white p-4 rounded-lg shadow-sm border">
                     <div>
                         <h2 className="text-lg font-bold">Relatórios e Resultados Finais</h2>
                         <p className="text-sm text-gray-500">Consulte a pauta, exporte para Excel ou imprima relatórios oficiais.</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" onClick={handleExportCSV} className="text-green-700 hover:text-green-800 hover:bg-green-50 border-green-200">
-                            <FileSpreadsheet className="h-4 w-4 mr-2" /> <span className="hidden sm:inline">Exportar Excel</span>
-                        </Button>
-                        <Button onClick={handleDownloadDetailedPDF} className="bg-red-600 hover:bg-red-700 text-white">
-                            <FileText className="h-4 w-4 mr-2" /> <span className="hidden sm:inline">Baixar PDF</span>
-                        </Button>
-                        <Button variant="ghost" onClick={handlePrintStats} className="text-gray-600">
-                             <Printer className="h-4 w-4" />
-                        </Button>
+                        <Button variant="outline" onClick={handleExportCSV} className="text-green-700 hover:text-green-800 hover:bg-green-50 border-green-200"><FileSpreadsheet className="h-4 w-4 mr-2" /> <span className="hidden sm:inline">Exportar Excel</span></Button>
+                        <Button onClick={handleDownloadDetailedPDF} className="bg-red-600 hover:bg-red-700 text-white"><FileText className="h-4 w-4 mr-2" /> <span className="hidden sm:inline">Baixar PDF</span></Button>
+                        <Button variant="ghost" onClick={handlePrintStats} className="text-gray-600"><Printer className="h-4 w-4" /></Button>
                     </div>
                  </div>
                  
-                 {/* DESKTOP VIEW: TABLE */}
                  <Card className="hidden md:block">
-                    <CardHeader>
-                        <CardTitle>Pauta Geral (Todos os Docentes)</CardTitle>
-                    </CardHeader>
+                    <CardHeader><CardTitle>Pauta Geral (Todos os Docentes)</CardTitle></CardHeader>
                     <CardContent className="p-0 overflow-x-auto">
                         <table className="w-full text-sm min-w-[800px]">
                             <thead className="bg-gray-50 text-gray-600 font-medium">
@@ -1009,20 +1025,13 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                             </thead>
                             <tbody className="divide-y">
                                 {fullReportData.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={8} className="p-8 text-center text-gray-500 italic">
-                                            Nenhum docente cadastrado na instituição.
-                                        </td>
-                                    </tr>
+                                    <tr><td colSpan={8} className="p-8 text-center text-gray-500 italic">Nenhum docente cadastrado na instituição.</td></tr>
                                 ) : fullReportData.map(score => {
                                     const isExpanded = expandedDetails === score.teacherId;
                                     return (
                                         <React.Fragment key={score.teacherId}>
                                             <tr className="hover:bg-gray-50 transition-colors">
-                                                <td className="p-4">
-                                                    <div className="font-medium text-gray-900">{score.teacherName}</div>
-                                                    <div className="text-xs text-gray-500">{score.teacherEmail}</div>
-                                                </td>
+                                                <td className="p-4"><div className="font-medium text-gray-900">{score.teacherName}</div><div className="text-xs text-gray-500">{score.teacherEmail}</div></td>
                                                 <td className="p-4 text-gray-600 capitalize">{score.teacherCategory.replace('_', ' ')}</td>
                                                 {score.hasScore ? (
                                                     <>
@@ -1031,54 +1040,19 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                                         <td className="p-4 text-center">{score.institutionalScore.toFixed(1)}</td>
                                                         <td className="p-4 text-center font-bold text-base">{score.finalScore.toFixed(1)}</td>
                                                         <td className="p-4 text-center">
-                                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                                                score.val20 >= 14 ? 'bg-green-100 text-green-800' :
-                                                                score.val20 >= 10 ? 'bg-yellow-100 text-yellow-800' :
-                                                                'bg-red-100 text-red-800'
-                                                            }`}>
-                                                                {score.classification}
-                                                            </span>
+                                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${score.val20 >= 14 ? 'bg-green-100 text-green-800' : score.val20 >= 10 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>{score.classification}</span>
                                                         </td>
                                                     </>
                                                 ) : (
-                                                    <td colSpan={5} className="p-4 text-center text-gray-400 italic bg-gray-50/50">
-                                                        Aguardando cálculo...
-                                                    </td>
+                                                    <td colSpan={5} className="p-4 text-center text-gray-400 italic bg-gray-50/50">Aguardando cálculo...</td>
                                                 )}
                                                 
                                                 <td className="p-4 text-center flex items-center justify-center gap-2">
                                                     {score.hasScore && (
                                                         <>
-                                                            <Button 
-                                                                variant="ghost" 
-                                                                size="sm" 
-                                                                title="Ver Detalhes"
-                                                                onClick={() => setExpandedDetails(isExpanded ? null : score.teacherId)}
-                                                            >
-                                                                {isExpanded ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
-                                                            </Button>
-                                                            <Button 
-                                                                variant="ghost" 
-                                                                size="sm" 
-                                                                title="Imprimir Relatório"
-                                                                onClick={() => {
-                                                                    const user = teachers.find(t => t.id === score.teacherId);
-                                                                    if (user) handlePrintReport(user);
-                                                                }}
-                                                            >
-                                                                <Printer className="h-4 w-4 text-gray-400 hover:text-black"/>
-                                                            </Button>
-                                                            <Button 
-                                                                variant="ghost" 
-                                                                size="sm" 
-                                                                title="Ver Respostas dos Alunos"
-                                                                onClick={() => {
-                                                                    const user = teachers.find(t => t.id === score.teacherId);
-                                                                    if (user) handleViewComments(user);
-                                                                }}
-                                                            >
-                                                                <MessageSquare className="h-4 w-4 text-blue-500 hover:text-blue-700"/>
-                                                            </Button>
+                                                            <Button variant="ghost" size="sm" title="Ver Detalhes" onClick={() => setExpandedDetails(isExpanded ? null : score.teacherId)}>{isExpanded ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</Button>
+                                                            <Button variant="ghost" size="sm" title="Imprimir Relatório" onClick={() => { const user = teachers.find(t => t.id === score.teacherId); if (user) handlePrintReport(user); }}><Printer className="h-4 w-4 text-gray-400 hover:text-black"/></Button>
+                                                            <Button variant="ghost" size="sm" title="Ver Respostas dos Alunos" onClick={() => { const user = teachers.find(t => t.id === score.teacherId); if (user) handleViewComments(user); }}><MessageSquare className="h-4 w-4 text-blue-500 hover:text-blue-700"/></Button>
                                                         </>
                                                     )}
                                                 </td>
@@ -1087,9 +1061,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                                 <tr className="bg-blue-50/50 animate-in fade-in">
                                                     <td colSpan={8} className="p-4">
                                                         <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
-                                                            <div className="bg-blue-50 px-4 py-2 text-xs font-bold text-blue-800 uppercase tracking-wide border-b border-blue-100">
-                                                                Detalhamento por Disciplina
-                                                            </div>
+                                                            <div className="bg-blue-50 px-4 py-2 text-xs font-bold text-blue-800 uppercase tracking-wide border-b border-blue-100">Detalhamento por Disciplina</div>
                                                             <table className="w-full text-xs">
                                                                 <thead>
                                                                     <tr className="text-gray-500 bg-gray-50/50 border-b">
@@ -1105,7 +1077,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                                                         <tr key={idx} className="border-b last:border-0 hover:bg-gray-50">
                                                                             <td className="p-2 font-medium">{det.subjectName}</td>
                                                                             <td className="p-2 text-center">{det.classGroup}</td>
-                                                                            <td className="p-2 text-center">{det.shift}</td>
+                                                                            <td className="p-2 text-center">{det.shift === 'Diurno' ? 'Laboral' : 'Pós-Laboral'}</td>
                                                                             <td className="p-2 text-center">{det.responseCount}</td>
                                                                             <td className="p-2 text-center font-bold text-blue-600">{det.score.toFixed(1)}</td>
                                                                         </tr>
@@ -1126,34 +1098,20 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
              </div>
         )}
 
-        {/* --- ABA EVALUATIONS (UPDATED) --- */}
         {activeTab === 'evaluations' && (
+             // ... Evaluations Content ...
             <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
                     <div className="flex bg-white p-1 rounded-lg border shadow-sm">
-                        <button 
-                            onClick={() => setEvalTabMode('student')}
-                            className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${evalTabMode === 'student' ? 'bg-slate-900 text-white shadow' : 'text-gray-500 hover:text-gray-900'}`}
-                        >
-                            Inquérito ao Estudante
-                        </button>
-                        <button 
-                            onClick={() => setEvalTabMode('teacher')}
-                            className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${evalTabMode === 'teacher' ? 'bg-slate-900 text-white shadow' : 'text-gray-500 hover:text-gray-900'}`}
-                        >
-                            Ficha de Auto-Avaliação
-                        </button>
+                        <button onClick={() => setEvalTabMode('student')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${evalTabMode === 'student' ? 'bg-slate-900 text-white shadow' : 'text-gray-500 hover:text-gray-900'}`}>Inquérito ao Estudante</button>
+                        <button onClick={() => setEvalTabMode('teacher')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${evalTabMode === 'teacher' ? 'bg-slate-900 text-white shadow' : 'text-gray-500 hover:text-gray-900'}`}>Ficha de Auto-Avaliação</button>
                     </div>
-                    
-                    <Button onClick={() => setPreviewMode(evalTabMode)} className="bg-white text-slate-900 border hover:bg-gray-50">
-                        <Eye className="mr-2 h-4 w-4"/> Pré-visualizar Modelo
-                    </Button>
+                    <Button onClick={() => setPreviewMode(evalTabMode)} className="bg-white text-slate-900 border hover:bg-gray-50"><Eye className="mr-2 h-4 w-4"/> Pré-visualizar Modelo</Button>
                 </div>
 
                 {evalTabMode === 'student' && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2 space-y-4">
-                            {/* Lista de Perguntas */}
                             <div className="flex justify-between items-center">
                                 <h3 className="font-semibold text-lg">Perguntas Ativas</h3>
                                 <Button variant="ghost" size="sm" onClick={handleResetDefaults} className="text-red-500 text-xs">Restaurar Padrão</Button>
@@ -1170,14 +1128,10 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                                 </div>
                                                 <p className="font-medium text-gray-900">{q.text}</p>
                                             </div>
-                                            <Button variant="ghost" size="sm" onClick={() => handleRemoveQuestion(q.id)} className="text-gray-400 hover:text-red-500 absolute top-2 right-2">
-                                                <Trash2 size={16}/>
-                                            </Button>
+                                            <Button variant="ghost" size="sm" onClick={() => handleRemoveQuestion(q.id)} className="text-gray-400 hover:text-red-500 absolute top-2 right-2"><Trash2 size={16}/></Button>
                                         </div>
                                         <div className="mt-3 pt-3 border-t">
-                                            <div className="opacity-60 pointer-events-none scale-95 origin-left">
-                                                {renderPreviewInput(q)}
-                                            </div>
+                                            <div className="opacity-60 pointer-events-none scale-95 origin-left">{renderPreviewInput(q)}</div>
                                         </div>
                                     </div>
                                 ))}
@@ -1186,14 +1140,9 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
                         <div className="space-y-6">
                             <Card className="sticky top-24">
-                                <CardHeader>
-                                    <CardTitle>Adicionar Pergunta</CardTitle>
-                                </CardHeader>
+                                <CardHeader><CardTitle>Adicionar Pergunta</CardTitle></CardHeader>
                                 <CardContent className="space-y-4">
-                                    <div className="space-y-2">
-                                        <Label>Texto da Pergunta</Label>
-                                        <Input value={newQText} onChange={e => setNewQText(e.target.value)} placeholder="Ex: O docente foi pontual?" />
-                                    </div>
+                                    <div className="space-y-2"><Label>Texto da Pergunta</Label><Input value={newQText} onChange={e => setNewQText(e.target.value)} placeholder="Ex: O docente foi pontual?" /></div>
                                     <div className="space-y-2">
                                         <Label>Tipo de Resposta</Label>
                                         <Select value={newQType} onChange={e => setNewQType(e.target.value as any)}>
@@ -1205,10 +1154,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                         </Select>
                                     </div>
                                     {newQType === 'choice' && (
-                                        <div className="space-y-2">
-                                            <Label>Opções (separadas por vírgula)</Label>
-                                            <Input value={newQOptions} onChange={e => setNewQOptions(e.target.value)} placeholder="Opção A, Opção B, Opção C"/>
-                                        </div>
+                                        <div className="space-y-2"><Label>Opções (separadas por vírgula)</Label><Input value={newQOptions} onChange={e => setNewQOptions(e.target.value)} placeholder="Opção A, Opção B, Opção C"/></div>
                                     )}
                                     <Button onClick={handleAddQuestion} className="w-full">Adicionar ao Inquérito</Button>
                                 </CardContent>
@@ -1226,17 +1172,13 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                     <p>Aqui você pode adicionar, remover ou editar critérios. Você também pode definir se um critério é exclusivo para Assistentes ou Estagiários.</p>
                                 </div>
                                 <div className="flex gap-2">
-                                    <Button variant="outline" size="sm" onClick={handleResetSelfEvalDefaults} className="border-blue-300 text-blue-800 hover:bg-blue-100">
-                                        <RotateCcw className="mr-2 h-4 w-4"/> Restaurar Padrão
-                                    </Button>
-                                    <Button onClick={saveSelfEvalChanges} className="bg-blue-700 hover:bg-blue-800 text-white whitespace-nowrap">
-                                        <Save className="mr-2 h-4 w-4"/> Salvar Alterações
-                                    </Button>
+                                    <Button variant="outline" size="sm" onClick={handleResetSelfEvalDefaults} className="border-blue-300 text-blue-800 hover:bg-blue-100"><RotateCcw className="mr-2 h-4 w-4"/> Restaurar Padrão</Button>
+                                    <Button onClick={saveSelfEvalChanges} className="bg-blue-700 hover:bg-blue-800 text-white whitespace-nowrap"><Save className="mr-2 h-4 w-4"/> Salvar Alterações</Button>
                                 </div>
                             </CardContent>
                         </Card>
-
-                        <div className="grid gap-6 md:grid-cols-2">
+                        
+                         <div className="grid gap-6 md:grid-cols-2">
                             {selfEvalTemplate.groups.map(group => (
                                 <Card key={group.id} className="overflow-hidden">
                                     <div className="bg-gray-100 px-4 py-3 border-b flex justify-between items-center">
@@ -1247,52 +1189,15 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                         <div className="divide-y">
                                             {group.items.map(item => (
                                                 <div key={item.key} className="p-4 space-y-3 hover:bg-gray-50 transition-colors relative group">
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="sm" 
-                                                        onClick={() => handleDeleteItemFromGroup(group.id, item.key)}
-                                                        className="absolute top-2 right-2 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                    >
-                                                        <Trash2 size={16}/>
-                                                    </Button>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-xs text-gray-400 uppercase">Título do Item</Label>
-                                                        <Input 
-                                                            value={item.label} 
-                                                            onChange={(e) => handleUpdateSelfEvalTemplate(group.id, item.key, 'label', e.target.value)}
-                                                            className="h-8 font-medium"
-                                                        />
-                                                    </div>
+                                                    <Button variant="ghost" size="sm" onClick={() => handleDeleteItemFromGroup(group.id, item.key)} className="absolute top-2 right-2 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></Button>
+                                                    <div className="space-y-1"><Label className="text-xs text-gray-400 uppercase">Título do Item</Label><Input value={item.label} onChange={(e) => handleUpdateSelfEvalTemplate(group.id, item.key, 'label', e.target.value)} className="h-8 font-medium" /></div>
                                                     <div className="grid grid-cols-2 gap-2">
-                                                        <div className="space-y-1">
-                                                            <Label className="text-xs text-gray-400 uppercase">Descrição</Label>
-                                                            <Input 
-                                                                value={item.description} 
-                                                                onChange={(e) => handleUpdateSelfEvalTemplate(group.id, item.key, 'description', e.target.value)}
-                                                                className="h-8 text-sm text-gray-600"
-                                                            />
-                                                        </div>
-                                                        <div className="space-y-1">
-                                                            <Label className="text-xs text-gray-400 uppercase">Valor (Pontos)</Label>
-                                                            <Input 
-                                                                type="number"
-                                                                value={item.scoreValue} 
-                                                                onChange={(e) => handleUpdateSelfEvalTemplate(group.id, item.key, 'scoreValue', parseFloat(e.target.value))}
-                                                                className="h-8 text-sm text-gray-600"
-                                                            />
-                                                        </div>
+                                                        <div className="space-y-1"><Label className="text-xs text-gray-400 uppercase">Descrição</Label><Input value={item.description} onChange={(e) => handleUpdateSelfEvalTemplate(group.id, item.key, 'description', e.target.value)} className="h-8 text-sm text-gray-600" /></div>
+                                                        <div className="space-y-1"><Label className="text-xs text-gray-400 uppercase">Valor (Pontos)</Label><Input type="number" value={item.scoreValue} onChange={(e) => handleUpdateSelfEvalTemplate(group.id, item.key, 'scoreValue', parseFloat(e.target.value))} className="h-8 text-sm text-gray-600" /></div>
                                                     </div>
                                                     <div className="space-y-1 pt-1 border-t border-dashed mt-2">
                                                         <Label className="text-xs text-gray-400 uppercase">Disponível Para</Label>
-                                                        <Select 
-                                                            value={item.exclusiveTo && item.exclusiveTo.length > 0 ? item.exclusiveTo[0] : 'todos'} 
-                                                            onChange={(e) => {
-                                                                const val = e.target.value;
-                                                                const newVal = val === 'todos' ? [] : [val];
-                                                                handleUpdateSelfEvalTemplate(group.id, item.key, 'exclusiveTo', newVal);
-                                                            }}
-                                                            className="h-8 text-xs bg-gray-50 border-gray-200"
-                                                        >
+                                                        <Select value={item.exclusiveTo && item.exclusiveTo.length > 0 ? item.exclusiveTo[0] : 'todos'} onChange={(e) => { const val = e.target.value; const newVal = val === 'todos' ? [] : [val]; handleUpdateSelfEvalTemplate(group.id, item.key, 'exclusiveTo', newVal); }} className="h-8 text-xs bg-gray-50 border-gray-200">
                                                             <option value="todos">Todos os Docentes</option>
                                                             <option value="assistente">Apenas Assistente</option>
                                                             <option value="assistente_estagiario">Apenas Assistente Estagiário</option>
@@ -1301,14 +1206,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                                 </div>
                                             ))}
                                             <div className="p-3 bg-gray-50 text-center">
-                                                <Button 
-                                                    variant="ghost" 
-                                                    size="sm" 
-                                                    onClick={() => handleAddItemToGroup(group.id)}
-                                                    className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 w-full border border-dashed border-blue-200"
-                                                >
-                                                    <Plus size={14} className="mr-1"/> Adicionar Critério
-                                                </Button>
+                                                <Button variant="ghost" size="sm" onClick={() => handleAddItemToGroup(group.id)} className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 w-full border border-dashed border-blue-200"><Plus size={14} className="mr-1"/> Adicionar Critério</Button>
                                             </div>
                                         </div>
                                     </CardContent>
@@ -1320,14 +1218,11 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             </div>
         )}
 
-        {/* --- ABA COURSES (RESTAURADA) --- */}
         {activeTab === 'courses' && (
             <div className="grid gap-6 grid-cols-1 md:grid-cols-3">
                 <div className="md:col-span-2 space-y-4 order-2 md:order-1">
                     <Card>
-                        <CardHeader>
-                            <CardTitle>Cursos da Instituição</CardTitle>
-                        </CardHeader>
+                        <CardHeader><CardTitle>Cursos da Instituição</CardTitle></CardHeader>
                         <CardContent>
                             <div className="space-y-2">
                                 {courses.length === 0 ? (
@@ -1337,13 +1232,18 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                         <div key={c.id} className="flex items-center justify-between p-3 border rounded-lg bg-white shadow-sm">
                                             <div>
                                                 <h4 className="font-semibold">{c.name} ({c.code})</h4>
-                                                <p className="text-xs text-gray-500">
-                                                    {c.duration} Anos • {c.semester}º Semestre • {c.modality}
-                                                </p>
+                                                <p className="text-xs text-gray-500">{c.duration} Anos • {c.semester}º Semestre • {c.modality}</p>
+                                                {c.classGroups && c.classGroups.length > 0 && (
+                                                    <div className="flex gap-1 mt-1 flex-wrap">
+                                                        {c.classGroups.map(g => (
+                                                            <span key={g} className="text-xs font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                                                                Turma {g}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
-                                            <Button variant="ghost" size="sm" className="text-red-500" onClick={() => handleDeleteCourse(c.id)}>
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
+                                            <Button variant="ghost" size="sm" className="text-red-500" onClick={() => handleDeleteCourse(c.id)}><Trash2 className="h-4 w-4" /></Button>
                                         </div>
                                     ))
                                 )}
@@ -1353,100 +1253,45 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                 </div>
                 <div className="order-1 md:order-2">
                     <Card>
-                        <CardHeader>
-                            <CardTitle>Adicionar Curso</CardTitle>
-                        </CardHeader>
+                        <CardHeader><CardTitle>Adicionar Curso</CardTitle></CardHeader>
                         <CardContent>
                             <form onSubmit={handleAddCourse} className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label>Nome do Curso</Label>
-                                    <Input value={newCourseName} onChange={e => setNewCourseName(e.target.value)} placeholder="Ex: Engenharia Informática" />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Código (Sigla)</Label>
-                                    <Input value={newCourseCode} onChange={e => setNewCourseCode(e.target.value)} placeholder="Ex: LEI" />
-                                </div>
+                                <div className="space-y-2"><Label>Nome do Curso</Label><Input value={newCourseName} onChange={e => setNewCourseName(e.target.value)} placeholder="Ex: Engenharia Informática" /></div>
+                                <div className="space-y-2"><Label>Código (Sigla)</Label><Input value={newCourseCode} onChange={e => setNewCourseCode(e.target.value)} placeholder="Ex: LEI" /></div>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <div className="space-y-2">
-                                        <Label>Duração (Anos)</Label>
-                                        <Select value={newCourseDuration} onChange={e => setNewCourseDuration(e.target.value)}>
-                                            {[1, 2, 3, 4, 5, 6].map(year => (
-                                                <option key={year} value={year.toString()}>{year} Anos</option>
-                                            ))}
-                                        </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Semestre Atual</Label>
-                                        <Select value={newCourseSemester} onChange={e => setNewCourseSemester(e.target.value)}>
-                                            <option value="1">1º Semestre</option>
-                                            <option value="2">2º Semestre</option>
-                                            <option value="Anual">Anual</option>
-                                        </Select>
-                                    </div>
+                                    <div className="space-y-2"><Label>Duração (Anos)</Label><Select value={newCourseDuration} onChange={e => setNewCourseDuration(e.target.value)}>{[1, 2, 3, 4, 5, 6].map(year => (<option key={year} value={year.toString()}>{year} Anos</option>))}</Select></div>
+                                    <div className="space-y-2"><Label>Semestre Atual</Label><Select value={newCourseSemester} onChange={e => setNewCourseSemester(e.target.value)}><option value="1">1º Semestre</option><option value="2">2º Semestre</option><option value="Anual">Anual</option></Select></div>
                                 </div>
+                                <div className="space-y-2"><Label>Modalidade</Label><Select value={newCourseModality} onChange={e => setNewCourseModality(e.target.value as any)}><option value="Presencial">Presencial</option><option value="Online">Online</option></Select></div>
                                 <div className="space-y-2">
-                                    <Label>Modalidade</Label>
-                                    <Select value={newCourseModality} onChange={e => setNewCourseModality(e.target.value as any)}>
-                                        <option value="Presencial">Presencial</option>
-                                        <option value="Online">Online</option>
-                                    </Select>
+                                    <Label className="flex items-center gap-2">
+                                        <LayoutList size={14}/> Turmas Disponíveis (Gera o Dropdown)
+                                    </Label>
+                                    <Input value={newCourseClassGroups} onChange={e => setNewCourseClassGroups(e.target.value)} placeholder="Separe por vírgula: A, B, C, Única" />
+                                    <p className="text-xs text-gray-500">Defina aqui as turmas que aparecerão nos menus suspensos para Docentes e Alunos.</p>
                                 </div>
-
-                                {/* Seção para Adicionar Disciplinas/Cadeiras */}
                                 <div className="space-y-3 pt-4 border-t">
-                                    <div className="flex items-center justify-between">
-                                        <Label className="text-gray-700 font-semibold flex items-center gap-2">
-                                            <Layers size={14} /> Estrutura Curricular (Disciplinas)
-                                        </Label>
-                                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{courseSubjects.length} adicionadas</span>
-                                    </div>
-                                    
+                                    <div className="flex items-center justify-between"><Label className="text-gray-700 font-semibold flex items-center gap-2"><Layers size={14} /> Estrutura Curricular (Disciplinas)</Label><span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{courseSubjects.length} adicionadas</span></div>
                                     <div className="bg-gray-50 p-3 rounded-md border space-y-3">
-                                        <div className="space-y-2">
-                                            <Input 
-                                                value={tempCourseSubjectName} 
-                                                onChange={e => setTempCourseSubjectName(e.target.value)} 
-                                                placeholder="Nome da Cadeira (ex: Matemática I)"
-                                                className="bg-white"
-                                            />
-                                        </div>
+                                        <div className="space-y-2"><Input value={tempCourseSubjectName} onChange={e => setTempCourseSubjectName(e.target.value)} placeholder="Nome da Cadeira (ex: Matemática I)" className="bg-white" /></div>
                                         <div className="grid grid-cols-2 gap-2">
-                                            <Select value={tempCourseSubjectLevel} onChange={e => setTempCourseSubjectLevel(e.target.value)}>
-                                                {[...Array(parseInt(newCourseDuration))].map((_, i) => (
-                                                    <option key={i+1} value={(i+1).toString()}>{i+1}º Ano</option>
-                                                ))}
-                                            </Select>
-                                            <Select value={tempCourseSubjectSemester} onChange={e => setTempCourseSubjectSemester(e.target.value)}>
-                                                <option value="1">1º Sem.</option>
-                                                <option value="2">2º Sem.</option>
-                                            </Select>
+                                            <Select value={tempCourseSubjectLevel} onChange={e => setTempCourseSubjectLevel(e.target.value)}>{[...Array(parseInt(newCourseDuration))].map((_, i) => (<option key={i+1} value={(i+1).toString()}>{i+1}º Ano</option>))}</Select>
+                                            <Select value={tempCourseSubjectSemester} onChange={e => setTempCourseSubjectSemester(e.target.value)}><option value="1">1º Sem.</option><option value="2">2º Sem.</option></Select>
                                         </div>
-                                        <Button type="button" size="sm" onClick={handleAddCourseSubject} className="w-full bg-slate-800 text-white hover:bg-slate-700">
-                                            <Plus size={14} className="mr-1"/> Adicionar Cadeira
-                                        </Button>
+                                        <Button type="button" size="sm" onClick={handleAddCourseSubject} className="w-full bg-slate-800 text-white hover:bg-slate-700"><Plus size={14} className="mr-1"/> Adicionar Cadeira</Button>
                                     </div>
-
-                                    {/* Lista de Cadeiras Adicionadas */}
                                     {courseSubjects.length > 0 && (
                                         <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
                                             {courseSubjects.map((sub, idx) => (
                                                 <div key={idx} className="flex justify-between items-center bg-white p-2 rounded border text-xs shadow-sm">
-                                                    <div>
-                                                        <span className="font-medium">{sub.name}</span>
-                                                        <span className="text-gray-500 ml-2">({sub.level}º Ano, {sub.semester}º Sem)</span>
-                                                    </div>
-                                                    <button type="button" onClick={() => handleRemoveCourseSubject(idx)} className="text-red-500 hover:text-red-700">
-                                                        <X size={14}/>
-                                                    </button>
+                                                    <div><span className="font-medium">{sub.name}</span><span className="text-gray-500 ml-2">({sub.level}º Ano, {sub.semester}º Sem)</span></div>
+                                                    <button type="button" onClick={() => handleRemoveCourseSubject(idx)} className="text-red-500 hover:text-red-700"><X size={14}/></button>
                                                 </div>
                                             ))}
                                         </div>
                                     )}
                                 </div>
-
-                                <Button type="submit" className="w-full">
-                                    {courseSubjects.length > 0 ? `Criar Curso e ${courseSubjects.length} Disciplinas` : 'Criar Curso'}
-                                </Button>
+                                <Button type="submit" className="w-full">{courseSubjects.length > 0 ? `Criar Curso e Disciplinas` : 'Criar Curso'}</Button>
                             </form>
                         </CardContent>
                     </Card>
@@ -1454,7 +1299,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             </div>
         )}
 
-        {/* --- ABA TEACHERS (RESTAURADA) --- */}
+        {/* --- ABA TEACHERS (ATUALIZADA) --- */}
         {activeTab === 'teachers' && (
             <div className="space-y-6">
                 <Card className="border-l-4 border-l-blue-500">
@@ -1506,26 +1351,78 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                 </div>
                             </div>
 
-                            {/* Subject Builder */}
+                            {/* Subject Builder (ATUALIZADO) */}
                             <div className="bg-gray-50 p-4 rounded-md border">
-                                <h4 className="text-sm font-semibold mb-2">Adicionar Disciplinas (Opcional)</h4>
+                                <h4 className="text-sm font-semibold mb-2">Atribuir Disciplinas</h4>
+                                <p className="text-xs text-gray-500 mb-3">Selecione o Curso e a Turma para adicionar disciplinas que o docente leciona.</p>
+                                
                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-2 mb-2">
-                                    <Input placeholder="Nome da Disciplina" className="md:col-span-2" value={tempSubject.name} onChange={e => setTempSubject({...tempSubject, name: e.target.value})} />
-                                    <Input placeholder="Curso (Sigla)" value={tempSubject.course} onChange={e => setTempSubject({...tempSubject, course: e.target.value})} />
-                                    <Input placeholder="Turma (ex: A)" value={tempSubject.classGroup} onChange={e => setTempSubject({...tempSubject, classGroup: e.target.value})} />
-                                    <Select value={tempSubject.shift} onChange={e => setTempSubject({...tempSubject, shift: e.target.value as any})}>
-                                        <option value="Diurno">Diurno</option>
-                                        <option value="Noturno">Noturno</option>
-                                    </Select>
-                                    <Button type="button" onClick={handleAddTempSubject} className="w-full sm:w-auto"><Plus className="h-4 w-4"/></Button>
+                                    
+                                    {/* 1. Seleção de Curso */}
+                                    <div className="md:col-span-2">
+                                        <Select 
+                                            value={tempSubject.course} 
+                                            onChange={e => setTempSubject({...tempSubject, course: e.target.value, classGroup: ''})}
+                                        >
+                                            <option value="">Selecione o Curso...</option>
+                                            {courses.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                        </Select>
+                                    </div>
+
+                                    {/* 2. Seleção de Turma (Baseada no Curso) */}
+                                    <div className="md:col-span-1">
+                                        {tempSubjectCourseObj && tempSubjectCourseObj.classGroups && tempSubjectCourseObj.classGroups.length > 0 ? (
+                                            <Select 
+                                                value={tempSubject.classGroup} 
+                                                onChange={e => setTempSubject({...tempSubject, classGroup: e.target.value})}
+                                            >
+                                                <option value="">Turma...</option>
+                                                {tempSubjectCourseObj.classGroups.map(g => (
+                                                    <option key={g} value={g}>{g}</option>
+                                                ))}
+                                            </Select>
+                                        ) : (
+                                            <Input 
+                                                placeholder="Turma (ex: A)" 
+                                                value={tempSubject.classGroup} 
+                                                onChange={e => setTempSubject({...tempSubject, classGroup: e.target.value})} 
+                                                disabled={!tempSubject.course}
+                                                title={tempSubject.course ? "Digite a turma manualmente se não configurada no curso" : "Selecione um curso primeiro"}
+                                            />
+                                        )}
+                                    </div>
+
+                                    {/* 3. Nome da Disciplina */}
+                                    <Input 
+                                        placeholder="Nome da Disciplina" 
+                                        className="md:col-span-2" 
+                                        value={tempSubject.name} 
+                                        onChange={e => setTempSubject({...tempSubject, name: e.target.value})} 
+                                    />
+
+                                    {/* 4. Turno e Botão */}
+                                    <div className="flex gap-2">
+                                        <Select value={tempSubject.shift} onChange={e => setTempSubject({...tempSubject, shift: e.target.value as any})}>
+                                            <option value="Diurno">Laboral (Diurno)</option>
+                                            <option value="Noturno">Pós-Laboral (Noturno)</option>
+                                        </Select>
+                                        <Button type="button" onClick={handleAddTempSubject} className="w-full sm:w-auto"><Plus className="h-4 w-4"/></Button>
+                                    </div>
                                 </div>
-                                <div className="space-y-1">
+
+                                <div className="space-y-1 mt-3">
                                     {newTeacherSubjects.map((s, i) => (
-                                        <div key={i} className="flex flex-col sm:flex-row sm:justify-between text-xs bg-white p-2 border rounded">
-                                            <span>{s.name} ({s.course}) - Turma {s.classGroup} ({s.shift})</span>
+                                        <div key={i} className="flex flex-col sm:flex-row sm:justify-between text-xs bg-white p-2 border rounded shadow-sm">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold text-gray-800">{s.name}</span>
+                                                <span className="text-gray-500">• {s.course}</span>
+                                                <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100">Turma {s.classGroup}</span>
+                                                <span className="text-gray-400">({s.shift === 'Diurno' ? 'Laboral' : 'Pós-Laboral'})</span>
+                                            </div>
                                             <X className="h-3 w-3 cursor-pointer text-red-500 mt-1 sm:mt-0" onClick={() => handleRemoveTempSubject(i)}/>
                                         </div>
                                     ))}
+                                    {newTeacherSubjects.length === 0 && <p className="text-xs text-gray-400 italic text-center py-2">Nenhuma disciplina adicionada ainda.</p>}
                                 </div>
                             </div>
 
@@ -1568,7 +1465,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             </div>
         )}
 
-        {/* --- ABA STUDENTS (RESTAURADA) --- */}
         {activeTab === 'students' && (
             <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
                 <Card>
@@ -1650,7 +1546,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                             </div>
                             
                             <div className="space-y-2">
-                                <Label>Turnos (Múltipla Seleção)</Label>
+                                <Label>Regime / Turno</Label>
                                 <div className="flex gap-2">
                                     {['Diurno', 'Noturno'].map(shift => (
                                         <div 
@@ -1658,15 +1554,32 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                             onClick={() => handleToggleShift(shift)}
                                             className={`px-3 py-1 rounded border cursor-pointer text-sm ${newStudentShifts.includes(shift) ? 'bg-blue-100 border-blue-300 text-blue-800' : 'bg-white hover:bg-gray-50'}`}
                                         >
-                                            {shift}
+                                            {shift === 'Diurno' ? 'Laboral' : 'Pós-Laboral'}
                                         </div>
                                     ))}
                                 </div>
                             </div>
                             
                             <div className="space-y-2">
-                                <Label>Turmas (Separadas por vírgula)</Label>
-                                <Input value={newStudentClassGroups} onChange={e => setNewStudentClassGroups(e.target.value)} placeholder="Ex: A, B" />
+                                <Label>Turma do Estudante</Label>
+                                {selectedCourseObj && selectedCourseObj.classGroups && selectedCourseObj.classGroups.length > 0 ? (
+                                    <Select 
+                                        value={newStudentClassGroups[0] || ''} 
+                                        onChange={(e) => setNewStudentClassGroups(e.target.value ? [e.target.value] : [])}
+                                    >
+                                        <option value="">Selecione a Turma...</option>
+                                        {selectedCourseObj.classGroups.map(group => (
+                                            <option key={group} value={group}>{group}</option>
+                                        ))}
+                                    </Select>
+                                ) : (
+                                    <Input 
+                                        value={newStudentClassGroupsInput} 
+                                        onChange={e => setNewStudentClassGroupsInput(e.target.value)} 
+                                        placeholder={selectedCourseObj ? "Curso sem turmas definidas. Digite manualmente (ex: A, B)" : "Selecione um curso primeiro"} 
+                                        disabled={!newStudentCourse}
+                                    />
+                                )}
                             </div>
 
                             <Button type="submit" className="w-full">Registrar</Button>

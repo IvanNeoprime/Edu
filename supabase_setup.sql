@@ -1,7 +1,7 @@
 
 -- ==============================================================================
 -- 🚨 SCRIPT DE CORREÇÃO URGENTE (Execute no SQL Editor do Supabase)
--- Este script adiciona as colunas 'modality' e outras que estão faltando na tabela 'users'
+-- Este script garante que todas as colunas necessárias existam, mesmo se a tabela já foi criada antes.
 -- ==============================================================================
 
 -- 1. Adicionar colunas faltantes na tabela 'users'
@@ -21,17 +21,21 @@ CREATE TABLE IF NOT EXISTS public.courses (
     "institutionId" text NOT NULL,
     name text NOT NULL,
     code text NOT NULL,
-    duration integer,
-    semester text,
-    modality text,
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 3. Habilita Segurança (RLS)
+-- 3. ADICIONAR COLUNAS FALTANTES NA TABELA 'COURSES' (Correção do Erro)
+-- Usamos ALTER TABLE para garantir a criação mesmo se a tabela já existir
+ALTER TABLE public.courses ADD COLUMN IF NOT EXISTS "modality" text;
+ALTER TABLE public.courses ADD COLUMN IF NOT EXISTS "semester" text;
+ALTER TABLE public.courses ADD COLUMN IF NOT EXISTS "duration" integer;
+ALTER TABLE public.courses ADD COLUMN IF NOT EXISTS "classGroups" text[];
+
+-- 4. Habilita Segurança (RLS)
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
 
--- 4. Atualizar Políticas de Segurança (Para evitar erros 403 Forbidden)
+-- 5. Atualizar Políticas de Segurança (Para evitar erros 403 Forbidden)
 -- Removemos políticas antigas conflitantes se existirem e recriamos
 
 DROP POLICY IF EXISTS "Permitir leitura pública de users" ON public.users;
@@ -52,5 +56,5 @@ CREATE POLICY "Permitir criação de cursos" ON public.courses FOR INSERT WITH C
 DROP POLICY IF EXISTS "Permitir exclusão de cursos" ON public.courses;
 CREATE POLICY "Permitir exclusão de cursos" ON public.courses FOR DELETE USING (true);
 
--- 5. Importante: Força a atualização do cache do esquema da API
+-- 6. Importante: Força a atualização do cache do esquema da API
 NOTIFY pgrst, 'reload schema';
