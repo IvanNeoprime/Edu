@@ -22,11 +22,8 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
   const [surveyAnswers, setSurveyAnswers] = useState<Record<string, string | number>>({});
   const [surveySubmitting, setSurveySubmitting] = useState(false);
   const [surveySuccess, setSurveySuccess] = useState(false);
+  const [hasEvaluatedInstitution, setHasEvaluatedInstitution] = useState(false);
   
-  // Peer Evaluation State
-  const [peerTeachers, setPeerTeachers] = useState<User[]>([]);
-  const [evaluationTarget, setEvaluationTarget] = useState<string>('institution'); // 'institution' or teacherId
-
   // New Complex State for Self Eval
   const [header, setHeader] = useState<SelfEvaluation['header']>({
       category: 'assistente',
@@ -72,15 +69,6 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
         // Load custom template if available
         const template = await BackendService.getInstitutionSelfEvalTemplate(user.institutionId);
         setSelfEvalTemplate(template);
-        
-        // Load peers for evaluation
-        const users = await BackendService.getUsers();
-        const peers = users.filter(u => 
-            u.role === UserRole.TEACHER && 
-            u.institutionId === user.institutionId && 
-            u.id !== user.id
-        );
-        setPeerTeachers(peers);
     }
 
     const qEval = await BackendService.getQualitativeEval(user.id);
@@ -102,6 +90,11 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
               setAvailableSurvey({ questionnaire: res.questionnaire });
           } else {
               setAvailableSurvey(null);
+          }
+
+          const progress = await BackendService.getStudentProgress(user.id);
+          if (progress.evaluatedSubjectIds.includes('general')) {
+              setHasEvaluatedInstitution(true);
           }
       }
   };
@@ -132,7 +125,7 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
         score += groupScore;
     });
 
-    const maxScore = header.category === 'assistente_estagiario' ? 125 : 175;
+    const maxScore = institution?.categoryWeights?.find(w => w.category === header.category)?.maxPoints || (header.category === 'assistente_estagiario' ? 125 : 175);
     return Math.min(score, maxScore);
   };
 
@@ -167,10 +160,35 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
   const handleDownloadPDF = () => { window.print(); };
 
   // ... (Surveys submit logic unchanged) ...
-  const handleSubmitSurvey = async () => { if (!availableSurvey || !user.institutionId) return; if (Object.keys(surveyAnswers).length < availableSurvey.questionnaire.questions.length) { alert("Por favor responda todas as perguntas."); return; } setSurveySubmitting(true); try { await BackendService.submitAnonymousResponse(user.id, { institutionId: user.institutionId, questionnaireId: availableSurvey.questionnaire.id, subjectId: 'general', teacherId: evaluationTarget === 'institution' ? user.id : evaluationTarget, answers: Object.entries(surveyAnswers).map(([k, v]) => ({ questionId: k, value: v })) }); setSurveySuccess(true); setSurveyAnswers({}); setTimeout(() => setSurveySuccess(false), 3000); } catch (e: any) { alert(e.message); } finally { setSurveySubmitting(false); } };
+  const handleSubmitSurvey = async () => {
+      if (!availableSurvey || !user.institutionId) return;
+      
+      if (Object.keys(surveyAnswers).length < availableSurvey.questionnaire.questions.length) {
+          alert("Por favor responda todas as perguntas.");
+          return;
+      }
+
+      setSurveySubmitting(true);
+      try {
+          await BackendService.submitAnonymousResponse(user.id, {
+              institutionId: user.institutionId,
+              questionnaireId: availableSurvey.questionnaire.id,
+              subjectId: 'general',
+              teacherId: 'institution',
+              answers: Object.entries(surveyAnswers).map(([k, v]) => ({ questionId: k, value: v }))
+          });
+          setSurveySuccess(true);
+          setSurveyAnswers({});
+          setTimeout(() => setSurveySuccess(false), 3000);
+      } catch (e: any) {
+          alert(e.message);
+      } finally {
+          setSurveySubmitting(false);
+      }
+  };
   const renderQuestionInput = (q: Question) => { const val = surveyAnswers[q.id]; const setAns = (v: any) => setSurveyAnswers(prev => ({ ...prev, [q.id]: v })); switch (q.type) { case 'stars': return <div className="flex gap-2">{[1, 2, 3, 4, 5].map((star) => (<button key={star} onClick={() => setAns(star)} className="focus:outline-none"><Star className={`h-8 w-8 ${(val as number) >= star ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`} /></button>))}</div>; case 'binary': return <div className="flex gap-4"><button onClick={() => setAns(0)} className={`flex-1 py-2 px-4 rounded-md border ${val === 0 ? 'bg-red-100 border-red-300' : 'bg-white'}`}>Não</button><button onClick={() => setAns(1)} className={`flex-1 py-2 px-4 rounded-md border ${val === 1 ? 'bg-green-100 border-green-300' : 'bg-white'}`}>Sim</button></div>; case 'text': return <textarea className="w-full p-2 border rounded" value={val as string || ''} onChange={(e) => setAns(e.target.value)} />; default: return <Input value={val as string || ''} onChange={(e) => setAns(e.target.value)} />; } };
 
-  const isEvaluationOpen = institution?.isEvaluationOpen ?? true;
+  const isEvaluationOpen = BackendService.isEvaluationOpen(institution);
   
   // Helper Components
   const StatCard = ({ title, value, max, color, icon: Icon }: any) => (
@@ -294,12 +312,12 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                             <div className="md:col-span-2 bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
                                 <div className="absolute top-0 right-0 -mr-4 -mt-4 opacity-10"><Award size={150} /></div>
                                 <div className="relative z-10 flex flex-col justify-between h-full">
-                                    <div><p className="text-slate-300 text-sm font-medium uppercase tracking-widest mb-1">Classificação Final</p><h2 className="text-5xl font-black tracking-tighter">{stats.finalScore.toFixed(1)} <span className="text-xl font-normal text-slate-400">/ {header.category === 'assistente_estagiario' ? '125' : '175'}</span></h2></div>
+                                    <div><p className="text-slate-300 text-sm font-medium uppercase tracking-widest mb-1">Classificação Final</p><h2 className="text-5xl font-black tracking-tighter">{stats.finalScore.toFixed(1)} <span className="text-xl font-normal text-slate-400">/ {institution?.categoryWeights?.find(w => w.category === header.category)?.maxPoints || (header.category === 'assistente_estagiario' ? 125 : 175)}</span></h2></div>
                                     <div className="mt-6 flex flex-wrap gap-3"><Button onClick={handleDownloadPDF} size="sm" className="bg-white/10 hover:bg-white/20 text-white border-none backdrop-blur-sm"><Printer className="mr-2 h-4 w-4" /> Versão Impressa</Button><div className="px-3 py-1.5 bg-green-500/20 text-green-300 rounded text-xs flex items-center gap-1 border border-green-500/30"><CheckCircle2 size={12}/> Processado em {new Date(stats.lastCalculated).toLocaleDateString()}</div></div>
                                 </div>
                             </div>
                             <StatCard title="Avaliação Pedagógica" value={stats.studentScore} max={20} color="blue" icon={GraduationCap} />
-                            <StatCard title="Auto-Avaliação" value={stats.selfEvalScore} max={header.category === 'assistente_estagiario' ? 125 : 175} color="indigo" icon={UserIcon} />
+                            <StatCard title="Auto-Avaliação" value={stats.selfEvalScore} max={institution?.categoryWeights?.find(w => w.category === header.category)?.maxPoints || (header.category === 'assistente_estagiario' ? 125 : 175)} color="indigo" icon={UserIcon} />
                             <StatCard title="Avaliação Institucional" value={stats.institutionalScore} max={10} color="emerald" icon={School} />
                         </div>
                          {qualEval?.comments && (<div className="bg-amber-50 border border-amber-100 rounded-xl p-6 relative"><div className="absolute top-0 left-0 w-1 h-full bg-amber-400 rounded-l-xl"></div><h4 className="font-bold text-amber-900 flex items-center gap-2 mb-3"><ClipboardList size={18} className="text-amber-600" /> Feedback da Gestão</h4><blockquote className="text-amber-900/80 italic text-sm leading-relaxed pl-4 border-l-2 border-amber-200">"{qualEval.comments}"</blockquote></div>)}
@@ -312,12 +330,18 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
           <div className="grid gap-6 lg:grid-cols-12 animate-in slide-in-from-right-4 fade-in duration-300 items-start">
               
               <div className="lg:col-span-4 order-1 lg:order-2 space-y-6 lg:sticky lg:top-24">
+                  {!isEvaluationOpen && (
+                      <div className="bg-amber-50 p-4 rounded-lg border border-amber-100 flex items-center gap-3">
+                          <AlertCircle className="text-amber-500 shrink-0" />
+                          <p className="text-sm text-amber-800">O período de avaliação está encerrado.</p>
+                      </div>
+                  )}
                   <Card className="border-0 shadow-xl ring-1 ring-black/5 overflow-hidden">
                       <div className="bg-slate-900 p-6 text-white text-center">
                           <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-1">Pontuação Provisória</p>
                           <div className="flex items-center justify-center gap-1">
                               <span className="text-5xl font-black tracking-tighter">{calculateLiveScore().toFixed(1)}</span>
-                              <span className="text-xl font-normal text-slate-500 mt-3">/ {header.category === 'assistente_estagiario' ? 125 : 175}</span>
+                              <span className="text-xl font-normal text-slate-500 mt-3">/ {institution?.categoryWeights?.find(w => w.category === header.category)?.maxPoints || (header.category === 'assistente_estagiario' ? 125 : 175)}</span>
                           </div>
                       </div>
                       <div className="p-4 bg-gray-50 border-t flex flex-col gap-3">
@@ -408,24 +432,11 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                     <CardContent>
                         <div className="space-y-4">
                             <Label>Quem você deseja avaliar?</Label>
-                            <Select 
-                                value={evaluationTarget} 
-                                onChange={e => {
-                                    setEvaluationTarget(e.target.value);
-                                    setSurveyAnswers({}); // Reseta respostas ao trocar alvo
-                                }}
-                            >
+                            <Select disabled value="institution">
                                 <option value="institution">Instituição (Avaliação Geral)</option>
-                                <optgroup label="Avaliação de Pares (Colegas)">
-                                    {peerTeachers.map(peer => (
-                                        <option key={peer.id} value={peer.id}>{peer.name}</option>
-                                    ))}
-                                </optgroup>
                             </Select>
                             <p className="text-xs text-gray-500">
-                                {evaluationTarget === 'institution' 
-                                    ? "Você está avaliando as condições gerais e infraestrutura da instituição." 
-                                    : `Você está avaliando o desempenho do colega selecionado.`}
+                                Você está avaliando as condições gerais e infraestrutura da instituição.
                             </p>
                         </div>
                     </CardContent>
@@ -435,13 +446,17 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                      <Card>
                         <CardHeader>
                             <CardTitle>
-                                {evaluationTarget === 'institution' ? 'Inquérito Institucional' : 'Avaliação de Pares'}
+                                Inquérito Institucional
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-6">
                             {surveySuccess ? (
                                 <div className="p-4 bg-green-50 text-green-700 rounded-md flex items-center gap-2">
                                     <CheckCircle2 size={20}/> Resposta enviada com sucesso!
+                                </div>
+                            ) : hasEvaluatedInstitution ? (
+                                <div className="p-4 bg-blue-50 text-blue-700 rounded-md flex items-center gap-2">
+                                    <CheckCircle2 size={20}/> Você já avaliou a instituição.
                                 </div>
                             ) : (
                                 <>

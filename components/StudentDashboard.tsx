@@ -26,7 +26,7 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
 
   useEffect(() => {
     if (user.institutionId) {
-        BackendService.getInstitution(user.institutionId).then(setInstitution);
+        BackendService.getInstitution(user.institutionId).then(inst => setInstitution(inst || null));
         BackendService.getAvailableSurveys(user.institutionId).then(d => {
             setData(d);
             if(d) {
@@ -57,9 +57,12 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                 : true;
 
           // 3. Verificação de Curso (CRÍTICO: Filtra apenas disciplinas do curso do aluno)
-          const courseMatch = user.course && s.course 
-                ? s.course.toLowerCase().includes(user.course.toLowerCase()) || user.course.toLowerCase().includes(s.course.toLowerCase()) 
-                : true;
+          let courseMatch = true;
+          if (user.courseId && s.courseId) {
+              courseMatch = user.courseId === s.courseId;
+          } else if (user.course && s.course) {
+              courseMatch = s.course.toLowerCase().includes(user.course.toLowerCase()) || user.course.toLowerCase().includes(s.course.toLowerCase());
+          }
           
           return shiftMatch && classMatch && courseMatch;
       });
@@ -220,20 +223,36 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
       { name: 'Pendente', value: pendingCount, color: '#e5e7eb' },
   ];
   
-  const isEvaluationOpen = institution?.isEvaluationOpen ?? true; 
+  const isEvaluationOpen = BackendService.isEvaluationOpen(institution);
+
+  if (!isEvaluationOpen) {
+      return (
+          <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6">
+              <div className="bg-amber-50 p-8 rounded-2xl border border-amber-100 max-w-md">
+                  <Lock className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Período de Avaliação Encerrado</h2>
+                  <p className="text-slate-600">O sistema de avaliação não está disponível no momento. Por favor, aguarde a abertura do próximo período pela administração.</p>
+              </div>
+          </div>
+      );
+  }
 
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500">
       <header className="flex flex-col md:flex-row justify-between md:items-center gap-4 border-b pb-6">
         <div>
-            <h1 className="text-3xl font-bold text-gray-900">{institution?.name || 'Painel do Estudante'}</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Olá, {user.name.split(' ')[0]}</h1>
             <p className="text-gray-500 mt-1 flex items-center gap-2">
-                <span className="font-semibold text-gray-700">{user.course || 'Curso Geral'}</span>
+                <span className="font-semibold text-gray-700">{institution?.name || 'Painel do Estudante'}</span>
                 <span className="text-gray-300">•</span>
+                <span className="font-medium text-gray-600">{user.course || 'Curso Geral'}</span>
                 {user.shifts && user.shifts.length > 0 && (
-                    <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full flex items-center gap-1 border">
-                        <CalendarClock size={12}/> {user.shifts.join(' + ')}
-                    </span>
+                    <>
+                        <span className="text-gray-300">•</span>
+                        <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full flex items-center gap-1 border">
+                            <CalendarClock size={12}/> {user.shifts.join(' + ')}
+                        </span>
+                    </>
                 )}
             </p>
         </div>

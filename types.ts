@@ -18,8 +18,8 @@ export interface User {
   avatar?: string; // Base64 ou URL da foto de perfil
   mustChangePassword?: boolean; // Adicionado para controle de troca de senha
   // Novos campos para alunos
-  course?: string; // Mantido para Alunos (Curso Principal)
-  courses?: string[]; // Novo campo para Docentes (Múltiplos Cursos)
+  course?: string; // Deprecated: Use courseId
+  courseId?: string; // ID do Curso Principal
   level?: string; // Ano curricular (ex: 1, 2, 3)
   semester?: string; // Semestre de Frequência (Novo)
   modality?: 'Presencial' | 'Online' | 'Híbrido'; // Modalidade de Ensino (Novo)
@@ -28,6 +28,7 @@ export interface User {
   // Novo campo para docentes
   category?: TeacherCategory;
   jobTitle?: string; // Nova Função/Cargo (Ex: Director, Docente)
+  deleted?: boolean;
 }
 
 export interface Course {
@@ -39,6 +40,12 @@ export interface Course {
   semester?: string; // Novo: Semestre (ex: 1, 2, Anual)
   modality?: 'Presencial' | 'Online'; // Novo: Modalidade
   classGroups?: string[]; // Novo: Lista de Turmas do Curso (ex: A, B, C)
+  deleted?: boolean;
+}
+
+export interface CategoryWeight {
+    category: TeacherCategory;
+    maxPoints: number;
 }
 
 export interface Institution {
@@ -51,6 +58,9 @@ export interface Institution {
   inviteCode?: string;
   // Novos campos para gestão de período
   isEvaluationOpen?: boolean;
+  evaluationStartDate?: string; // Novo: Data de início automática
+  evaluationEndDate?: string;   // Novo: Data de fim automática
+  categoryWeights?: CategoryWeight[]; // Novo: Pesos configuráveis por categoria
   evaluationPeriodName?: string;
   selfEvalTemplate?: SelfEvalTemplate; // Configuração personalizada da auto-avaliação
 }
@@ -65,11 +75,13 @@ export interface Subject {
   academicYear?: string;
   level?: string;
   semester?: string;
-  course?: string;
+  course?: string; // Deprecated: Use courseId
+  courseId?: string; // ID do Curso
   teacherCategory?: TeacherCategory;
   classGroup?: string; // Identificador da Turma (ex: A, B)
   shift?: 'Diurno' | 'Noturno'; // Novo campo restrito
   modality?: 'Presencial' | 'Online'; // Novo campo de modalidade
+  deleted?: boolean;
 }
 
 export type QuestionType = 'binary' | 'scale_10' | 'stars' | 'text' | 'choice';
@@ -174,6 +186,29 @@ export interface CombinedScore {
   finalScore: number; // Soma total
   lastCalculated: string;
   subjectDetails?: SubjectScoreDetail[]; // Novo: Detalhamento por turma
+}
+
+export interface AuditLog {
+  id: string;
+  userId: string; // Quem fez a ação
+  userName: string;
+  userRole: UserRole;
+  institutionId: string;
+  action: string; // ex: 'DELETE_COURSE', 'UPDATE_SCORE', 'OPEN_EVALUATION'
+  targetId?: string; // ID do objeto afetado
+  targetType?: string; // 'course', 'teacher', 'student', 'subject', 'settings'
+  oldValues?: any;
+  newValues?: any;
+  timestamp: string;
+}
+
+export interface AcademicPeriod {
+  id: string;
+  institutionId: string;
+  name: string; // ex: '2024 - 1º Semestre'
+  startDate: string;
+  endDate: string;
+  isCurrent: boolean;
 }
 
 export interface Session {

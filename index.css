@@ -1,0 +1,29 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #f9fafb;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+  body {
+    background-color: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    font-size: 10pt;
+  }
+  .recharts-wrapper {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  nav {
+      display: none !important;
+  }
+}

@@ -151,7 +151,7 @@ export const SuperAdminDashboard: React.FC = () => {
                         <div className="flex items-center gap-2">
                             <div className="text-xs text-right text-gray-500 mr-2">
                                 <p>Gestores:</p>
-                                {inst.managerEmails.map(e => <div key={e}>{e}</div>)}
+                                {inst.managerEmails?.map(e => <div key={e}>{e}</div>)}
                             </div>
                             <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => handleDeleteInstitution(inst.id, inst.name)}>
                                 <Trash2 className="h-4 w-4" />
