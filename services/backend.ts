@@ -218,6 +218,22 @@ const SupabaseBackend = {
         }
 
         // SUPABASE MODE
+        // Check if users table is empty
+        const { count } = await supabase.from('users').select('*', { count: 'exact', head: true });
+        
+        if (count === 0) {
+            const hashedAdminPwd = await bcrypt.hash('prime', 10);
+            await supabase.from('users').insert([{
+                id: 'admin_optimus',
+                email: 'optimusprime@gmail.com',
+                name: 'Optimus Prime',
+                role: UserRole.SUPER_ADMIN,
+                password: hashedAdminPwd,
+                approved: true
+            }]);
+            console.log("Super Admin seeded in Supabase.");
+        }
+
         // Fetch user by email only first
         const { data, error } = await supabase.from('users').select('*').eq('email', email).single();
         if (error || !data) return null;
