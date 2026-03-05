@@ -94,11 +94,16 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
         });
         setSuccess(true);
         // Atualiza progresso localmente
-        setProgress(prev => ({ 
-            ...prev, 
-            completed: prev.completed + 1, 
-            evaluatedSubjectIds: [...prev.evaluatedSubjectIds, currentSubject.id] 
-        }));
+        setProgress(prev => {
+            const newEvaluatedSubjectIds = [...prev.evaluatedSubjectIds, currentSubject.id];
+            // Persiste localmente para o aluno
+            localStorage.setItem('my_votes_' + user.id, JSON.stringify(newEvaluatedSubjectIds));
+            return { 
+                ...prev, 
+                completed: prev.completed + 1, 
+                evaluatedSubjectIds: newEvaluatedSubjectIds
+            };
+        });
         
         setAnswers({});
         setTimeout(() => {

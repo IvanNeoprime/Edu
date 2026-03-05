@@ -17,9 +17,11 @@ interface NewSubjectItem {
     name: string;
     code: string;
     course: string;
+    courseId?: string;
     level: string;
     classGroup: string;
     shift: 'Diurno' | 'Noturno';
+    modality: 'Presencial' | 'Online';
 }
 
 interface CurricularSubject {
@@ -93,6 +95,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [newQType, setNewQType] = useState<QuestionType>('binary'); 
   const [newQWeight, setNewQWeight] = useState(1);
   const [newQOptions, setNewQOptions] = useState(''); // Comma separated
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
 
   // Form State for New Teacher
   const [newTeacherName, setNewTeacherName] = useState('');
@@ -107,7 +110,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [selectedCourseToAdd, setSelectedCourseToAdd] = useState('');
 
   // Temp state for new subject form
-  const [tempSubject, setTempSubject] = useState<NewSubjectItem>({ name: '', code: '', course: '', level: '', classGroup: '', shift: 'Diurno'});
+  const [tempSubject, setTempSubject] = useState<NewSubjectItem>({ name: '', code: '', course: '', courseId: '', level: '', classGroup: '', shift: 'Diurno', modality: 'Presencial'});
 
   // Form State for New Student
   const [newStudentName, setNewStudentName] = useState('');
@@ -350,10 +353,67 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       }
   };
 
+  const handleDeleteTeacher = async (id: string) => {
+      if(confirm("Tem certeza que deseja remover este docente?")) {
+          try { 
+              await BackendService.deleteUser(id); 
+              setTeachers(prev => prev.filter(t => t.id !== id)); 
+              addToast("Docente removido com sucesso.", 'success');
+          } catch(e: any) { 
+              addToast("Erro ao remover docente: " + e.message, 'error'); 
+          }
+      }
+  };
+
+  const handleDeleteStudent = async (id: string) => {
+      if(confirm("Tem certeza que deseja remover este estudante?")) {
+          try { 
+              await BackendService.deleteUser(id); 
+              setStudents(prev => prev.filter(s => s.id !== id)); 
+              addToast("Estudante removido com sucesso.", 'success');
+          } catch(e: any) { 
+              addToast("Erro ao remover estudante: " + e.message, 'error'); 
+          }
+      }
+  };
+
   const handleAddTempSubject = () => {
-      if (!tempSubject.name.trim() || !tempSubject.course.trim()) { addToast("Preencha pelo menos o Nome e o Curso da disciplina.", 'error'); return; }
+      if (!tempSubject.name.trim() || !tempSubject.course.trim()) { 
+          addToast("Preencha pelo menos o Nome e o Curso da disciplina.", 'error'); 
+          return; 
+      }
+      
+      // Check for duplicates in the list being built
+      const isDuplicate = newTeacherSubjects.some(s => 
+          s.name === tempSubject.name && 
+          (s.courseId === tempSubject.courseId || s.course === tempSubject.course) && 
+          s.classGroup === tempSubject.classGroup &&
+          s.shift === tempSubject.shift
+      );
+
+      if (isDuplicate) {
+          addToast("Esta disciplina já foi adicionada à lista.", 'error');
+          return;
+      }
+
+      // Check if subject is already assigned to another teacher (if it has an ID)
+      if (tempSubject.id) {
+          const originalSubject = subjects.find(s => s.id === tempSubject.id);
+          if (originalSubject && originalSubject.teacherId && originalSubject.teacherId !== (editingUser?.id || '')) {
+             // Optional: Allow re-assignment but warn? Or just let it happen (backend handles it).
+             // For now, let's just add it. The UI will show it's assigned.
+          }
+      }
+
       setNewTeacherSubjects([...newTeacherSubjects, tempSubject]);
-      setTempSubject({ name: '', code: '', course: '', level: '', classGroup: '', shift: 'Diurno'});
+      // Reset form but keep course/classGroup for faster entry of multiple subjects in same class
+      setTempSubject({ 
+          ...tempSubject, 
+          name: '', 
+          id: undefined, 
+          code: '' 
+          // Keep course, classGroup, shift
+      });
   };
   
   const handleRemoveTempSubject = (index: number) => { setNewTeacherSubjects(newTeacherSubjects.filter((_, i) => i !== index)); };
@@ -422,13 +482,54 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
   const handleAddQuestion = async () => {
       if (!newQText) return;
-      const newQuestion: Question = { id: `q_${Date.now()}`, text: newQText, type: newQType, weight: newQType === 'text' ? 0 : newQWeight, options: newQType === 'choice' ? newQOptions.split(',').map(o => o.trim()) : undefined };
-      const currentQuestions = questionnaire?.questions || [];
-      const updatedQuestions = [...currentQuestions, newQuestion];
-      const updatedQ: Questionnaire = questionnaire ? { ...questionnaire, questions: updatedQuestions } : { id: `q_${institutionId}_student`, institutionId, title: 'Avaliação de Desempenho Docente (Estudantes)', active: true, questions: updatedQuestions, targetRole: 'student' };
-      setQuestionnaire(updatedQ);
-      await BackendService.saveQuestionnaire(updatedQ);
-      setNewQText(''); setNewQOptions(''); setNewQWeight(1);
+
+      if (editingQuestionId) {
+          // Update existing question
+          const updatedQuestions = questionnaire?.questions.map(q => {
+              if (q.id === editingQuestionId) {
+                  return {
+                      ...q,
+                      text: newQText,
+                      type: newQType,
+                      weight: newQType === 'text' ? 0 : newQWeight,
+                      options: newQType === 'choice' ? newQOptions.split(',').map(o => o.trim()) : undefined
+                  };
+              }
+              return q;
+          }) || [];
+          
+          const updatedQ: Questionnaire = questionnaire ? { ...questionnaire, questions: updatedQuestions } : { ...questionnaire!, questions: updatedQuestions };
+          setQuestionnaire(updatedQ);
+          await BackendService.saveQuestionnaire(updatedQ);
+          
+          setEditingQuestionId(null);
+          setNewQText(''); setNewQOptions(''); setNewQWeight(1);
+          addToast("Pergunta atualizada com sucesso!", 'success');
+      } else {
+          const newQuestion: Question = { id: `q_${Date.now()}`, text: newQText, type: newQType, weight: newQType === 'text' ? 0 : newQWeight, options: newQType === 'choice' ? newQOptions.split(',').map(o => o.trim()) : undefined };
+          const currentQuestions = questionnaire?.questions || [];
+          const updatedQuestions = [...currentQuestions, newQuestion];
+          const updatedQ: Questionnaire = questionnaire ? { ...questionnaire, questions: updatedQuestions } : { id: `q_${institutionId}_student`, institutionId, title: 'Avaliação de Desempenho Docente (Estudantes)', active: true, questions: updatedQuestions, targetRole: 'student' };
+          setQuestionnaire(updatedQ);
+          await BackendService.saveQuestionnaire(updatedQ);
+          setNewQText(''); setNewQOptions(''); setNewQWeight(1);
+          addToast("Pergunta adicionada com sucesso!", 'success');
+      }
+  };
+
+  const handleEditQuestion = (q: Question) => {
+      setEditingQuestionId(q.id);
+      setNewQText(q.text);
+      setNewQType(q.type);
+      setNewQWeight(q.weight || 1);
+      setNewQOptions(q.options ? q.options.join(', ') : '');
+  };
+
+  const handleCancelEdit = () => {
+      setEditingQuestionId(null);
+      setNewQText('');
+      setNewQOptions('');
+      setNewQWeight(1);
   };
 
   const handleRemoveQuestion = async (qId: string) => {
@@ -563,18 +664,30 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
   // Helper para o Subject Builder do Professor
   const tempSubjectCourseObj = useMemo(() => {
+      // Prefer ID match, fallback to name match
+      if (tempSubject.courseId) {
+          return courses.find(c => c.id === tempSubject.courseId);
+      }
       return courses.find(c => c.name === tempSubject.course);
-  }, [tempSubject.course, courses]);
+  }, [tempSubject.course, tempSubject.courseId, courses]);
 
   const availableSubjectsForTeacher = useMemo(() => {
-      if (!tempSubject.course) return [];
-      let filtered = subjects.filter(s => s.course === tempSubject.course);
+      if (!tempSubject.course && !tempSubject.courseId) return [];
+      
+      let filtered = subjects.filter(s => {
+          if (tempSubject.courseId && s.courseId) {
+              return s.courseId === tempSubject.courseId;
+          }
+          // Fallback to name match if IDs missing
+          return s.course === tempSubject.course;
+      });
+
       if (tempSubject.classGroup) {
-          filtered = filtered.filter(s => s.classGroup === tempSubject.classGroup);
+          // Allow subjects with matching classGroup OR subjects with no classGroup (generic)
+          filtered = filtered.filter(s => !s.classGroup || s.classGroup === tempSubject.classGroup);
       }
-      // Remove duplicates if name and classGroup are same (shouldn't happen with IDs but just in case)
       return filtered;
-  }, [subjects, tempSubject.course, tempSubject.classGroup]);
+  }, [subjects, tempSubject.course, tempSubject.courseId, tempSubject.classGroup]);
 
   return (
     <div className="min-h-screen bg-gray-50/50">
@@ -1128,7 +1241,10 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                                 </div>
                                                 <p className="font-medium text-gray-900">{q.text}</p>
                                             </div>
-                                            <Button variant="ghost" size="sm" onClick={() => handleRemoveQuestion(q.id)} className="text-gray-400 hover:text-red-500 absolute top-2 right-2"><Trash2 size={16}/></Button>
+                                            <div className="absolute top-2 right-2 flex gap-1">
+                                                <Button variant="ghost" size="sm" onClick={() => handleEditQuestion(q)} className="text-gray-400 hover:text-blue-500"><Edit size={16}/></Button>
+                                                <Button variant="ghost" size="sm" onClick={() => handleRemoveQuestion(q.id)} className="text-gray-400 hover:text-red-500"><Trash2 size={16}/></Button>
+                                            </div>
                                         </div>
                                         <div className="mt-3 pt-3 border-t">
                                             <div className="opacity-60 pointer-events-none scale-95 origin-left">{renderPreviewInput(q)}</div>
@@ -1140,7 +1256,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
                         <div className="space-y-6">
                             <Card className="sticky top-24">
-                                <CardHeader><CardTitle>Adicionar Pergunta</CardTitle></CardHeader>
+                                <CardHeader><CardTitle>{editingQuestionId ? 'Editar Pergunta' : 'Adicionar Pergunta'}</CardTitle></CardHeader>
                                 <CardContent className="space-y-4">
                                     <div className="space-y-2"><Label>Texto da Pergunta</Label><Input value={newQText} onChange={e => setNewQText(e.target.value)} placeholder="Ex: O docente foi pontual?" /></div>
                                     <div className="space-y-2">
@@ -1156,7 +1272,10 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                     {newQType === 'choice' && (
                                         <div className="space-y-2"><Label>Opções (separadas por vírgula)</Label><Input value={newQOptions} onChange={e => setNewQOptions(e.target.value)} placeholder="Opção A, Opção B, Opção C"/></div>
                                     )}
-                                    <Button onClick={handleAddQuestion} className="w-full">Adicionar ao Inquérito</Button>
+                                    <div className="flex gap-2">
+                                        {editingQuestionId && <Button variant="outline" onClick={handleCancelEdit} className="w-full">Cancelar</Button>}
+                                        <Button onClick={handleAddQuestion} className="w-full">{editingQuestionId ? 'Atualizar Pergunta' : 'Adicionar ao Inquérito'}</Button>
+                                    </div>
                                 </CardContent>
                             </Card>
                         </div>
@@ -1361,11 +1480,24 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                     {/* 1. Seleção de Curso */}
                                     <div className="md:col-span-2">
                                         <Select 
-                                            value={tempSubject.course} 
-                                            onChange={e => setTempSubject({...tempSubject, course: e.target.value, classGroup: ''})}
+                                            value={tempSubject.courseId || ''} 
+                                            onChange={e => {
+                                                const selectedCourseId = e.target.value;
+                                                const selectedCourse = courses.find(c => c.id === selectedCourseId);
+                                                setTempSubject({
+                                                    ...tempSubject, 
+                                                    courseId: selectedCourseId,
+                                                    course: selectedCourse ? selectedCourse.name : '', // Keep name for display
+                                                    modality: selectedCourse?.modality === 'Online' ? 'Online' : 'Presencial', // Auto-set modality
+                                                    classGroup: '',
+                                                    name: '',
+                                                    id: undefined,
+                                                    code: ''
+                                                });
+                                            }}
                                         >
                                             <option value="">Selecione o Curso...</option>
-                                            {courses.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                            {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                         </Select>
                                     </div>
 
@@ -1374,7 +1506,14 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                         {tempSubjectCourseObj && tempSubjectCourseObj.classGroups && tempSubjectCourseObj.classGroups.length > 0 ? (
                                             <Select 
                                                 value={tempSubject.classGroup} 
-                                                onChange={e => setTempSubject({...tempSubject, classGroup: e.target.value})}
+                                                onChange={e => setTempSubject({
+                                                    ...tempSubject, 
+                                                    classGroup: e.target.value,
+                                                    name: '',
+                                                    id: undefined,
+                                                    code: ''
+                                                })}
+                                                disabled={!tempSubject.courseId}
                                             >
                                                 <option value="">Turma...</option>
                                                 {tempSubjectCourseObj.classGroups.map(g => (
@@ -1385,58 +1524,106 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                             <Input 
                                                 placeholder="Turma (ex: A)" 
                                                 value={tempSubject.classGroup} 
-                                                onChange={e => setTempSubject({...tempSubject, classGroup: e.target.value})} 
-                                                disabled={!tempSubject.course}
-                                                title={tempSubject.course ? "Digite a turma manualmente se não configurada no curso" : "Selecione um curso primeiro"}
+                                                onChange={e => setTempSubject({
+                                                    ...tempSubject, 
+                                                    classGroup: e.target.value,
+                                                    name: '',
+                                                    id: undefined,
+                                                    code: ''
+                                                })} 
+                                                disabled={!tempSubject.courseId}
+                                                title={tempSubject.courseId ? "Digite a turma manualmente se não configurada no curso" : "Selecione um curso primeiro"}
                                             />
                                         )}
                                     </div>
 
                                     {/* 3. Nome da Disciplina */}
                                     <div className="md:col-span-2">
-                                        {availableSubjectsForTeacher.length > 0 ? (
-                                            <Select 
-                                                value={tempSubject.name} 
-                                                onChange={e => {
-                                                    const val = e.target.value;
-                                                    const s = availableSubjectsForTeacher.find(sub => sub.name === val);
-                                                    if (s) {
-                                                        setTempSubject({
-                                                            ...tempSubject,
-                                                            id: s.id,
-                                                            name: s.name,
-                                                            code: s.code || '',
-                                                            classGroup: s.classGroup || tempSubject.classGroup,
-                                                            shift: s.shift || tempSubject.shift
-                                                        });
-                                                    } else {
-                                                        setTempSubject({...tempSubject, name: val, id: undefined});
-                                                    }
-                                                }}
-                                            >
-                                                <option value="">Selecione a Disciplina...</option>
-                                                {availableSubjectsForTeacher.map(s => (
-                                                    <option key={s.id} value={s.name}>
-                                                        {s.name} {s.classGroup ? `(Turma ${s.classGroup})` : ''}
-                                                    </option>
-                                                ))}
-                                            </Select>
+                                        {availableSubjectsForTeacher.length > 0 && !tempSubject.name.startsWith('new_custom_') ? (
+                                            <div className="flex gap-1">
+                                                <Select 
+                                                    value={tempSubject.id || ''} 
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        if (val === 'new_custom') {
+                                                            setTempSubject({...tempSubject, name: 'new_custom_', id: undefined});
+                                                            return;
+                                                        }
+                                                        const s = availableSubjectsForTeacher.find(sub => sub.id === val);
+                                                        if (s) {
+                                                            setTempSubject({
+                                                                ...tempSubject,
+                                                                id: s.id,
+                                                                name: s.name,
+                                                                code: s.code || '',
+                                                                classGroup: s.classGroup || tempSubject.classGroup,
+                                                                shift: s.shift || tempSubject.shift
+                                                            });
+                                                        }
+                                                    }}
+                                                    disabled={!tempSubject.classGroup}
+                                                >
+                                                    <option value="">{tempSubject.classGroup ? "Selecione a Disciplina..." : "Selecione a Turma primeiro..."}</option>
+                                                    {availableSubjectsForTeacher.map(s => {
+                                                        const assignedTeacher = s.teacherId ? teachers.find(t => t.id === s.teacherId) : null;
+                                                        const isAssigned = !!assignedTeacher;
+                                                        return (
+                                                            <option key={s.id} value={s.id} className={isAssigned ? 'text-red-500' : ''}>
+                                                                {s.name} {isAssigned ? `(Atribuída a ${assignedTeacher?.name})` : ''}
+                                                            </option>
+                                                        );
+                                                    })}
+                                                    <option value="new_custom" className="font-bold text-blue-600">+ Nova Disciplina Manual</option>
+                                                </Select>
+                                            </div>
                                         ) : (
-                                            <Input 
-                                                placeholder="Nome da Disciplina" 
-                                                value={tempSubject.name} 
-                                                onChange={e => setTempSubject({...tempSubject, name: e.target.value})} 
-                                            />
+                                            <div className="flex gap-1">
+                                                <Input 
+                                                    placeholder="Nome da Disciplina" 
+                                                    value={tempSubject.name === 'new_custom_' ? '' : tempSubject.name} 
+                                                    onChange={e => setTempSubject({...tempSubject, name: e.target.value, id: undefined})} 
+                                                    autoFocus={tempSubject.name === 'new_custom_'}
+                                                />
+                                                {availableSubjectsForTeacher.length > 0 && (
+                                                    <Button 
+                                                        type="button" 
+                                                        variant="ghost" 
+                                                        size="sm" 
+                                                        onClick={() => setTempSubject({...tempSubject, name: '', id: undefined})}
+                                                        title="Voltar para lista"
+                                                    >
+                                                        <X className="h-4 w-4"/>
+                                                    </Button>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
 
-                                    {/* 4. Turno e Botão */}
-                                    <div className="flex gap-2">
-                                        <Select value={tempSubject.shift} onChange={e => setTempSubject({...tempSubject, shift: e.target.value as any})}>
+                                    {/* 4. Turno, Modalidade e Botão */}
+                                    <div className="md:col-span-2 flex gap-2">
+                                        <Select 
+                                            value={tempSubject.shift} 
+                                            onChange={e => setTempSubject({...tempSubject, shift: e.target.value as any})}
+                                            disabled={!tempSubject.name}
+                                            title="Turno"
+                                        >
                                             <option value="Diurno">Laboral (Diurno)</option>
                                             <option value="Noturno">Pós-Laboral (Noturno)</option>
                                         </Select>
-                                        <Button type="button" onClick={handleAddTempSubject} className="w-full sm:w-auto"><Plus className="h-4 w-4"/></Button>
+                                        
+                                        <Select 
+                                            value={tempSubject.modality} 
+                                            onChange={e => setTempSubject({...tempSubject, modality: e.target.value as any})}
+                                            disabled={!tempSubject.name}
+                                            title="Modalidade"
+                                        >
+                                            <option value="Presencial">Presencial</option>
+                                            <option value="Online">Online</option>
+                                        </Select>
+
+                                        <Button type="button" onClick={handleAddTempSubject} className="w-full sm:w-auto" disabled={!tempSubject.name || !tempSubject.courseId || !tempSubject.classGroup}>
+                                            <Plus className="h-4 w-4"/>
+                                        </Button>
                                     </div>
                                 </div>
 
@@ -1448,6 +1635,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                                 <span className="text-gray-500">• {s.course}</span>
                                                 <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100">Turma {s.classGroup}</span>
                                                 <span className="text-gray-400">({s.shift === 'Diurno' ? 'Laboral' : 'Pós-Laboral'})</span>
+                                                <span className={`px-1.5 py-0.5 rounded border ${s.modality === 'Online' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-green-50 text-green-700 border-green-100'}`}>{s.modality}</span>
                                             </div>
                                             <X className="h-3 w-3 cursor-pointer text-red-500 mt-1 sm:mt-0" onClick={() => handleRemoveTempSubject(i)}/>
                                         </div>
@@ -1486,6 +1674,9 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                         <Button variant="outline" size="sm" onClick={() => startEditUser(t)}>
                                             <Edit className="h-4 w-4" />
                                         </Button>
+                                        <Button variant="outline" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeleteTeacher(t.id)}>
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
                                     </div>
                                 </div>
                             ))}
@@ -1511,9 +1702,14 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                         <p className="text-xs text-gray-500">{s.email}</p>
                                         <p className="text-xs text-blue-500">{s.course} • {s.level}º Ano</p>
                                     </div>
-                                    <Button variant="ghost" size="sm" onClick={() => startEditUser(s)}>
-                                        <Edit className="h-4 w-4" />
-                                    </Button>
+                                    <div className="flex gap-1">
+                                        <Button variant="ghost" size="sm" onClick={() => startEditUser(s)}>
+                                            <Edit className="h-4 w-4" />
+                                        </Button>
+                                        <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeleteStudent(s.id)}>
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </div>
                                 </div>
                             ))}
                         </div>

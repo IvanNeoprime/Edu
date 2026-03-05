@@ -493,6 +493,61 @@ const SupabaseBackend = {
         return data as User;
     },
 
+    async deleteUser(id: string) {
+        if (!supabase) {
+            const users = getTable<User>(DB_KEYS.USERS);
+            const userToDelete = users.find(u => u.id === id);
+            
+            if (userToDelete) {
+                // Remove user
+                setTable(DB_KEYS.USERS, users.filter(u => u.id !== id));
+
+                if (userToDelete.role === UserRole.TEACHER) {
+                    // Unassign subjects
+                    const subjects = getTable<Subject>(DB_KEYS.SUBJECTS);
+                    const updatedSubjects = subjects.map(s => {
+                        if (s.teacherId === id) {
+                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                            const { teacherId, ...rest } = s;
+                            return { ...rest, teacherId: undefined };
+                        }
+                        return s;
+                    });
+                    setTable(DB_KEYS.SUBJECTS, updatedSubjects);
+
+                    // Remove related data
+                    const scores = getTable<CombinedScore>(DB_KEYS.SCORES);
+                    setTable(DB_KEYS.SCORES, scores.filter(s => s.teacherId !== id));
+
+                    const qualEvals = getTable<QualitativeEval>(DB_KEYS.QUAL_EVALS);
+                    setTable(DB_KEYS.QUAL_EVALS, qualEvals.filter(e => e.teacherId !== id));
+
+                    const selfEvals = getTable<SelfEvaluation>(DB_KEYS.SELF_EVALS);
+                    setTable(DB_KEYS.SELF_EVALS, selfEvals.filter(e => e.teacherId !== id));
+                }
+            }
+            return;
+        }
+
+        // Supabase Mode
+        const { data: user } = await supabase.from('users').select('role').eq('id', id).single();
+        
+        if (user) {
+            if (user.role === 'teacher') {
+                // Unassign subjects
+                await supabase.from('subjects').update({ teacherId: null }).eq('teacherId', id);
+                
+                // Remove related data
+                await supabase.from('scores').delete().eq('teacherId', id);
+                await supabase.from('qualitative_evals').delete().eq('teacherId', id);
+                await supabase.from('self_evals').delete().eq('teacherId', id);
+            }
+            
+            // Delete user
+            await supabase.from('users').delete().eq('id', id);
+        }
+    },
+
     async getInstitutionSubjects(institutionId: string) {
         if (!supabase) return getTable<Subject>(DB_KEYS.SUBJECTS).filter(s => s.institutionId === institutionId);
         const { data } = await supabase.from('subjects').select('*').eq('institutionId', institutionId);
@@ -928,22 +983,11 @@ const SupabaseBackend = {
         
         if (!supabase) {
              const resps = getTable<any>(DB_KEYS.RESPONSES);
-             // No modo local, usamos a flag _local_userId inserida no submitAnonymousResponse
              evaluatedSubjectIds = resps.filter(r => r._local_userId === studentId).map(r => r.subjectId);
         } else {
-            // Em modo Supabase, como a tabela 'responses' é anônima,
-            // idealmente usaríamos uma tabela 'votes_tracker' (userId, subjectId).
-            // Para manter compatibilidade com o schema atual sem migrações complexas,
-            // vamos retornar vazio ou simular baseado em LocalStorage do lado do cliente se persistido.
-            // *Solução Pragmática:* Assumimos que o frontend vai controlar isso visualmente por enquanto,
-            // ou que não há persistência de "Visto" entre sessões em máquinas diferentes para anonimato total.
-            // Contudo, se quisermos persistência:
-            // const { data } = await supabase.from('votes_tracker').select('subjectId').eq('userId', studentId);
-            // evaluatedSubjectIds = data?.map(d => d.subjectId) || [];
-            
-            // Como não temos 'votes_tracker' no schema, retornamos vazio para segurança.
-            // O frontend pode usar localStorage 'my_votes' como fallback se desejar.
-            evaluatedSubjectIds = [];
+            // Persistência local para o aluno, já que o backend é anônimo
+            const localVotes = localStorage.getItem('my_votes_' + studentId);
+            evaluatedSubjectIds = localVotes ? JSON.parse(localVotes) : [];
         }
         
         return { 
