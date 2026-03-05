@@ -24,8 +24,8 @@ const getEnv = (key: string) => {
 };
 
 const SUPABASE_CONFIG = {
-    url: getEnv('SUPABASE_URL'), 
-    key: getEnv('SUPABASE_ANON_KEY')
+    url: 'https://hpdyncnatkukovtflzwv.supabase.co', 
+    key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwZHluY25hdGt1a292dGZsend2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MTQ3NjYsImV4cCI6MjA4ODI5MDc2Nn0.ToSUVFnWxV0mTSr6wTDw38ajBloaUJJCedWmIMH3-8U'
 };
 
 let supabase: SupabaseClient | null = null;
