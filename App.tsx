@@ -186,11 +186,11 @@ export default function App() {
               <div className="flex justify-between h-16">
                   {/* Logo Area */}
                   <div className="flex items-center gap-2">
-                      <div className="bg-black text-white p-1.5 rounded-lg shrink-0">
+                      <div className="bg-[#0F172A] text-white p-1.5 rounded-xl shrink-0 shadow-md border border-white/10">
                         <GraduationCap className="h-5 w-5" />
                       </div>
-                      <span className="font-bold text-lg hidden sm:block tracking-tight truncate">AvaliaDocente MZ</span>
-                      <span className="font-bold text-lg sm:hidden tracking-tight">ADMZ</span>
+                      <span className="font-bold text-lg hidden sm:block tracking-tight truncate text-gray-900">AvaliaDocente MZ</span>
+                      <span className="font-bold text-lg sm:hidden tracking-tight text-gray-900">ADMZ</span>
                   </div>
 
                   {/* Desktop Actions */}
@@ -290,84 +290,92 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4 animate-fade-in relative">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#0F172A] p-4 animate-fade-in relative overflow-hidden">
+        {/* Decorative Background Elements */}
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-600/10 rounded-full blur-[120px]" />
+
         {/* Storage Indicator */}
-        <div className="absolute top-4 right-4 text-xs font-mono text-gray-400 flex items-center gap-1.5 bg-white px-3 py-1 rounded-full border shadow-sm">
+        <div className="absolute top-4 right-4 text-[10px] font-mono text-gray-400 flex items-center gap-1.5 bg-white/5 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 shadow-xl">
             {systemMode === 'supabase' ? (
-                <><Database size={12} className="text-green-500" /> Online (DB)</>
+                <><Database size={10} className="text-emerald-400" /> Online (DB)</>
             ) : (
-                <><HardDrive size={12} className="text-orange-500" /> Modo Local (Offline)</>
+                <><HardDrive size={10} className="text-orange-400" /> Modo Local</>
             )}
         </div>
 
-        <div className="mb-8 text-center px-4">
-            <div className="mx-auto h-16 w-16 bg-black text-white rounded-2xl flex items-center justify-center mb-4 shadow-xl">
-                <GraduationCap size={32} />
+        <div className="mb-8 text-center px-4 relative z-10">
+            <div className="mx-auto h-20 w-20 bg-white/5 backdrop-blur-xl rounded-[24px] flex items-center justify-center mb-6 shadow-2xl border border-blue-500/20 relative group">
+                <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent rounded-[24px]" />
+                <div className="absolute -inset-0.5 bg-blue-500/10 blur-xl rounded-[24px] group-hover:bg-blue-500/20 transition-all duration-500" />
+                <GraduationCap size={40} className="text-white relative z-10" />
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-gray-900">AvaliaDocente MZ</h1>
-            <p className="text-gray-500 mt-2 text-sm md:text-base">Sistema Nacional de Avaliação Académica</p>
+            <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white">AvaliaDocente MZ</h1>
+            <p className="text-gray-400 mt-2 text-sm md:text-base font-light">Sistema Nacional de Avaliação Académica</p>
             
             {isInstallable && (
               <Button 
                 variant="outline" 
                 size="sm" 
                 onClick={handleInstallClick}
-                className="mt-4 bg-white border-blue-200 text-blue-600 hover:bg-blue-50 animate-bounce"
+                className="mt-6 bg-white/5 border-white/10 text-white hover:bg-white/10 backdrop-blur-md animate-pulse rounded-full px-6"
               >
                 <Database size={14} className="mr-2" /> Instalar no Ecrã Principal
               </Button>
             )}
         </div>
 
-        <Card className="w-full max-w-md shadow-lg border-0 transition-all duration-300">
-          <CardHeader className="space-y-1 pb-4 border-b">
-            <CardTitle className="text-xl md:text-2xl font-bold text-center">
+        <Card className="w-full max-w-md bg-white/5 backdrop-blur-2xl border border-white/10 shadow-2xl relative z-10 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent pointer-events-none" />
+          <CardHeader className="space-y-1 pb-4 border-b border-white/5 relative z-10">
+            <CardTitle className="text-2xl font-bold text-center text-white">
                 Acesso ao Sistema
             </CardTitle>
-            <p className="text-center text-xs text-gray-500">
+            <p className="text-center text-xs text-gray-400 font-light">
                 Insira suas credenciais institucionais para continuar.
             </p>
           </CardHeader>
-          <CardContent className="pt-6">
-            <form onSubmit={handleLogin} className="space-y-4 animate-in fade-in">
+          <CardContent className="pt-8 relative z-10">
+            <form onSubmit={handleLogin} className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <div className="space-y-2">
-                    <Label htmlFor="email">Email Institucional</Label>
+                    <Label htmlFor="email" className="text-gray-300 text-xs uppercase tracking-wider font-semibold">Email Institucional</Label>
                     <Input 
-                    id="email" 
-                    type="email" 
-                    placeholder="Ex: nome@universidade.ac.mz" 
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
+                      id="email" 
+                      type="email" 
+                      placeholder="nome@universidade.ac.mz" 
+                      className="bg-white/5 border-white/10 text-white placeholder:text-gray-600 focus:ring-blue-500/50 h-12"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
                     />
                 </div>
                 <div className="space-y-2">
-                    <Label htmlFor="password">Senha</Label>
+                    <Label htmlFor="password" title="Senha" className="text-gray-300 text-xs uppercase tracking-wider font-semibold">Palavra-Passe</Label>
                     <Input 
                         id="password" 
                         type="password" 
                         placeholder="••••••••" 
+                        className="bg-white/5 border-white/10 text-white placeholder:text-gray-600 focus:ring-blue-500/50 h-12"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                     />
                 </div>
-                <Button type="submit" className="w-full h-11" disabled={loading}>
-                    {loading ? 'Verificando...' : 'Entrar'} <ArrowRight className="ml-2 h-4 w-4" />
+                <Button type="submit" className="w-full h-12 bg-blue-600 hover:bg-blue-500 text-white border-0 shadow-lg shadow-blue-900/20 transition-all duration-300 font-semibold" disabled={loading}>
+                    {loading ? 'Verificando...' : 'Entrar no Sistema'} <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
             </form>
 
-            <div className="mt-6 pt-4 border-t text-center">
-                <p className="text-xs text-gray-400">
-                    Não tem conta? <br/>
-                    O cadastro de novos estudantes e docentes é realizado exclusivamente pela <strong>Secretaria ou Gestão Académica</strong> da sua instituição.
+            <div className="mt-8 pt-6 border-t border-white/5 text-center">
+                <p className="text-[10px] text-gray-500 leading-relaxed max-w-[280px] mx-auto">
+                    O cadastro de novos estudantes e docentes é realizado pela <strong>Secretaria Académica</strong> da sua instituição.
                 </p>
             </div>
           </CardContent>
         </Card>
         
-        <div className="mt-8 flex items-center gap-2 text-gray-400 text-xs text-center px-4">
-            <ShieldCheck size={14} className="shrink-0"/>
-            <span>Segurança e Anonimato Garantidos</span>
+        <div className="mt-10 flex items-center gap-2 text-gray-500 text-[10px] font-medium tracking-widest uppercase">
+            <ShieldCheck size={12} className="text-emerald-500/50"/>
+            <span>Segurança e Anonimato MZ</span>
         </div>
       </div>
     );
