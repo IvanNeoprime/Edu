@@ -7,9 +7,11 @@ import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 import { ManagerDashboard } from './components/ManagerDashboard';
 import { TeacherDashboard } from './components/TeacherDashboard';
 import { StudentDashboard } from './components/StudentDashboard';
-import { GraduationCap, ShieldCheck, ArrowRight, UserPlus, LogIn, User as UserIcon, Database, HardDrive, Key, BookOpen, AlertCircle, Menu, X, LogOut, ChevronDown, AlertTriangle } from 'lucide-react';
+import { useToast } from './components/ToastContext';
+import { GraduationCap, ShieldCheck, ArrowRight, UserPlus, LogIn, User as UserIcon, Database, HardDrive, Key, BookOpen, AlertCircle, Menu, X, LogOut, ChevronDown } from 'lucide-react';
 
 function ChangePasswordModal({ user, onPasswordChanged }: { user: User, onPasswordChanged: () => void }) {
+  const { addToast } = useToast();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -29,7 +31,7 @@ function ChangePasswordModal({ user, onPasswordChanged }: { user: User, onPasswo
     setLoading(true);
     try {
       await BackendService.changePassword(user.id, newPassword);
-      alert('Palavra-passe alterada com sucesso!');
+      addToast('Palavra-passe alterada com sucesso!', 'success');
       onPasswordChanged();
     } catch (err: any) {
       setError(err.message || 'Ocorreu um erro ao alterar a senha.');
@@ -80,6 +82,7 @@ function ChangePasswordModal({ user, onPasswordChanged }: { user: User, onPasswo
 
 
 export default function App() {
+  const { addToast } = useToast();
   const [user, setUser] = useState<User | null>(null);
   const [appLoading, setAppLoading] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -124,10 +127,10 @@ export default function App() {
       if (result) {
         setUser(result.user);
       } else {
-        alert('Usuário não encontrado ou senha incorreta.');
+        addToast('Usuário não encontrado ou senha incorreta.', 'error');
       }
     } catch (error: any) {
-        alert(error.message || 'Erro de conexão');
+        addToast(error.message || 'Erro de conexão', 'error');
     }
     setLoading(false);
   };
@@ -169,17 +172,12 @@ export default function App() {
                   {/* Desktop Actions */}
                   <div className="hidden md:flex items-center gap-2 md:gap-4">
                       {/* Storage Badge */}
-                      <div className="flex flex-col items-end">
-                        <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${dbStatus === 'connected' ? 'bg-green-50 text-green-600 border-green-200' : (dbStatus === 'error' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-gray-100 text-gray-500 border-gray-200')}`}>
-                            {dbStatus === 'connected' ? (
-                                <><Database size={12} /> Conectado</>
-                            ) : dbStatus === 'error' ? (
-                                <><AlertCircle size={12} /> Erro DB</>
-                            ) : (
-                                <><HardDrive size={12} /> Modo Local</>
-                            )}
-                        </div>
-                        {dbError && <span className="text-[10px] text-red-500 mt-0.5 max-w-[120px] truncate" title={dbError}>{dbError}</span>}
+                      <div className="flex items-center gap-1.5 px-3 py-1 bg-gray-100 rounded-full text-xs font-medium text-gray-500 border">
+                          {systemMode === 'supabase' ? (
+                              <><Database size={12} className="text-green-600" /> Conectado</>
+                          ) : (
+                              <><HardDrive size={12} className="text-orange-500" /> Local</>
+                          )}
                       </div>
 
                       <div className="flex items-center gap-3">
@@ -270,17 +268,12 @@ export default function App() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4 animate-fade-in relative">
         {/* Storage Indicator */}
-        <div className="absolute top-4 right-4 flex flex-col items-end">
-            <div className={`text-xs font-mono flex items-center gap-1.5 px-3 py-1 rounded-full border shadow-sm ${dbStatus === 'connected' ? 'bg-green-50 text-green-500 border-green-200' : (dbStatus === 'error' ? 'bg-red-50 text-red-500 border-red-200' : 'bg-white text-orange-500 border-gray-200')}`}>
-                {dbStatus === 'connected' ? (
-                    <><Database size={12} /> Online (DB)</>
-                ) : dbStatus === 'error' ? (
-                    <><AlertCircle size={12} /> Erro de Ligação</>
-                ) : (
-                    <><HardDrive size={12} /> Modo Local (Offline)</>
-                )}
-            </div>
-            {dbError && <span className="text-[10px] text-red-400 mt-1 max-w-[150px] truncate">{dbError}</span>}
+        <div className="absolute top-4 right-4 text-xs font-mono text-gray-400 flex items-center gap-1.5 bg-white px-3 py-1 rounded-full border shadow-sm">
+            {systemMode === 'supabase' ? (
+                <><Database size={12} className="text-green-500" /> Online (DB)</>
+            ) : (
+                <><HardDrive size={12} className="text-orange-500" /> Modo Local (Offline)</>
+            )}
         </div>
 
         <div className="mb-8 text-center px-4">
@@ -327,17 +320,6 @@ export default function App() {
                     {loading ? 'Verificando...' : 'Entrar'} <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
             </form>
-
-            {dbStatus === 'error' && (
-                <div className="mt-4 p-4 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600 flex flex-col gap-2">
-                    <p className="font-bold flex items-center gap-1.5"><AlertTriangle size={14}/> Base de Dados não configurada</p>
-                    <p>O sistema detectou que as tabelas necessárias não existem no seu Supabase.</p>
-                    <p className="font-mono bg-white p-2 rounded border border-red-200 overflow-x-auto">
-                        {dbError}
-                    </p>
-                    <p>Por favor, execute o script SQL fornecido no SQL Editor do seu Supabase para criar as tabelas.</p>
-                </div>
-            )}
 
             <div className="mt-6 pt-4 border-t text-center">
                 <p className="text-xs text-gray-400">

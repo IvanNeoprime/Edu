@@ -751,21 +751,38 @@ app.post("/api/scores/calculate", authenticateToken, async (req, res) => {
 // 🚀 INICIALIZAÇÃO DO SERVIDOR (VITE MIDDLEWARE)
 // ==================================================================================
 
-async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-      // In production, serve static files from dist
-      app.use(express.static('dist'));
-  }
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+async function startServer() {
+  try {
+      if (process.env.NODE_ENV !== "production") {
+        const vite = await createViteServer({
+          server: { middlewareMode: true },
+          appType: "spa",
+          root: __dirname, // Ensure root is correct
+        });
+        app.use(vite.middlewares);
+      } else {
+          // In production, serve static files from dist
+          app.use(express.static(path.join(__dirname, 'dist')));
+          
+          // SPA Fallback for production
+          app.get('*', (req, res) => {
+            res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+          });
+      }
+
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+      });
+  } catch (e) {
+      console.error("Failed to start server:", e);
+      process.exit(1);
+  }
 }
 
 startServer();

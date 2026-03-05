@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { BackendService, PDF_STANDARD_QUESTIONS, DEFAULT_SELF_EVAL_TEMPLATE, GroupedComments } from '../services/backend';
-import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution, SelfEvaluation, Course, SelfEvalTemplate, AuditLog, AcademicPeriod } from '../types';
+import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution, SelfEvaluation, Course, SelfEvalTemplate } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, cn } from './ui';
-import { Users, BookOpen, Calculator, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, Star, BarChartHorizontal, GraduationCap, Download, Printer, Image as ImageIcon, RefreshCw, Settings, Save, X, Edit, Scale, Award, FileSpreadsheet, ListChecks, FileText, Layers, AlertTriangle, Menu, Eye, MessageSquare, RotateCcw, LayoutList, ShieldCheck, History, Calendar } from 'lucide-react';
+import { useToast } from './ToastContext';
+import { Users, BookOpen, Calculator, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, Star, BarChartHorizontal, GraduationCap, Download, Printer, Image as ImageIcon, RefreshCw, Settings, Save, X, Edit, Scale, Award, FileSpreadsheet, ListChecks, FileText, Layers, AlertTriangle, Menu, Eye, MessageSquare, RotateCcw, LayoutList } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -12,10 +13,10 @@ interface Props {
 }
 
 interface NewSubjectItem {
+    id?: string;
     name: string;
     code: string;
     course: string;
-    courseId?: string;
     level: string;
     classGroup: string;
     shift: 'Diurno' | 'Noturno';
@@ -28,8 +29,8 @@ interface CurricularSubject {
 }
 
 export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'courses' | 'teachers' | 'students' | 'evaluations' | 'stats' | 'settings' | 'audit'>('overview');
-  const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
+  const { addToast } = useToast();
+  const [activeTab, setActiveTab] = useState<'overview' | 'courses' | 'teachers' | 'students' | 'qualitative' | 'evaluations' | 'stats' | 'settings'>('overview');
   const [institution, setInstitution] = useState<Institution | null>(null);
   const [teachers, setTeachers] = useState<User[]>([]);
   const [students, setStudents] = useState<User[]>([]);
@@ -38,19 +39,10 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [allScores, setAllScores] = useState<CombinedScore[]>([]);
   const [allSelfEvals, setAllSelfEvals] = useState<Record<string, SelfEvaluation>>({});
   
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [academicPeriods, setAcademicPeriods] = useState<AcademicPeriod[]>([]);
-  const [newPeriodName, setNewPeriodName] = useState('');
-  const [newPeriodStart, setNewPeriodStart] = useState('');
-  const [newPeriodEnd, setNewPeriodEnd] = useState('');
-  
   const [qualEvals, setQualEvals] = useState<Record<string, { deadlines: number, quality: number, comments: string }>>({});
   const [expandedTeacher, setExpandedTeacher] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [expandedDetails, setExpandedDetails] = useState<string | null>(null);
-  const [teacherSearch, setTeacherSearch] = useState('');
-  const [studentSearch, setStudentSearch] = useState('');
-  const [subjectSearch, setSubjectSearch] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
@@ -77,8 +69,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [tempCourseSubjectName, setTempCourseSubjectName] = useState('');
   const [tempCourseSubjectLevel, setTempCourseSubjectLevel] = useState('1');
   const [tempCourseSubjectSemester, setTempCourseSubjectSemester] = useState('1');
-  const [newStandaloneSubject, setNewStandaloneSubject] = useState({ name: '', course: '', classGroup: '', shift: 'Diurno', teacherId: '' });
-  const newStandaloneSubjectCourseObj = useMemo(() => courses.find(c => c.name === newStandaloneSubject.course), [courses, newStandaloneSubject.course]);
   
   // Estado para Cálculo de Scores
   const [calcTarget, setCalcTarget] = useState<string>('all');
@@ -88,11 +78,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editJobTitle, setEditJobTitle] = useState('');
-  // New fields for Student Editing
-  const [editCourse, setEditCourse] = useState('');
-  const [editLevel, setEditLevel] = useState('');
-  const [editClassGroups, setEditClassGroups] = useState('');
-  const [editShifts, setEditShifts] = useState<string[]>([]);
 
   // Questionnaire State
   const [questionnaire, setQuestionnaire] = useState<Questionnaire | null>(null);
@@ -117,6 +102,10 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [newTeacherCategory, setNewTeacherCategory] = useState<TeacherCategory>('assistente');
   const [newTeacherSubjects, setNewTeacherSubjects] = useState<NewSubjectItem[]>([]);
   
+  // New: Multiple courses for teacher
+  const [newTeacherCourses, setNewTeacherCourses] = useState<string[]>([]);
+  const [selectedCourseToAdd, setSelectedCourseToAdd] = useState('');
+
   // Temp state for new subject form
   const [tempSubject, setTempSubject] = useState<NewSubjectItem>({ name: '', code: '', course: '', level: '', classGroup: '', shift: 'Diurno'});
 
@@ -136,10 +125,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [newStudentSemester, setNewStudentSemester] = useState('1');
   const [newStudentModality, setNewStudentModality] = useState<'Presencial' | 'Online' | 'Híbrido'>('Presencial');
 
-  // State for Assigning Subjects to Existing Teacher
-  const [assigningSubjectTeacher, setAssigningSubjectTeacher] = useState<User | null>(null);
-  const [existingTeacherSubject, setExistingTeacherSubject] = useState<NewSubjectItem>({ name: '', code: '', course: '', level: '', classGroup: '', shift: 'Diurno'});
-
   useEffect(() => {
     loadData();
     loadQuestionnaire();
@@ -150,10 +135,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     if (activeTab === 'stats' || activeTab === 'overview') {
         BackendService.getAllScores(institutionId).then(setAllScores);
     }
-    if (activeTab === 'audit') {
-        BackendService.getAuditLogs(institutionId).then(setAuditLogs);
-        BackendService.getAcademicPeriods(institutionId).then(setAcademicPeriods);
-    }
   }, [activeTab, institutionId]);
 
   // Reset student class groups when course changes
@@ -161,33 +142,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       setNewStudentClassGroups([]);
       setNewStudentClassGroupsInput('');
   }, [newStudentCourse]);
-
-  const handleAddAcademicPeriod = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPeriodName || !newPeriodStart || !newPeriodEnd) return;
-    try {
-        await BackendService.addAcademicPeriod(institutionId, newPeriodName, newPeriodStart, newPeriodEnd);
-        const periods = await BackendService.getAcademicPeriods(institutionId);
-        setAcademicPeriods(periods);
-        setNewPeriodName('');
-        setNewPeriodStart('');
-        setNewPeriodEnd('');
-        alert("Período acadêmico adicionado com sucesso!");
-    } catch (e: any) {
-        alert(e.message);
-    }
-  };
-
-  const handleSetCurrentPeriod = async (id: string) => {
-    try {
-        await BackendService.setCurrentAcademicPeriod(institutionId, id);
-        const periods = await BackendService.getAcademicPeriods(institutionId);
-        setAcademicPeriods(periods);
-        alert("Período atual atualizado!");
-    } catch (e: any) {
-        alert(e.message);
-    }
-  };
 
   const loadQuestionnaire = async () => {
     const q = await BackendService.getInstitutionQuestionnaire(institutionId);
@@ -248,55 +202,22 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     setEditName(user.name);
     setEditEmail(user.email);
     setEditJobTitle(user.jobTitle || '');
-    
-    if (user.role === 'student') {
-        let courseName = user.course || '';
-        if (!courseName && user.courseId) {
-            const foundCourse = courses.find(c => c.id === user.courseId);
-            if (foundCourse) courseName = foundCourse.name;
-        }
-        setEditCourse(courseName);
-        setEditLevel(user.level || '');
-        setEditClassGroups(user.classGroups ? user.classGroups.join(', ') : '');
-        setEditShifts(user.shifts || []);
-    }
   };
 
   const handleSaveEditUser = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!editingUser) return;
-      
       try {
-          const updates: Partial<User> = {
+          await BackendService.updateUser(editingUser.id, {
               name: editName,
               email: editEmail,
               jobTitle: editJobTitle
-          };
-
-          if (editingUser.role === 'student') {
-              updates.course = editCourse;
-              updates.courseId = courses.find(c => c.name === editCourse)?.id;
-              updates.level = editLevel;
-              updates.classGroups = editClassGroups.split(',').map(s => s.trim()).filter(Boolean);
-              updates.shifts = editShifts as ("Diurno" | "Noturno")[];
-          }
-
-          await BackendService.updateUser(editingUser.id, updates);
-          alert("Dados atualizados com sucesso!");
+          });
+          addToast("Dados atualizados com sucesso!", 'success');
           setEditingUser(null);
           loadData();
       } catch (e: any) {
-          alert("Erro ao atualizar: " + e.message);
-      }
-  };
-
-  const handleDeleteSubject = async (subjectId: string) => {
-      if (!confirm("Tem certeza que deseja remover esta disciplina?")) return;
-      try {
-          await BackendService.deleteSubject(subjectId);
-          loadData(); 
-      } catch (e: any) {
-          alert("Erro ao remover disciplina: " + e.message);
+          addToast("Erro ao atualizar: " + e.message, 'error');
       }
   };
 
@@ -308,9 +229,9 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         const scores = await BackendService.getAllScores(institutionId);
         setAllScores(scores);
         const msg = targetId ? `Cálculo realizado para o docente selecionado.` : `Cálculo realizado para ${teachers.length} docentes.`;
-        alert(msg);
-    } catch (e) {
-        alert("Erro ao calcular: " + e);
+        addToast(msg, 'success');
+    } catch (e: any) {
+        addToast("Erro ao calcular: " + e, 'error');
     } finally {
         setCalculating(false);
     }
@@ -357,7 +278,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   
   const saveSelfEvalChanges = async () => {
       await BackendService.saveInstitutionSelfEvalTemplate(institutionId, selfEvalTemplate);
-      alert("Modelo de Auto-Avaliação atualizado com sucesso!");
+      addToast("Modelo de Auto-Avaliação atualizado com sucesso!", 'success');
   };
 
   const handleResetSelfEvalDefaults = async () => {
@@ -382,7 +303,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: React.Dispatch<React.SetStateAction<string>>) => {
       const file = e.target.files?.[0];
       if (file) {
-          if (file.size > 500 * 1024) return alert("Foto muito grande. Máx 500KB.");
+          if (file.size > 500 * 1024) return addToast("Foto muito grande. Máx 500KB.", 'error');
           const reader = new FileReader();
           reader.onload = (ev) => setter(ev.target?.result as string);
           reader.readAsDataURL(file);
@@ -399,132 +320,69 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
   const handleAddCourse = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!newCourseName || !newCourseCode) return;
+      if (!newCourseName || !newCourseCode) { addToast("Preencha Nome e Código do curso.", 'error'); return; }
       try {
-          // Parse as turmas (se houver)
           const classGroupsList = newCourseClassGroups
             .split(',')
             .map(s => s.trim())
             .filter(s => s.length > 0);
             
-          const result = await BackendService.addCourse(institutionId, newCourseName, newCourseCode, parseInt(newCourseDuration), newCourseSemester, newCourseModality, classGroupsList);
+          await BackendService.addCourse(
+              institutionId, 
+              newCourseName, 
+              newCourseCode, 
+              parseInt(newCourseDuration), 
+              newCourseSemester, 
+              newCourseModality, 
+              classGroupsList,
+              courseSubjects
+          );
           
-          if (result) {
-            setCourses(prev => [...prev, result]);
-            
-            // Se houver disciplinas adicionadas
-            if (courseSubjects.length > 0) {
-                const year = new Date().getFullYear().toString();
-                // Definir turmas padrão se o usuário não inseriu nenhuma
-                const finalClassGroups = classGroupsList.length > 0 ? classGroupsList : ['A'];
-
-                for (const sub of courseSubjects) {
-                    // Para cada disciplina, criamos uma entrada para cada turma definida no curso
-                    for (const group of finalClassGroups) {
-                        await BackendService.assignSubject({
-                            name: sub.name, 
-                            code: `${newCourseCode}-${sub.level}${sub.semester}`, 
-                            teacherId: undefined, 
-                            institutionId: institutionId, 
-                            academicYear: year, 
-                            level: sub.level, 
-                            semester: sub.semester, 
-                            course: newCourseName, 
-                            courseId: result.id, // Link to Course ID
-                            classGroup: group, // Atribui a turma específica
-                            shift: 'Diurno', 
-                            modality: newCourseModality as any
-                        });
-                    }
-                }
-                await loadData();
-            }
-          }
           setNewCourseName(''); setNewCourseCode(''); setNewCourseDuration('4'); setNewCourseSemester('1'); setNewCourseModality('Presencial'); setNewCourseClassGroups(''); setCourseSubjects([]);
-          alert(`Curso "${newCourseName}" criado com sucesso!`);
-      } catch(e: any) { alert("Erro ao adicionar curso: " + e.message); }
-  };
-
-  const handleAddStandaloneSubject = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!newStandaloneSubject.name.trim()) return;
-      try {
-          const year = new Date().getFullYear().toString();
-          const result = await BackendService.assignSubject({
-              name: newStandaloneSubject.name,
-              code: `${newStandaloneSubject.name.substring(0, 3).toUpperCase()}-${Date.now().toString().slice(-4)}`,
-              teacherId: newStandaloneSubject.teacherId || undefined,
-              institutionId: institutionId,
-              academicYear: year,
-              course: newStandaloneSubject.course,
-              courseId: newStandaloneSubjectCourseObj?.id, // Link to Course ID
-              classGroup: newStandaloneSubject.classGroup,
-              shift: newStandaloneSubject.shift,
-              level: '1',
-              semester: '1',
-              modality: 'Presencial'
-          });
-          if (result) {
-              setSubjects(prev => {
-                  const idx = prev.findIndex(s => s.id === result.id);
-                  if (idx >= 0) {
-                      const newSubs = [...prev];
-                      newSubs[idx] = result;
-                      return newSubs;
-                  }
-                  return [...prev, result];
-              });
-              setNewStandaloneSubject({ name: '', course: '', classGroup: '', shift: 'Diurno', teacherId: '' });
-              alert(`Disciplina "${result.name}" ${result.teacherId ? 'atualizada' : 'adicionada'} com sucesso!`);
-          }
-      } catch (e: any) {
-          alert("Erro ao adicionar disciplina: " + e.message);
-      }
+          await loadData(); 
+          addToast(`Curso "${newCourseName}" criado com sucesso!`, 'success');
+      } catch (error: any) { addToast("Erro ao adicionar curso: " + error.message, 'error'); }
   };
 
   const handleDeleteCourse = async (id: string) => {
       if(confirm("Tem certeza?")) {
-          try { await BackendService.deleteCourse(id); setCourses(prev => prev.filter(c => c.id !== id)); } catch(e: any) { alert("Erro ao remover curso: " + e.message); }
+          try { await BackendService.deleteCourse(id); setCourses(prev => prev.filter(c => c.id !== id)); } catch(e: any) { addToast("Erro ao remover curso: " + e.message, 'error'); }
       }
   };
 
   const handleAddTempSubject = () => {
-      if (!tempSubject.name.trim()) { alert("Preencha o Nome da disciplina."); return; }
+      if (!tempSubject.name.trim() || !tempSubject.course.trim()) { addToast("Preencha pelo menos o Nome e o Curso da disciplina.", 'error'); return; }
       setNewTeacherSubjects([...newTeacherSubjects, tempSubject]);
       setTempSubject({ name: '', code: '', course: '', level: '', classGroup: '', shift: 'Diurno'});
   };
   
   const handleRemoveTempSubject = (index: number) => { setNewTeacherSubjects(newTeacherSubjects.filter((_, i) => i !== index)); };
-  
+  const handleAddTeacherCourse = () => { if (selectedCourseToAdd && !newTeacherCourses.includes(selectedCourseToAdd)) { setNewTeacherCourses([...newTeacherCourses, selectedCourseToAdd]); setSelectedCourseToAdd(''); } };
+  const handleRemoveTeacherCourse = (course: string) => { setNewTeacherCourses(newTeacherCourses.filter(c => c !== course)); };
+
   const handleAddTeacher = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!newTeacherName.trim() || !newTeacherEmail.trim() || !newTeacherPwd.trim()) { alert("Por favor, preencha Nome, Email e Senha do docente."); return; }
+      if (!newTeacherName.trim() || !newTeacherEmail.trim() || !newTeacherPwd.trim()) { addToast("Por favor, preencha Nome, Email e Senha do docente.", 'error'); return; }
       try {
-          const newUser = await BackendService.addTeacher(institutionId, newTeacherName, newTeacherEmail, newTeacherPwd, newTeacherAvatar, newTeacherCategory);
+          const newUser = await BackendService.addTeacher(institutionId, newTeacherName, newTeacherEmail, newTeacherPwd, newTeacherAvatar, newTeacherCategory, newTeacherCourses);
           if (newTeacherSubjects.length > 0) {
               for (const sub of newTeacherSubjects) {
                   if (sub.name) {
+                      // Pass full sub object which might include ID
                       await BackendService.assignSubject({ 
-                          name: sub.name, 
-                          code: sub.code, 
+                          ...sub, 
                           teacherId: newUser.id, 
                           institutionId: institutionId, 
                           academicYear: new Date().getFullYear().toString(), 
-                          level: sub.level, 
-                          semester: '1', 
-                          course: sub.course, 
-                          courseId: sub.courseId, // Link to Course ID
-                          classGroup: sub.classGroup, 
-                          shift: sub.shift, 
                           modality: 'Presencial', 
                           teacherCategory: newTeacherCategory 
                       });
                   }
               }
           }
-          setNewTeacherName(''); setNewTeacherEmail(''); setNewTeacherPwd(''); setNewTeacherAvatar(''); setNewTeacherCategory('assistente'); setNewTeacherSubjects([]);
-          await loadData(); alert(`Docente e ${newTeacherSubjects.length} disciplinas cadastrados com sucesso!`);
-      } catch (error: any) { alert("Erro ao cadastrar docente: " + error.message); }
+          setNewTeacherName(''); setNewTeacherEmail(''); setNewTeacherPwd(''); setNewTeacherAvatar(''); setNewTeacherCategory('assistente'); setNewTeacherSubjects([]); setNewTeacherCourses([]);
+          await loadData(); addToast(`Docente e ${newTeacherSubjects.length} disciplinas cadastrados com sucesso!`, 'success');
+      } catch (error: any) { addToast("Erro ao cadastrar docente: " + error.message, 'error'); }
   };
 
   const handleToggleShift = (shift: string) => {
@@ -533,9 +391,9 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
   const handleAddStudent = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!newStudentName.trim() || !newStudentEmail.trim() || !newStudentPwd.trim()) { alert("Por favor, preencha Nome, Email e Senha."); return; }
-      // Course is now optional
-      if (newStudentShifts.length === 0) { alert("Selecione pelo menos um turno."); return; }
+      if (!newStudentName.trim() || !newStudentEmail.trim() || !newStudentPwd.trim()) { addToast("Por favor, preencha Nome, Email e Senha.", 'error'); return; }
+      if (!newStudentCourse) { addToast("Por favor, selecione um Curso para o estudante.", 'error'); return; }
+      if (newStudentShifts.length === 0) { addToast("Selecione pelo menos um turno.", 'error'); return; }
       
       // Determine class groups: Either selected from buttons OR manual input
       let finalClassGroups = newStudentClassGroups;
@@ -544,23 +402,10 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       }
 
       try {
-          await BackendService.addStudent(
-              institutionId, 
-              newStudentName, 
-              newStudentEmail, 
-              newStudentPwd, 
-              newStudentCourse, 
-              selectedCourseObj?.id, // Pass courseId
-              newStudentLevel, 
-              newStudentAvatar, 
-              newStudentShifts, 
-              finalClassGroups, 
-              newStudentSemester, 
-              newStudentModality
-          );
+          await BackendService.addStudent(institutionId, newStudentName, newStudentEmail, newStudentPwd, newStudentCourse, newStudentLevel, newStudentAvatar, newStudentShifts, finalClassGroups, newStudentSemester, newStudentModality);
           setNewStudentName(''); setNewStudentEmail(''); setNewStudentPwd(''); setNewStudentCourse(''); setNewStudentLevel(''); setNewStudentAvatar(''); setNewStudentClassGroups([]); setNewStudentClassGroupsInput(''); setNewStudentShifts([]); setNewStudentSemester('1'); setNewStudentModality('Presencial');
-          await loadData(); alert(`Estudante cadastrado com sucesso!`);
-      } catch (error: any) { alert("Erro ao cadastrar estudante: " + error.message); }
+          await loadData(); addToast(`Estudante cadastrado com sucesso!`, 'success');
+      } catch (error: any) { addToast("Erro ao cadastrar estudante: " + error.message, 'error'); }
   };
 
   const handleEvalChange = (teacherId: string, field: 'deadlines' | 'quality' | 'comments', value: string) => {
@@ -572,7 +417,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const handleEvalSubmit = async (teacherId: string) => {
     const evalData = qualEvals[teacherId];
     await BackendService.saveQualitativeEval({ teacherId, institutionId, deadlineCompliance: evalData.deadlines, workQuality: evalData.quality, comments: evalData.comments, evaluatedAt: new Date().toISOString() });
-    setExpandedTeacher(null); alert("Avaliação qualitativa salva com sucesso.");
+    setExpandedTeacher(null); addToast("Avaliação qualitativa salva com sucesso.", 'success');
   };
 
   const handleAddQuestion = async () => {
@@ -601,13 +446,13 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   
   const handleUpdateInstitution = async (e: React.FormEvent) => {
     e.preventDefault(); if (!institution) return;
-    try { await BackendService.updateInstitution(institution.id, { name: institution.name, logo: institution.logo }); alert("Dados da instituição atualizados com sucesso!"); } catch (e: any) { alert("Erro ao atualizar: " + e.message); }
+    try { await BackendService.updateInstitution(institution.id, { name: institution.name, logo: institution.logo }); addToast("Dados da instituição atualizados com sucesso!", 'success'); } catch (e: any) { addToast("Erro ao atualizar: " + e.message, 'error'); }
   };
 
   const handleInstLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file && institution) {
-          if (file.size > 500 * 1024) return alert("Logotipo muito grande. O limite é 500KB.");
+          if (file.size > 500 * 1024) return addToast("Logotipo muito grande. O limite é 500KB.", 'error');
           const reader = new FileReader();
           reader.onload = (ev) => { setInstitution({ ...institution, logo: ev.target?.result as string }); };
           reader.readAsDataURL(file);
@@ -626,26 +471,27 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     }
   };
   
+  const calculateClassification20 = (finalScore: number) => { if (finalScore > 20) return (finalScore / 175) * 20; return finalScore; };
   const getAppreciation = (classification20: number) => { if (classification20 >= 18) return 'Excelente'; if (classification20 >= 14) return 'Bom'; if (classification20 >= 10) return 'Suficiente'; return 'Insuficiente'; };
   const fullReportData = useMemo(() => {
     return teachers.map(teacher => {
         const score = allScores.find(s => s.teacherId === teacher.id);
         const hasScore = !!score;
-        const val20 = score?.finalScore || 0;
+        const val20 = hasScore ? calculateClassification20(score.finalScore) : 0;
         return { teacherId: teacher.id, teacherName: teacher.name, teacherEmail: teacher.email, teacherCategory: teacher.category || 'N/A', teacherJob: teacher.jobTitle || 'Docente', hasScore, selfEvalScore: score?.selfEvalScore || 0, studentScore: score?.studentScore || 0, institutionalScore: score?.institutionalScore || 0, finalScore: score?.finalScore || 0, subjectDetails: score?.subjectDetails || [], val20, classification: hasScore ? getAppreciation(val20) : 'Pendente' };
     }).sort((a, b) => b.finalScore - a.finalScore);
   }, [allScores, teachers]);
 
   const handlePrintReport = (teacher: User) => {
       const score = allScores.find(s => s.teacherId === teacher.id); const selfEval = allSelfEvals[teacher.id];
-      if (!score) { alert("Este docente ainda não tem uma pontuação final calculada."); return; }
+      if (!score) { addToast("Este docente ainda não tem uma pontuação final calculada.", 'error'); return; }
       setPrintingTeacher(teacher); setPrintingScore(score); setPrintingSelfEval(selfEval || null); setTimeout(() => { window.print(); }, 100);
   };
   const handlePrintStats = () => { window.print(); };
 
   const handleExportCSV = () => {
     if (fullReportData.length === 0) {
-        alert("Não há dados para exportar.");
+        addToast("Não há dados para exportar.", 'error');
         return;
     }
 
@@ -720,52 +566,15 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
       return courses.find(c => c.name === tempSubject.course);
   }, [tempSubject.course, courses]);
 
-  // Helper for Existing Teacher Subject Builder
-  const existingTeacherSubjectCourseObj = useMemo(() => {
-      return courses.find(c => c.name === existingTeacherSubject.course);
-  }, [existingTeacherSubject.course, courses]);
-
-  // Helper for Existing Teacher Subject Builder - Suggestions
-  const existingTeacherSubjectSuggestions = useMemo(() => {
-      if (!existingTeacherSubject.course) return [];
-      // Get all subjects that match the course
-      const courseSubjects = subjects.filter(s => s.course === existingTeacherSubject.course);
-      // Return unique names
-      return Array.from(new Set(courseSubjects.map(s => s.name)));
-  }, [existingTeacherSubject.course, subjects]);
-
-  const handleAssignSubject = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!assigningSubjectTeacher) return;
-      if (!existingTeacherSubject.name) {
-          alert("Preencha o Nome da disciplina.");
-          return;
+  const availableSubjectsForTeacher = useMemo(() => {
+      if (!tempSubject.course) return [];
+      let filtered = subjects.filter(s => s.course === tempSubject.course);
+      if (tempSubject.classGroup) {
+          filtered = filtered.filter(s => s.classGroup === tempSubject.classGroup);
       }
-
-      try {
-          await BackendService.assignSubject({
-              name: existingTeacherSubject.name,
-              code: existingTeacherSubject.code, 
-              teacherId: assigningSubjectTeacher.id,
-              institutionId: institutionId,
-              academicYear: new Date().getFullYear().toString(),
-              level: existingTeacherSubject.level || '1',
-              semester: '1', 
-              course: existingTeacherSubject.course,
-              courseId: existingTeacherSubjectCourseObj?.id,
-              classGroup: existingTeacherSubject.classGroup,
-              shift: existingTeacherSubject.shift,
-              modality: 'Presencial', 
-              teacherCategory: assigningSubjectTeacher.category
-          });
-          
-          alert("Disciplina atribuída com sucesso!");
-          setExistingTeacherSubject({ name: '', code: '', course: '', level: '', classGroup: '', shift: 'Diurno'});
-          loadData();
-      } catch (e: any) {
-          alert("Erro ao atribuir disciplina: " + e.message);
-      }
-  };
+      // Remove duplicates if name and classGroup are same (shouldn't happen with IDs but just in case)
+      return filtered;
+  }, [subjects, tempSubject.course, tempSubject.classGroup]);
 
   return (
     <div className="min-h-screen bg-gray-50/50">
@@ -905,106 +714,10 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         </div>
       )}
 
-      {/* --- ASSIGN SUBJECT MODAL --- */}
-      {assigningSubjectTeacher && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in">
-            <Card className="w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
-                <CardHeader>
-                    <CardTitle>Gerir Disciplinas de {assigningSubjectTeacher.name}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    {/* List Current Subjects */}
-                    <div className="mb-6 bg-gray-50 p-4 rounded-lg border">
-                        <h4 className="text-sm font-semibold mb-3 text-gray-700 flex items-center gap-2">
-                            <BookOpen className="h-4 w-4"/> Disciplinas Atuais
-                        </h4>
-                        <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
-                            {subjects.filter(s => s.teacherId === assigningSubjectTeacher.id).length === 0 && (
-                                <p className="text-xs text-gray-500 italic">Nenhuma disciplina atribuída.</p>
-                            )}
-                            {subjects.filter(s => s.teacherId === assigningSubjectTeacher.id).map(s => (
-                                <div key={s.id} className="flex justify-between items-center bg-white p-2 rounded border text-sm shadow-sm">
-                                    <div>
-                                        <span className="font-medium block">{s.name}</span>
-                                        <span className="text-xs text-gray-500">{s.course} • Turma {s.classGroup} • {s.shift}</span>
-                                    </div>
-                                    <Button variant="ghost" size="sm" onClick={() => handleDeleteSubject(s.id)} className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 w-8 p-0">
-                                        <X className="h-4 w-4"/>
-                                    </Button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="border-t pt-4">
-                        <h4 className="text-sm font-semibold mb-3 text-gray-700">Adicionar Nova Disciplina</h4>
-                        <form onSubmit={handleAssignSubject} className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="md:col-span-2">
-                                    <Label>Curso (Opcional)</Label>
-                                    <Select 
-                                        value={existingTeacherSubject.course} 
-                                        onChange={e => setExistingTeacherSubject({...existingTeacherSubject, course: e.target.value, classGroup: ''})}
-                                    >
-                                        <option value="">Selecione o Curso...</option>
-                                        {courses.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                                    </Select>
-                                </div>
-                                
-                                <div>
-                                    <Label>Turma</Label>
-                                    {existingTeacherSubjectCourseObj && existingTeacherSubjectCourseObj.classGroups && existingTeacherSubjectCourseObj.classGroups.length > 0 ? (
-                                        <Select 
-                                            value={existingTeacherSubject.classGroup} 
-                                            onChange={e => setExistingTeacherSubject({...existingTeacherSubject, classGroup: e.target.value})}
-                                        >
-                                            <option value="">Turma...</option>
-                                            {existingTeacherSubjectCourseObj.classGroups.map(g => (
-                                                <option key={g} value={g}>{g}</option>
-                                            ))}
-                                        </Select>
-                                    ) : (
-                                        <Input 
-                                            placeholder="Turma (ex: A)" 
-                                            value={existingTeacherSubject.classGroup} 
-                                            onChange={e => setExistingTeacherSubject({...existingTeacherSubject, classGroup: e.target.value})} 
-                                        />
-                                    )}
-                                </div>
-
-                                <div>
-                                    <Label>Turno</Label>
-                                    <Select value={existingTeacherSubject.shift} onChange={e => setExistingTeacherSubject({...existingTeacherSubject, shift: e.target.value as any})}>
-                                        <option value="Diurno">Laboral</option>
-                                        <option value="Noturno">Pós-Laboral</option>
-                                    </Select>
-                                </div>
-
-                                <div className="md:col-span-2">
-                                    <Label>Nome da Disciplina</Label>
-                                    <Input 
-                                        value={existingTeacherSubject.name} 
-                                        onChange={e => setExistingTeacherSubject({...existingTeacherSubject, name: e.target.value})} 
-                                        placeholder="Ex: Matemática Discreta"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="flex justify-end gap-2 pt-4">
-                                <Button type="button" variant="ghost" onClick={() => setAssigningSubjectTeacher(null)}>Fechar</Button>
-                                <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">Adicionar</Button>
-                            </div>
-                        </form>
-                    </div>
-                </CardContent>
-            </Card>
-        </div>
-      )}
-
       {/* --- EDIT USER MODAL --- */}
       {editingUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in">
-            <Card className="w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+            <Card className="w-full max-w-md shadow-2xl">
                 <CardHeader>
                     <CardTitle>Editar Usuário</CardTitle>
                 </CardHeader>
@@ -1012,63 +725,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                     <form onSubmit={handleSaveEditUser} className="space-y-4">
                         <div className="space-y-2"><Label>Nome Completo</Label><Input value={editName} onChange={e => setEditName(e.target.value)} /></div>
                         <div className="space-y-2"><Label>Email Institucional</Label><Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} /></div>
-                        
-                        {editingUser.role === 'teacher' && (
-                            <div className="space-y-2"><Label>Função/Cargo (Job Title)</Label><Input value={editJobTitle} onChange={e => setEditJobTitle(e.target.value)} placeholder="Ex: Diretor, Regente, Docente..." /></div>
-                        )}
-
-                        {editingUser.role === 'student' && (
-                            <>
-                                <div className="space-y-2">
-                                    <Label>Curso (Opcional)</Label>
-                                    <Select value={editCourse} onChange={e => setEditCourse(e.target.value)}>
-                                        <option value="">Selecione...</option>
-                                        {courses.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                                    </Select>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div className="space-y-2">
-                                        <Label>Ano/Nível</Label>
-                                        <Select value={editLevel} onChange={e => setEditLevel(e.target.value)}>
-                                            <option value="1">1º Ano</option>
-                                            <option value="2">2º Ano</option>
-                                            <option value="3">3º Ano</option>
-                                            <option value="4">4º Ano</option>
-                                        </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Turmas (CSV)</Label>
-                                        <Input value={editClassGroups} onChange={e => setEditClassGroups(e.target.value)} placeholder="Ex: A, B" />
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Turnos</Label>
-                                    <div className="flex gap-2">
-                                        <label className="flex items-center gap-1 text-sm">
-                                            <input 
-                                                type="checkbox" 
-                                                checked={editShifts.includes('Diurno')} 
-                                                onChange={e => {
-                                                    if(e.target.checked) setEditShifts([...editShifts, 'Diurno']);
-                                                    else setEditShifts(editShifts.filter(s => s !== 'Diurno'));
-                                                }}
-                                            /> Laboral
-                                        </label>
-                                        <label className="flex items-center gap-1 text-sm">
-                                            <input 
-                                                type="checkbox" 
-                                                checked={editShifts.includes('Noturno')} 
-                                                onChange={e => {
-                                                    if(e.target.checked) setEditShifts([...editShifts, 'Noturno']);
-                                                    else setEditShifts(editShifts.filter(s => s !== 'Noturno'));
-                                                }}
-                                            /> Pós-Laboral
-                                        </label>
-                                    </div>
-                                </div>
-                            </>
-                        )}
-
+                        <div className="space-y-2"><Label>Função/Cargo (Job Title)</Label><Input value={editJobTitle} onChange={e => setEditJobTitle(e.target.value)} placeholder="Ex: Diretor, Regente, Docente..." /></div>
                         <div className="flex justify-end gap-2 pt-2">
                             <Button type="button" variant="ghost" onClick={() => setEditingUser(null)}>Cancelar</Button>
                             <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">Salvar Alterações</Button>
@@ -1179,7 +836,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                 
                 {/* Desktop Nav */}
                 <div className="hidden md:flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setActiveTab('audit')} className="gap-2"><ShieldCheck size={16}/> Auditoria</Button>
                     <Button variant="outline" size="sm" onClick={() => setActiveTab('settings')} className="gap-2"><Settings size={16}/> Configurações</Button>
                     <div className="flex bg-gray-100 p-1 rounded-lg">
                         <Button variant={activeTab === 'overview' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('overview')} className="gap-2"><BarChartHorizontal size={16} /> Visão Geral</Button>
@@ -1187,6 +843,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                         <Button variant={activeTab === 'courses' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('courses')} className="gap-2"><BookOpen size={16} /> Cursos</Button>
                         <Button variant={activeTab === 'teachers' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('teachers')} className="gap-2"><Users size={16} /> Docentes</Button>
                         <Button variant={activeTab === 'students' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('students')} className="gap-2"><GraduationCap size={16} /> Estudantes</Button>
+                        <Button variant={activeTab === 'evaluations' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('evaluations')} className="gap-2"><FileQuestion size={16} /> Modelos</Button>
                     </div>
                 </div>
                 {/* Mobile Menu Button */}
@@ -1199,11 +856,10 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                     <div className="grid gap-1">
                         <button onClick={() => {setActiveTab('overview'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'overview' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}><BarChartHorizontal size={18} /> Visão Geral</button>
                         <button onClick={() => {setActiveTab('stats'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'stats' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}><ListChecks size={18} /> Relatórios</button>
-                        <button onClick={() => {setActiveTab('courses'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'courses' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}><BookOpen size={18} /> Cursos e Disciplinas</button>
+                        <button onClick={() => {setActiveTab('courses'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'courses' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}><BookOpen size={18} /> Cursos</button>
                         <button onClick={() => {setActiveTab('teachers'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'teachers' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}><Users size={18} /> Docentes</button>
                         <button onClick={() => {setActiveTab('students'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'students' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}><GraduationCap size={18} /> Estudantes</button>
                         <button onClick={() => {setActiveTab('evaluations'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'evaluations' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}><FileQuestion size={18} /> Modelos de Avaliação</button>
-                        <button onClick={() => {setActiveTab('audit'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'audit' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}><ShieldCheck size={18} /> Auditoria</button>
                         <button onClick={() => {setActiveTab('settings'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'settings' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}><Settings size={18} /> Configurações</button>
                     </div>
                 </div>
@@ -1439,48 +1095,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                         </table>
                     </CardContent>
                  </Card>
-
-                 {/* Mobile View for Report */}
-                 <div className="md:hidden space-y-4">
-                    {fullReportData.length === 0 ? (
-                        <p className="p-8 text-center text-gray-500 italic bg-white rounded-lg border">Nenhum docente cadastrado.</p>
-                    ) : fullReportData.map(score => (
-                        <Card key={score.teacherId} className="overflow-hidden">
-                            <CardHeader className="bg-slate-50 py-3">
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <CardTitle className="text-base">{score.teacherName}</CardTitle>
-                                        <p className="text-xs text-gray-500 capitalize">{score.teacherCategory.replace('_', ' ')}</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-xl font-black text-slate-900">{score.finalScore.toFixed(1)}</p>
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${score.val20 >= 14 ? 'bg-green-100 text-green-800' : score.val20 >= 10 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>{score.classification}</span>
-                                    </div>
-                                </div>
-                            </CardHeader>
-                            <CardContent className="p-4">
-                                <div className="grid grid-cols-3 gap-2 text-center mb-4">
-                                    <div className="p-2 bg-gray-50 rounded">
-                                        <p className="text-[10px] text-gray-500 uppercase">Auto</p>
-                                        <p className="font-bold">{score.selfEvalScore.toFixed(1)}</p>
-                                    </div>
-                                    <div className="p-2 bg-gray-50 rounded">
-                                        <p className="text-[10px] text-gray-500 uppercase">Estud.</p>
-                                        <p className="font-bold">{score.studentScore.toFixed(1)}</p>
-                                    </div>
-                                    <div className="p-2 bg-gray-50 rounded">
-                                        <p className="text-[10px] text-gray-500 uppercase">Inst.</p>
-                                        <p className="font-bold">{score.institutionalScore.toFixed(1)}</p>
-                                    </div>
-                                </div>
-                                <div className="flex gap-2">
-                                    <Button variant="outline" size="sm" className="flex-1" onClick={() => { const user = teachers.find(t => t.id === score.teacherId); if (user) handlePrintReport(user); }}><Printer className="h-4 w-4 mr-2"/> Relatório</Button>
-                                    <Button variant="outline" size="sm" className="flex-1" onClick={() => { const user = teachers.find(t => t.id === score.teacherId); if (user) handleViewComments(user); }}><MessageSquare className="h-4 w-4 mr-2"/> Alunos</Button>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))}
-                 </div>
              </div>
         )}
 
@@ -1608,124 +1222,36 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             <div className="grid gap-6 grid-cols-1 md:grid-cols-3">
                 <div className="md:col-span-2 space-y-4 order-2 md:order-1">
                     <Card>
-                        <CardHeader className="flex flex-row items-center justify-between">
-                            <CardTitle>Cursos da Instituição</CardTitle>
-                            <div className="relative w-full max-w-xs">
-                                <Input 
-                                    placeholder="Pesquisar disciplina..." 
-                                    value={subjectSearch} 
-                                    onChange={e => setSubjectSearch(e.target.value)}
-                                    className="pl-8"
-                                />
-                                <BookOpen className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-                            </div>
-                        </CardHeader>
+                        <CardHeader><CardTitle>Cursos da Instituição</CardTitle></CardHeader>
                         <CardContent>
                             <div className="space-y-2">
                                 {courses.length === 0 ? (
                                     <p className="text-gray-500 italic">Nenhum curso cadastrado.</p>
                                 ) : (
-                                    courses.filter(c => {
-                                        const matchesCourse = c.name.toLowerCase().includes(subjectSearch.toLowerCase());
-                                        const matchesSubject = subjects.some(s => s.course === c.name && s.name.toLowerCase().includes(subjectSearch.toLowerCase()));
-                                        return subjectSearch === '' || matchesCourse || matchesSubject;
-                                    }).map(c => (
-                                        <div key={c.id} className="border rounded-lg bg-white shadow-sm overflow-hidden">
-                                            <div 
-                                                className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 transition-colors"
-                                                onClick={() => setExpandedCourseId(expandedCourseId === c.id ? null : c.id)}
-                                            >
-                                                <div>
-                                                    <h4 className="font-semibold flex items-center gap-2">
-                                                        {expandedCourseId === c.id ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
-                                                        {c.name} ({c.code})
-                                                    </h4>
-                                                    <p className="text-xs text-gray-500 pl-6">{c.duration} Anos • {c.semester}º Semestre • {c.modality}</p>
-                                                    {c.classGroups && c.classGroups.length > 0 && (
-                                                        <div className="flex gap-1 mt-1 flex-wrap pl-6">
-                                                            {c.classGroups.map(g => (
-                                                                <span key={g} className="text-xs font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-                                                                    Turma {g}
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <Button variant="ghost" size="sm" className="text-red-500" onClick={(e) => { e.stopPropagation(); handleDeleteCourse(c.id); }}><Trash2 className="h-4 w-4" /></Button>
-                                            </div>
-                                            {expandedCourseId === c.id && (
-                                                <div className="bg-gray-50 p-4 border-t text-sm">
-                                                    <h5 className="font-semibold text-gray-700 mb-3 flex items-center gap-2"><BookOpen size={16}/> Disciplinas Alocadas</h5>
-                                                    <div className="space-y-2">
-                                                        {subjects.filter(s => s.course === c.name && (subjectSearch === '' || s.name.toLowerCase().includes(subjectSearch.toLowerCase()))).length === 0 ? (
-                                                            <p className="text-xs text-gray-500 italic">Nenhuma disciplina encontrada para este filtro.</p>
-                                                        ) : (
-                                                            subjects.filter(s => s.course === c.name && (subjectSearch === '' || s.name.toLowerCase().includes(subjectSearch.toLowerCase()))).map(s => {
-                                                                const teacher = teachers.find(t => t.id === s.teacherId);
-                                                                const enrolledStudents = students.filter(student => {
-                                                                    const shiftMatch = s.shift && student.shifts ? student.shifts.includes(s.shift) : true;
-                                                                    const classMatch = s.classGroup && student.classGroups ? student.classGroups.includes(s.classGroup) : true;
-                                                                    const courseMatch = student.course && s.course ? student.course.toLowerCase() === s.course.toLowerCase() : true;
-                                                                    return shiftMatch && classMatch && courseMatch;
-                                                                }).length;
-                                                                return (
-                                                                    <div key={s.id} className="flex justify-between items-center bg-white p-2 rounded border">
-                                                                        <div>
-                                                                            <span className="font-medium text-gray-800 block">{s.name}</span>
-                                                                            <span className="text-xs text-gray-500 block">Turma {s.classGroup} • {s.shift}</span>
-                                                                        </div>
-                                                                        <div className="text-right">
-                                                                            <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full block mb-1">
-                                                                                {teacher?.name || 'Sem Docente'}
-                                                                            </span>
-                                                                            <span className="text-xs text-gray-500 flex items-center justify-end gap-1">
-                                                                                <Users size={12}/> {enrolledStudents} alunos
-                                                                            </span>
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            })
-                                                        )}
+                                    courses.map(c => (
+                                        <div key={c.id} className="flex items-center justify-between p-3 border rounded-lg bg-white shadow-sm">
+                                            <div>
+                                                <h4 className="font-semibold">{c.name} ({c.code})</h4>
+                                                <p className="text-xs text-gray-500">{c.duration} Anos • {c.semester}º Semestre • {c.modality}</p>
+                                                {c.classGroups && c.classGroups.length > 0 && (
+                                                    <div className="flex gap-1 mt-1 flex-wrap">
+                                                        {c.classGroups.map(g => (
+                                                            <span key={g} className="text-xs font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                                                                Turma {g}
+                                                            </span>
+                                                        ))}
                                                     </div>
-                                                </div>
-                                            )}
+                                                )}
+                                            </div>
+                                            <Button variant="ghost" size="sm" className="text-red-500" onClick={() => handleDeleteCourse(c.id)}><Trash2 className="h-4 w-4" /></Button>
                                         </div>
                                     ))
-                                )}
-                                {subjects.filter(s => !s.course && (subjectSearch === '' || s.name.toLowerCase().includes(subjectSearch.toLowerCase()))).length > 0 && (
-                                    <div className="border rounded-lg bg-white shadow-sm overflow-hidden mt-4">
-                                        <div className="bg-gray-50 p-3 border-b font-semibold flex items-center justify-between">
-                                            <span>Disciplinas Gerais (Sem Curso)</span>
-                                            <span className="text-xs font-normal text-gray-500">{subjects.filter(s => !s.course && (subjectSearch === '' || s.name.toLowerCase().includes(subjectSearch.toLowerCase()))).length} disciplinas</span>
-                                        </div>
-                                        <div className="p-3 space-y-2">
-                                            {subjects.filter(s => !s.course && (subjectSearch === '' || s.name.toLowerCase().includes(subjectSearch.toLowerCase()))).map(s => {
-                                                const teacher = teachers.find(t => t.id === s.teacherId);
-                                                return (
-                                                    <div key={s.id} className="flex justify-between items-center bg-gray-50 p-2 rounded border text-sm">
-                                                        <div>
-                                                            <span className="font-medium block">{s.name}</span>
-                                                            <span className="text-xs text-gray-500">Turma {s.classGroup} • {s.shift}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-4">
-                                                            <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
-                                                                {teacher?.name || 'Sem Docente'}
-                                                            </span>
-                                                            <Button variant="ghost" size="sm" onClick={() => handleDeleteSubject(s.id)} className="text-red-500 hover:text-red-700 h-8 w-8 p-0">
-                                                                <Trash2 className="h-4 w-4"/>
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
                                 )}
                             </div>
                         </CardContent>
                     </Card>
                 </div>
-                <div className="order-1 md:order-2 space-y-6">
+                <div className="order-1 md:order-2">
                     <Card>
                         <CardHeader><CardTitle>Adicionar Curso</CardTitle></CardHeader>
                         <CardContent>
@@ -1769,73 +1295,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                             </form>
                         </CardContent>
                     </Card>
-
-                    <Card>
-                        <CardHeader><CardTitle>Adicionar Disciplina Avulsa</CardTitle></CardHeader>
-                        <CardContent>
-                            <form onSubmit={handleAddStandaloneSubject} className="space-y-4">
-                                <div>
-                                    <Label>Curso (Opcional)</Label>
-                                    <Select 
-                                        value={newStandaloneSubject.course} 
-                                        onChange={e => setNewStandaloneSubject({...newStandaloneSubject, course: e.target.value, classGroup: ''})}
-                                    >
-                                        <option value="">Selecione o Curso...</option>
-                                        {courses.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                                    </Select>
-                                </div>
-                                <div>
-                                    <Label>Turma</Label>
-                                    {newStandaloneSubjectCourseObj && newStandaloneSubjectCourseObj.classGroups && newStandaloneSubjectCourseObj.classGroups.length > 0 ? (
-                                        <Select 
-                                            value={newStandaloneSubject.classGroup} 
-                                            onChange={e => setNewStandaloneSubject({...newStandaloneSubject, classGroup: e.target.value})}
-                                        >
-                                            <option value="">Turma...</option>
-                                            {newStandaloneSubjectCourseObj.classGroups.map(g => (
-                                                <option key={g} value={g}>{g}</option>
-                                            ))}
-                                        </Select>
-                                    ) : (
-                                        <Input 
-                                            placeholder="Turma (ex: A)" 
-                                            value={newStandaloneSubject.classGroup} 
-                                            onChange={e => setNewStandaloneSubject({...newStandaloneSubject, classGroup: e.target.value})} 
-                                        />
-                                    )}
-                                </div>
-                                <div>
-                                    <Label>Turno</Label>
-                                    <Select value={newStandaloneSubject.shift} onChange={e => setNewStandaloneSubject({...newStandaloneSubject, shift: e.target.value as any})}>
-                                        <option value="Diurno">Laboral</option>
-                                        <option value="Noturno">Pós-Laboral</option>
-                                    </Select>
-                                </div>
-                                <div>
-                                    <Label>Nome da Disciplina</Label>
-                                    <Input 
-                                        value={newStandaloneSubject.name} 
-                                        onChange={e => setNewStandaloneSubject({...newStandaloneSubject, name: e.target.value})} 
-                                        placeholder="Ex: Matemática Discreta"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <Label>Atribuir Docente (Opcional)</Label>
-                                    <Select 
-                                        value={newStandaloneSubject.teacherId} 
-                                        onChange={e => setNewStandaloneSubject({...newStandaloneSubject, teacherId: e.target.value})}
-                                    >
-                                        <option value="">Sem Docente</option>
-                                        {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                    </Select>
-                                </div>
-                                <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white" disabled={!newStandaloneSubject.name.trim()}>
-                                    Adicionar Disciplina
-                                </Button>
-                            </form>
-                        </CardContent>
-                    </Card>
                 </div>
             </div>
         )}
@@ -1871,6 +1330,27 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                 </div>
                             </div>
                             
+                            {/* Course Selection */}
+                            <div className="bg-gray-50 p-4 rounded-md border">
+                                <h4 className="text-sm font-semibold mb-2">Cursos Vinculados</h4>
+                                <div className="flex flex-col sm:flex-row gap-2 mb-2">
+                                    <Select value={selectedCourseToAdd} onChange={e => setSelectedCourseToAdd(e.target.value)}>
+                                        <option value="">Selecione um curso...</option>
+                                        {courses.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                    </Select>
+                                    <Button type="button" onClick={handleAddTeacherCourse} disabled={!selectedCourseToAdd} className="w-full sm:w-auto">
+                                        <Plus className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {newTeacherCourses.map(c => (
+                                        <span key={c} className="bg-white border px-2 py-1 rounded text-xs flex items-center gap-1">
+                                            {c} <X className="h-3 w-3 cursor-pointer" onClick={() => handleRemoveTeacherCourse(c)}/>
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+
                             {/* Subject Builder (ATUALIZADO) */}
                             <div className="bg-gray-50 p-4 rounded-md border">
                                 <h4 className="text-sm font-semibold mb-2">Atribuir Disciplinas</h4>
@@ -1882,10 +1362,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                     <div className="md:col-span-2">
                                         <Select 
                                             value={tempSubject.course} 
-                                            onChange={e => {
-                                                const selectedCourse = courses.find(c => c.name === e.target.value);
-                                                setTempSubject({...tempSubject, course: e.target.value, courseId: selectedCourse?.id, classGroup: ''});
-                                            }}
+                                            onChange={e => setTempSubject({...tempSubject, course: e.target.value, classGroup: ''})}
                                         >
                                             <option value="">Selecione o Curso...</option>
                                             {courses.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
@@ -1909,27 +1386,48 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                                 placeholder="Turma (ex: A)" 
                                                 value={tempSubject.classGroup} 
                                                 onChange={e => setTempSubject({...tempSubject, classGroup: e.target.value})} 
-                                                title="Digite a turma manualmente"
+                                                disabled={!tempSubject.course}
+                                                title={tempSubject.course ? "Digite a turma manualmente se não configurada no curso" : "Selecione um curso primeiro"}
                                             />
                                         )}
                                     </div>
 
                                     {/* 3. Nome da Disciplina */}
                                     <div className="md:col-span-2">
-                                        <Input 
-                                            list="available-subjects-list"
-                                            placeholder="Nome da Disciplina" 
-                                            value={tempSubject.name} 
-                                            onChange={e => setTempSubject({...tempSubject, name: e.target.value})} 
-                                        />
-                                        <datalist id="available-subjects-list">
-                                            {subjects
-                                                .filter(s => s.course === tempSubject.course && (!tempSubject.classGroup || s.classGroup === tempSubject.classGroup))
-                                                // Unique names to avoid duplicates in list if multiple shifts exist
-                                                .filter((s, index, self) => index === self.findIndex((t) => t.name === s.name))
-                                                .map(s => <option key={s.id} value={s.name} />)
-                                            }
-                                        </datalist>
+                                        {availableSubjectsForTeacher.length > 0 ? (
+                                            <Select 
+                                                value={tempSubject.name} 
+                                                onChange={e => {
+                                                    const val = e.target.value;
+                                                    const s = availableSubjectsForTeacher.find(sub => sub.name === val);
+                                                    if (s) {
+                                                        setTempSubject({
+                                                            ...tempSubject,
+                                                            id: s.id,
+                                                            name: s.name,
+                                                            code: s.code || '',
+                                                            classGroup: s.classGroup || tempSubject.classGroup,
+                                                            shift: s.shift || tempSubject.shift
+                                                        });
+                                                    } else {
+                                                        setTempSubject({...tempSubject, name: val, id: undefined});
+                                                    }
+                                                }}
+                                            >
+                                                <option value="">Selecione a Disciplina...</option>
+                                                {availableSubjectsForTeacher.map(s => (
+                                                    <option key={s.id} value={s.name}>
+                                                        {s.name} {s.classGroup ? `(Turma ${s.classGroup})` : ''}
+                                                    </option>
+                                                ))}
+                                            </Select>
+                                        ) : (
+                                            <Input 
+                                                placeholder="Nome da Disciplina" 
+                                                value={tempSubject.name} 
+                                                onChange={e => setTempSubject({...tempSubject, name: e.target.value})} 
+                                            />
+                                        )}
                                     </div>
 
                                     {/* 4. Turno e Botão */}
@@ -1966,19 +1464,10 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between">
                         <CardTitle>Corpo Docente Existente</CardTitle>
-                        <div className="relative w-full max-w-xs">
-                            <Input 
-                                placeholder="Pesquisar docente..." 
-                                value={teacherSearch} 
-                                onChange={e => setTeacherSearch(e.target.value)}
-                                className="pl-8"
-                            />
-                            <Users className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-                        </div>
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-4">
-                            {teachers.filter(t => t.name.toLowerCase().includes(teacherSearch.toLowerCase()) || t.email.toLowerCase().includes(teacherSearch.toLowerCase())).map(t => (
+                            {teachers.map(t => (
                                 <div key={t.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border rounded-lg bg-white gap-3">
                                     <div className="flex items-center gap-3">
                                         <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600 shrink-0">
@@ -1991,9 +1480,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                         </div>
                                     </div>
                                     <div className="flex gap-2 w-full sm:w-auto justify-end">
-                                        <Button variant="outline" size="sm" onClick={() => setAssigningSubjectTeacher(t)} title="Atribuir Disciplinas">
-                                            <BookOpen className="h-4 w-4" />
-                                        </Button>
                                         <Button variant="outline" size="sm" onClick={() => handlePrintReport(t)}>
                                             <Printer className="h-4 w-4" />
                                         </Button>
@@ -2012,22 +1498,13 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         {activeTab === 'students' && (
             <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between">
+                    <CardHeader>
                         <CardTitle>Estudantes</CardTitle>
-                        <div className="relative w-full max-w-xs">
-                            <Input 
-                                placeholder="Pesquisar estudante..." 
-                                value={studentSearch} 
-                                onChange={e => setStudentSearch(e.target.value)}
-                                className="pl-8"
-                            />
-                            <Users className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-                        </div>
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-2 max-h-[500px] overflow-y-auto">
                             {students.length === 0 && <p className="text-gray-500 italic">Nenhum estudante cadastrado.</p>}
-                            {students.filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase()) || s.email.toLowerCase().includes(studentSearch.toLowerCase())).map(s => (
+                            {students.map(s => (
                                 <div key={s.id} className="flex items-center justify-between p-3 border rounded-lg bg-white">
                                     <div>
                                         <h4 className="font-semibold">{s.name}</h4>
@@ -2142,107 +1619,6 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             </div>
         )}
 
-        {/* --- ABA AUDITORIA (NOVA) --- */}
-        {activeTab === 'audit' && (
-            <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
-                <div className="lg:col-span-2 space-y-6">
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between">
-                            <CardTitle className="flex items-center gap-2"><History size={20}/> Log de Auditoria</CardTitle>
-                            <Button variant="ghost" size="sm" onClick={() => BackendService.getAuditLogs(institutionId).then(setAuditLogs)}><RefreshCw size={14} className="mr-2"/> Atualizar</Button>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
-                                {auditLogs.length === 0 && <p className="text-center py-8 text-gray-500 italic">Nenhum log de auditoria encontrado.</p>}
-                                {auditLogs.map(log => (
-                                    <div key={log.id} className="p-4 border rounded-lg bg-gray-50 hover:bg-white transition-colors">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div className="flex items-center gap-2">
-                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                                    log.action.includes('DELETE') ? 'bg-red-100 text-red-700' : 
-                                                    log.action.includes('UPDATE') ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
-                                                }`}>
-                                                    {log.action.replace('_', ' ')}
-                                                </span>
-                                                <span className="text-xs text-gray-400">{new Date(log.timestamp).toLocaleString()}</span>
-                                            </div>
-                                            <span className="text-[10px] font-mono text-gray-400">ID: {log.targetId}</span>
-                                        </div>
-                                        <p className="text-sm text-gray-800">
-                                            <strong>{log.userName}</strong> ({log.userRole}) realizou a ação no objeto <strong>{log.targetType}</strong>.
-                                        </p>
-                                        {log.oldValues && (
-                                            <div className="mt-2 p-2 bg-white border rounded text-[11px] text-gray-600">
-                                                <p className="font-bold mb-1">Dados Anteriores:</p>
-                                                <pre className="whitespace-pre-wrap">{JSON.stringify(log.oldValues, null, 2)}</pre>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                <div className="space-y-6">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2"><Calendar size={20}/> Períodos Académicos</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                {academicPeriods.length === 0 && <p className="text-sm text-gray-500 italic">Nenhum período cadastrado.</p>}
-                                {academicPeriods.map(p => (
-                                    <div key={p.id} className={`p-3 border rounded-lg flex items-center justify-between ${p.isCurrent ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
-                                        <div>
-                                            <h4 className="font-bold text-sm">{p.name}</h4>
-                                            <p className="text-[10px] text-gray-500">{new Date(p.startDate).toLocaleDateString()} - {new Date(p.endDate).toLocaleDateString()}</p>
-                                        </div>
-                                        {p.isCurrent ? (
-                                            <span className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-bold">ATUAL</span>
-                                        ) : (
-                                            <Button variant="ghost" size="sm" onClick={() => handleSetCurrentPeriod(p.id)} className="text-[10px] h-7">Ativar</Button>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-
-                            <div className="pt-4 border-t space-y-3">
-                                <h4 className="text-xs font-bold uppercase text-gray-500">Novo Período</h4>
-                                <div className="space-y-2">
-                                    <Label className="text-xs">Nome (ex: 2024 - 1º Semestre)</Label>
-                                    <Input value={newPeriodName} onChange={e => setNewPeriodName(e.target.value)} />
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div className="space-y-1">
-                                        <Label className="text-xs">Início</Label>
-                                        <Input type="date" value={newPeriodStart} onChange={e => setNewPeriodStart(e.target.value)} />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <Label className="text-xs">Fim</Label>
-                                        <Input type="date" value={newPeriodEnd} onChange={e => setNewPeriodEnd(e.target.value)} />
-                                    </div>
-                                </div>
-                                <Button className="w-full" size="sm" onClick={handleAddAcademicPeriod}>Adicionar Período</Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="bg-amber-50 border-amber-200">
-                        <CardHeader>
-                            <CardTitle className="text-amber-800 flex items-center gap-2 text-sm"><AlertTriangle size={16}/> Zona de Perigo</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <p className="text-xs text-amber-700 mb-4">A limpeza do sistema removerá todos os dados locais permanentemente.</p>
-                            <Button variant="outline" className="w-full border-amber-300 text-amber-700 hover:bg-amber-100" onClick={() => BackendService.resetSystem()}>
-                                <RotateCcw size={14} className="mr-2"/> Limpar Dados Locais
-                            </Button>
-                        </CardContent>
-                    </Card>
-                </div>
-            </div>
-        )}
-
         {/* --- ABA SETTINGS (RESTAURADA) --- */}
         {activeTab === 'settings' && (
             <Card>
@@ -2267,66 +1643,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                 <Input type="file" accept="image/*" onChange={handleInstLogoUpload} />
                             </div>
                         </div>
-
-                        <div className="pt-4 border-t">
-                            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border">
-                                <div>
-                                    <h4 className="font-bold text-slate-900">Período de Avaliação</h4>
-                                    <p className="text-sm text-slate-500">Ative ou desative o acesso dos estudantes e docentes aos formulários.</p>
-                                </div>
-                                <div 
-                                    onClick={() => institution && setInstitution({...institution, isEvaluationOpen: !institution.isEvaluationOpen})}
-                                    className={`w-14 h-7 rounded-full p-1 cursor-pointer transition-colors duration-200 ${institution?.isEvaluationOpen ? 'bg-green-500' : 'bg-gray-300'}`}
-                                >
-                                    <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ${institution?.isEvaluationOpen ? 'translate-x-7' : 'translate-x-0'}`} />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="space-y-4 pt-4 border-t">
-                            <h4 className="font-bold text-slate-900">Datas de Avaliação Automática</h4>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <Label className="text-xs">Data de Início</Label>
-                                    <Input type="date" value={institution?.evaluationStartDate || ''} onChange={e => institution && setInstitution({...institution, evaluationStartDate: e.target.value})} />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-xs">Data de Fim</Label>
-                                    <Input type="date" value={institution?.evaluationEndDate || ''} onChange={e => institution && setInstitution({...institution, evaluationEndDate: e.target.value})} />
-                                </div>
-                            </div>
-                            <p className="text-xs text-gray-500">Se as datas forem definidas, o sistema abrirá/fechará automaticamente nestes dias.</p>
-                        </div>
-
-                        <div className="space-y-4 pt-4 border-t">
-                            <h4 className="font-bold text-slate-900">Pontuação Máxima por Categoria</h4>
-                            <div className="space-y-2">
-                                {['assistente', 'assistente_estagiario'].map(cat => {
-                                    const weight = institution?.categoryWeights?.find(w => w.category === cat)?.maxPoints || (cat === 'assistente' ? 175 : 125);
-                                    return (
-                                        <div key={cat} className="flex items-center justify-between gap-4">
-                                            <Label className="capitalize">{cat.replace('_', ' ')}</Label>
-                                            <Input 
-                                                type="number" 
-                                                className="w-24"
-                                                value={weight} 
-                                                onChange={e => {
-                                                    if (!institution) return;
-                                                    const weights = institution.categoryWeights || [];
-                                                    const idx = weights.findIndex(w => w.category === (cat as any));
-                                                    const newWeights = [...weights];
-                                                    if (idx >= 0) newWeights[idx] = { category: cat as any, maxPoints: parseInt(e.target.value) || 0 };
-                                                    else newWeights.push({ category: cat as any, maxPoints: parseInt(e.target.value) || 0 });
-                                                    setInstitution({...institution, categoryWeights: newWeights});
-                                                }} 
-                                            />
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        <Button type="submit" className="w-full md:w-auto">Salvar Alterações</Button>
+                        <Button type="submit">Salvar Alterações</Button>
                     </form>
                 </CardContent>
             </Card>

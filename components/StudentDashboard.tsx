@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { User, Questionnaire, Question, Institution } from '../types';
 import { BackendService, SubjectWithTeacher } from '../services/backend';
 import { Card, CardContent, CardHeader, CardTitle, Button, Select, Label, Input } from './ui';
+import { useToast } from './ToastContext';
 import { Lock, Send, CheckCircle2, AlertCircle, Star, User as UserIcon, BookOpen, PieChart as PieChartIcon, Check, CalendarClock, ArrowRight, Library } from 'lucide-react';
 import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export const StudentDashboard: React.FC<Props> = ({ user }) => {
+  const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState<'survey' | 'stats'>('survey');
   const [data, setData] = useState<{questionnaire: Questionnaire, subjects: SubjectWithTeacher[]} | null>(null);
   const [institution, setInstitution] = useState<Institution | null>(null);
@@ -57,12 +59,9 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
                 : true;
 
           // 3. Verificação de Curso (CRÍTICO: Filtra apenas disciplinas do curso do aluno)
-          let courseMatch = true;
-          if (user.courseId && s.courseId) {
-              courseMatch = user.courseId === s.courseId;
-          } else if (user.course && s.course) {
-              courseMatch = s.course.toLowerCase().includes(user.course.toLowerCase()) || user.course.toLowerCase().includes(s.course.toLowerCase());
-          }
+          const courseMatch = user.course && s.course 
+                ? s.course.toLowerCase().includes(user.course.toLowerCase()) || user.course.toLowerCase().includes(s.course.toLowerCase()) 
+                : true;
           
           return shiftMatch && classMatch && courseMatch;
       });
@@ -80,7 +79,7 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
     const aCount = Object.keys(answers).length;
     
     if (aCount < qCount) {
-        alert(`Por favor responda todas as questões.`);
+        addToast(`Por favor responda todas as questões.`, 'error');
         return;
     }
 
@@ -107,7 +106,7 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
             setCurrentSubject(null); // Volta para a lista
         }, 2000);
     } catch (e: any) {
-        alert(e.message || "Erro ao submeter");
+        addToast(e.message || "Erro ao submeter", 'error');
     } finally {
         setSubmitting(false);
     }
@@ -223,36 +222,20 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
       { name: 'Pendente', value: pendingCount, color: '#e5e7eb' },
   ];
   
-  const isEvaluationOpen = BackendService.isEvaluationOpen(institution);
-
-  if (!isEvaluationOpen) {
-      return (
-          <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6">
-              <div className="bg-amber-50 p-8 rounded-2xl border border-amber-100 max-w-md">
-                  <Lock className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Período de Avaliação Encerrado</h2>
-                  <p className="text-slate-600">O sistema de avaliação não está disponível no momento. Por favor, aguarde a abertura do próximo período pela administração.</p>
-              </div>
-          </div>
-      );
-  }
+  const isEvaluationOpen = institution?.isEvaluationOpen ?? true; 
 
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500">
       <header className="flex flex-col md:flex-row justify-between md:items-center gap-4 border-b pb-6">
         <div>
-            <h1 className="text-3xl font-bold text-gray-900">Olá, {user.name.split(' ')[0]}</h1>
+            <h1 className="text-3xl font-bold text-gray-900">{institution?.name || 'Painel do Estudante'}</h1>
             <p className="text-gray-500 mt-1 flex items-center gap-2">
-                <span className="font-semibold text-gray-700">{institution?.name || 'Painel do Estudante'}</span>
+                <span className="font-semibold text-gray-700">{user.course || 'Curso Geral'}</span>
                 <span className="text-gray-300">•</span>
-                <span className="font-medium text-gray-600">{user.course || 'Curso Geral'}</span>
                 {user.shifts && user.shifts.length > 0 && (
-                    <>
-                        <span className="text-gray-300">•</span>
-                        <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full flex items-center gap-1 border">
-                            <CalendarClock size={12}/> {user.shifts.join(' + ')}
-                        </span>
-                    </>
+                    <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full flex items-center gap-1 border">
+                        <CalendarClock size={12}/> {user.shifts.join(' + ')}
+                    </span>
                 )}
             </p>
         </div>

@@ -3,9 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { BackendService } from '../services/backend';
 import { Institution } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from './ui';
+import { useToast } from './ToastContext';
 import { Building2, Plus, Mail, Trash2, User as UserIcon, AlertTriangle, Lock, Upload, Image as ImageIcon } from 'lucide-react';
 
 export const SuperAdminDashboard: React.FC = () => {
+  const { addToast } = useToast();
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [loading, setLoading] = useState(true);
   const [newInstName, setNewInstName] = useState('');
@@ -31,7 +33,7 @@ export const SuperAdminDashboard: React.FC = () => {
       const file = e.target.files?.[0];
       if (file) {
           if (file.size > 500 * 1024) { // 500KB limit for localStorage safety
-              alert("Por favor escolha um logo menor que 500KB.");
+              addToast("Por favor escolha um logo menor que 500KB.", 'error');
               return;
           }
           const reader = new FileReader();
@@ -43,7 +45,7 @@ export const SuperAdminDashboard: React.FC = () => {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newInstName || !newInstCode || !inviteEmail || !inviteName || !invitePassword) {
-        alert("Por favor preencha todos os campos, incluindo a senha do Gestor.");
+        addToast("Por favor preencha todos os campos, incluindo a senha do Gestor.", 'error');
         return;
     }
 
@@ -66,9 +68,9 @@ export const SuperAdminDashboard: React.FC = () => {
         setInviteName('');
         setInvitePassword('');
         loadData();
-        alert(`Instituição criada com sucesso!\n\nGestor criado:\nEmail: ${inviteEmail}\nSenha: ${invitePassword}`);
+        addToast(`Instituição criada com sucesso! Gestor: ${inviteEmail}`, 'success');
     } catch (error: any) {
-        alert("Erro ao criar instituição: " + error.message);
+        addToast("Erro ao criar instituição: " + error.message, 'error');
     }
   };
 
@@ -77,10 +79,10 @@ export const SuperAdminDashboard: React.FC = () => {
       if (window.confirm(confirmText)) {
           try {
               await BackendService.deleteInstitution(instId);
-              alert("Instituição eliminada com sucesso.");
+              addToast("Instituição eliminada com sucesso.", 'success');
               loadData();
           } catch (e: any) {
-              alert("Erro ao eliminar instituição: " + e.message);
+              addToast("Erro ao eliminar instituição: " + e.message, 'error');
           }
       }
   };
@@ -95,9 +97,9 @@ export const SuperAdminDashboard: React.FC = () => {
       setResetting(true);
       try {
         await BackendService.resetSystem();
-        alert("Sistema resetado com sucesso.");
-      } catch (e) {
-        alert("Erro ao resetar: " + e);
+        addToast("Sistema resetado com sucesso.", 'success');
+      } catch (e: any) {
+        addToast("Erro ao resetar: " + e, 'error');
       } finally {
         setResetting(false);
       }
@@ -151,7 +153,7 @@ export const SuperAdminDashboard: React.FC = () => {
                         <div className="flex items-center gap-2">
                             <div className="text-xs text-right text-gray-500 mr-2">
                                 <p>Gestores:</p>
-                                {inst.managerEmails?.map(e => <div key={e}>{e}</div>)}
+                                {inst.managerEmails.map(e => <div key={e}>{e}</div>)}
                             </div>
                             <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => handleDeleteInstitution(inst.id, inst.name)}>
                                 <Trash2 className="h-4 w-4" />
