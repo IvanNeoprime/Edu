@@ -7,10 +7,9 @@ Este documento serve como guia passo-a-passo para configurar, operar e testar o 
 
 ## 1. Visão Geral da Persistência de Dados
 
-O sistema utiliza o **LocalStorage** do navegador como banco de dados.
-*   **O que isso significa:** Você pode fechar a aba, fechar o navegador ou reiniciar o computador. Ao voltar, os dados (docentes, notas, instituições) estarão lá.
-*   **O que evitar:** Não use "Janela Anônima" se quiser manter os dados por longo prazo. Não limpe o "Cache/Dados de Navegação".
-*   **Seed Data (Dados Semente):** Se por acaso você limpar os dados, o sistema detectará o banco vazio e recriará automaticamente a "Universidade Demo" para você não começar do zero.
+O sistema utiliza o **Supabase** (Banco de Dados na Nuvem) como motor principal.
+*   **O que isso significa:** Os dados são persistentes e compartilhados entre todos os usuários em tempo real. Você pode acessar de qualquer dispositivo e os dados estarão lá.
+*   **Segurança:** O sistema utiliza criptografia de ponta a ponta para senhas e políticas de segurança rigorosas no banco de dados.
 
 ---
 
@@ -18,8 +17,8 @@ O sistema utiliza o **LocalStorage** do navegador como banco de dados.
 
 ### Super Administrador (Acesso Total)
 Use esta conta para criar novas faculdades e gestores.
-*   **Email:** `ivandromaoze138@gmail.com`
-*   **Senha:** `24191978a`
+*   **Email:** `optimusprime@gmail.com`
+*   **Senha:** `prime`
 
 ### Contas de Teste Rápido (Já configuradas)
 O sistema já vem com estes usuários criados na "Universidade Demo":

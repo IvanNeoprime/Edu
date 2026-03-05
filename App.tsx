@@ -88,6 +88,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [systemMode, setSystemMode] = useState<string>('local');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallable, setIsInstallable] = useState(false);
   
   // Auth State
   const [email, setEmail] = useState(''); 
@@ -117,7 +119,29 @@ export default function App() {
           }
       };
       init();
+
+      // PWA Install Logic
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        setDeferredPrompt(e);
+        setIsInstallable(true);
+      });
+
+      window.addEventListener('appinstalled', () => {
+        setIsInstallable(false);
+        setDeferredPrompt(null);
+      });
   }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setIsInstallable(false);
+      setDeferredPrompt(null);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -282,6 +306,17 @@ export default function App() {
             </div>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-gray-900">AvaliaDocente MZ</h1>
             <p className="text-gray-500 mt-2 text-sm md:text-base">Sistema Nacional de Avaliação Académica</p>
+            
+            {isInstallable && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleInstallClick}
+                className="mt-4 bg-white border-blue-200 text-blue-600 hover:bg-blue-50 animate-bounce"
+              >
+                <Database size={14} className="mr-2" /> Instalar no Ecrã Principal
+              </Button>
+            )}
         </div>
 
         <Card className="w-full max-w-md shadow-lg border-0 transition-all duration-300">
