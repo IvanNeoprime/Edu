@@ -676,6 +676,26 @@ const SupabaseBackend = {
         return (data || []) as Subject[];
     },
 
+    async unassignSubject(subjectId: string) {
+        if (!supabase) {
+            const allSubs = getTable<Subject>(DB_KEYS.SUBJECTS);
+            const existing = allSubs.find(s => s.id === subjectId);
+            if (existing) {
+                const updated = { ...existing, teacherId: undefined, teacherCategory: undefined };
+                setTable(DB_KEYS.SUBJECTS, allSubs.map(s => s.id === subjectId ? updated : s));
+                return updated;
+            }
+            return null;
+        }
+        const { data, error } = await supabase.from('subjects')
+            .update({ teacherId: null, teacherCategory: null })
+            .eq('id', subjectId)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
     async assignSubject(data: any) {
         // Se ID for fornecido e não for temporário, tenta atualizar diretamente
         if (data.id && !data.id.startsWith('temp_') && !data.id.startsWith('sub_')) {
@@ -877,10 +897,11 @@ const SupabaseBackend = {
             .select('id')
             .eq('userId', userId)
             .eq('subjectId', response.subjectId)
+            .eq('evaluationPeriodName', response.evaluationPeriodName || 'default')
             .maybeSingle();
             
         if (existingVote) {
-            throw new Error("Você já avaliou esta disciplina.");
+            throw new Error("Você já avaliou esta disciplina neste período.");
         }
 
         const cleanResponse = { 
@@ -902,7 +923,8 @@ const SupabaseBackend = {
         const { error: voteError } = await supabase.from('votes_tracker').insert([{
             userId,
             subjectId: response.subjectId,
-            institutionId: response.institutionId
+            institutionId: response.institutionId,
+            evaluationPeriodName: response.evaluationPeriodName || 'default'
         }]);
 
         if (voteError) console.error("Erro ao registrar voto:", voteError);
@@ -933,12 +955,20 @@ const SupabaseBackend = {
     async getTeacherComments(teacherId: string, institutionId: string): Promise<GroupedComments[]> {
         let allResponses: any[] = [];
         let subjects: Subject[] = [];
+        let currentPeriod = 'default';
 
         if (!supabase) {
-            allResponses = getTable<StudentResponse>(DB_KEYS.RESPONSES).filter(r => r.teacherId === teacherId);
+            const insts = getTable<Institution>(DB_KEYS.INSTITUTIONS);
+            const inst = insts.find(i => i.id === institutionId);
+            if (inst && inst.evaluationPeriodName) currentPeriod = inst.evaluationPeriodName;
+
+            allResponses = getTable<StudentResponse>(DB_KEYS.RESPONSES).filter(r => r.teacherId === teacherId && (r.evaluationPeriodName === currentPeriod || !r.evaluationPeriodName));
             subjects = getTable<Subject>(DB_KEYS.SUBJECTS).filter(s => s.institutionId === institutionId);
         } else {
-             const { data: r } = await supabase.from('responses').select('*').eq('teacherId', teacherId).eq('institutionId', institutionId);
+             const { data: instData } = await supabase.from('institutions').select('evaluationPeriodName').eq('id', institutionId).maybeSingle();
+             if (instData && instData.evaluationPeriodName) currentPeriod = instData.evaluationPeriodName;
+
+             const { data: r } = await supabase.from('responses').select('*').eq('teacherId', teacherId).eq('institutionId', institutionId).eq('evaluationPeriodName', currentPeriod);
              allResponses = r || [];
              const { data: s } = await supabase.from('subjects').select('*').eq('institutionId', institutionId);
              subjects = s || [];
@@ -982,10 +1012,15 @@ const SupabaseBackend = {
         let teachers: User[] = [];
         let questionnaire: Questionnaire | null = null;
         let hasResponsesError = false;
+        let currentPeriod = 'default';
         
         if (!supabase) {
+             const insts = getTable<Institution>(DB_KEYS.INSTITUTIONS);
+             const inst = insts.find(i => i.id === institutionId);
+             if (inst && inst.evaluationPeriodName) currentPeriod = inst.evaluationPeriodName;
+
              subjects = getTable<Subject>(DB_KEYS.SUBJECTS);
-             allResponses = getTable<StudentResponse>(DB_KEYS.RESPONSES);
+             allResponses = getTable<StudentResponse>(DB_KEYS.RESPONSES).filter(r => r.evaluationPeriodName === currentPeriod || !r.evaluationPeriodName);
              const users = getTable<User>(DB_KEYS.USERS);
              teachers = teacherId 
                 ? [users.find(u => u.id === teacherId)!].filter(Boolean)
@@ -996,10 +1031,13 @@ const SupabaseBackend = {
              questionnaire = quests.find(q => q.institutionId === institutionId && q.active) || null;
 
         } else {
+             const { data: instData } = await supabase.from('institutions').select('evaluationPeriodName').eq('id', institutionId).maybeSingle();
+             if (instData && instData.evaluationPeriodName) currentPeriod = instData.evaluationPeriodName;
+
              const { data: s } = await supabase.from('subjects').select('*').eq('institutionId', institutionId);
              subjects = s || [];
              
-             let rQuery = supabase.from('responses').select('*').eq('institutionId', institutionId);
+             let rQuery = supabase.from('responses').select('*').eq('institutionId', institutionId).eq('evaluationPeriodName', currentPeriod);
              // REMOVED teacherId filter here to allow fallback logic to work for all responses
              // if (teacherId) rQuery = rQuery.eq('teacherId', teacherId); 
              const { data: r, error: rError } = await rQuery;
@@ -1227,17 +1265,18 @@ const SupabaseBackend = {
         }
     },
 
-    async getStudentProgress(studentId: string): Promise<{ completed: number, pending: number, history: any[], evaluatedSubjectIds: string[] }> {
+    async getStudentProgress(studentId: string, evaluationPeriodName: string = 'default'): Promise<{ completed: number, pending: number, history: any[], evaluatedSubjectIds: string[] }> {
         let evaluatedSubjectIds: string[] = [];
         
         if (!supabase) {
              const resps = getTable<any>(DB_KEYS.RESPONSES);
-             evaluatedSubjectIds = resps.filter(r => r._local_userId === studentId).map(r => r.subjectId);
+             evaluatedSubjectIds = resps.filter(r => r._local_userId === studentId && (r.evaluationPeriodName === evaluationPeriodName || !r.evaluationPeriodName)).map(r => r.subjectId);
         } else {
             // Fetch from votes_tracker table
             const { data } = await supabase.from('votes_tracker')
                 .select('subjectId')
-                .eq('userId', studentId);
+                .eq('userId', studentId)
+                .eq('evaluationPeriodName', evaluationPeriodName);
             
             evaluatedSubjectIds = (data || []).map(d => d.subjectId);
             
@@ -1314,7 +1353,7 @@ const SupabaseBackend = {
         }
 
         // 6. Responses
-        const responses = getTable<StudentResponse>(DB_KEYS.RESPONSES);
+        const responses = getTable<StudentResponse & { _local_userId?: string }>(DB_KEYS.RESPONSES);
         if (responses.length > 0) {
             const safeResponses = responses.map(r => {
                 // If id is not a valid UUID (e.g. starts with resp_), generate a new one
@@ -1323,8 +1362,25 @@ const SupabaseBackend = {
                 }
                 return r;
             });
-            const { error } = await supabase.from('responses').upsert(safeResponses);
+            
+            // Remove _local_userId before upserting to Supabase
+            const responsesToSync = safeResponses.map(({ _local_userId, ...rest }) => rest);
+            const { error } = await supabase.from('responses').upsert(responsesToSync);
             if (error) console.error("Erro sync responses:", error);
+            
+            // Sync votes_tracker
+            const votesToSync = safeResponses.filter(r => r._local_userId).map(r => ({
+                userId: r._local_userId!,
+                subjectId: r.subjectId!,
+                institutionId: r.institutionId,
+                evaluationPeriodName: r.evaluationPeriodName || 'default'
+            }));
+            
+            if (votesToSync.length > 0) {
+                // Ignore conflicts on votes_tracker
+                const { error: votesError } = await supabase.from('votes_tracker').upsert(votesToSync, { onConflict: 'userId,subjectId,evaluationPeriodName', ignoreDuplicates: true });
+                if (votesError) console.error("Erro sync votes_tracker:", votesError);
+            }
         }
 
         // 7. Self Evals

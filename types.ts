@@ -111,6 +111,7 @@ export interface StudentResponse {
   questionnaireId: string;
   teacherId?: string; // Opcional se for um inquérito geral para docentes
   subjectId?: string; // Opcional se for um inquérito geral
+  evaluationPeriodName?: string;
   answers: { questionId: string; value: number | string }[];
   timestamp: string;
 }
@@ -146,6 +147,7 @@ export interface SelfEvalTemplate {
 export interface SelfEvaluation {
   teacherId: string;
   institutionId: string; // Adicionado para validação
+  evaluationPeriodName?: string;
   // Cabeçalho
   header: {
     category: TeacherCategory;
@@ -163,6 +165,7 @@ export interface SelfEvaluation {
 export interface QualitativeEval {
   teacherId: string;
   institutionId?: string;
+  evaluationPeriodName?: string;
   deadlineCompliance?: number;
   workQuality?: number;
   score?: number;
@@ -181,6 +184,7 @@ export interface SubjectScoreDetail {
 
 export interface CombinedScore {
   teacherId: string;
+  evaluationPeriodName?: string;
   studentScore: number; // Pontos calculados (Coeficiente aplicado - Média Geral)
   institutionalScore: number; 
   selfEvalScore: number; // Pontos absolutos

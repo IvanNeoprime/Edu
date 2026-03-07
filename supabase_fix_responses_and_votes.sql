@@ -3,15 +3,23 @@
 -- Este script aplica as correções necessárias para o rastreio de votos e respostas.
 -- ==============================================================================
 
--- 1. Garantir que a tabela votes_tracker existe
+-- 1. Garantir que a tabela votes_tracker existe e tem a coluna evaluationPeriodName
 CREATE TABLE IF NOT EXISTS public.votes_tracker (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     "userId" text NOT NULL,
     "subjectId" text NOT NULL,
     "institutionId" text,
-    "createdAt" timestamp with time zone DEFAULT now(),
-    UNIQUE("userId", "subjectId")
+    "evaluationPeriodName" text DEFAULT 'default',
+    "createdAt" timestamp with time zone DEFAULT now()
 );
+
+-- Adicionar a coluna caso a tabela já exista
+ALTER TABLE public.votes_tracker ADD COLUMN IF NOT EXISTS "evaluationPeriodName" text DEFAULT 'default';
+
+-- Atualizar a restrição única para incluir o período de avaliação
+ALTER TABLE public.votes_tracker DROP CONSTRAINT IF EXISTS votes_tracker_userId_subjectId_key;
+ALTER TABLE public.votes_tracker DROP CONSTRAINT IF EXISTS votes_tracker_userId_subjectId_evaluationPeriodName_key;
+ALTER TABLE public.votes_tracker ADD CONSTRAINT votes_tracker_userId_subjectId_evaluationPeriodName_key UNIQUE("userId", "subjectId", "evaluationPeriodName");
 
 -- 2. Habilitar RLS para votes_tracker e criar política de acesso total
 ALTER TABLE public.votes_tracker ENABLE ROW LEVEL SECURITY;

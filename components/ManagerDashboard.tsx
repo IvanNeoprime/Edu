@@ -74,12 +74,14 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   
   // Estado para Cálculo de Scores
   const [calcTarget, setCalcTarget] = useState<string>('all');
+  const [selectedSemester, setSelectedSemester] = useState<string>('all');
 
   // Edit User State
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editJobTitle, setEditJobTitle] = useState('');
+  const [editTeacherSubjects, setEditTeacherSubjects] = useState<Subject[]>([]);
 
   // Questionnaire State
   const [questionnaire, setQuestionnaire] = useState<Questionnaire | null>(null);
@@ -235,6 +237,45 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     setEditName(user.name);
     setEditEmail(user.email);
     setEditJobTitle(user.jobTitle || '');
+    if (user.role === UserRole.TEACHER) {
+        setEditTeacherSubjects(subjects.filter(s => s.teacherId === user.id));
+    } else {
+        setEditTeacherSubjects([]);
+    }
+  };
+
+  const handleAssignSubjectToEditTeacher = async () => {
+      if (!editingUser || !tempSubject.name || !tempSubject.course) {
+          addToast("Preencha pelo menos o Nome e o Curso da disciplina.", 'error');
+          return;
+      }
+      try {
+          const newSub = await BackendService.assignSubject({
+              ...tempSubject,
+              teacherId: editingUser.id,
+              institutionId: institutionId,
+              academicYear: new Date().getFullYear().toString(),
+              modality: 'Presencial',
+              teacherCategory: editingUser.category || 'assistente'
+          });
+          setEditTeacherSubjects([...editTeacherSubjects, newSub]);
+          setTempSubject({ ...tempSubject, name: '', id: undefined, code: '' });
+          loadData();
+          addToast("Disciplina atribuída com sucesso!", 'success');
+      } catch (e: any) {
+          addToast("Erro ao atribuir: " + e.message, 'error');
+      }
+  };
+
+  const handleUnassignSubjectFromEditTeacher = async (subjectId: string) => {
+      try {
+          await BackendService.unassignSubject(subjectId);
+          setEditTeacherSubjects(editTeacherSubjects.filter(s => s.id !== subjectId));
+          loadData();
+          addToast("Disciplina removida com sucesso!", 'success');
+      } catch (e: any) {
+          addToast("Erro ao remover: " + e.message, 'error');
+      }
   };
 
   const handleSaveEditUser = async (e: React.FormEvent) => {
@@ -603,7 +644,8 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             logo: institution.logo,
             isEvaluationOpen: institution.isEvaluationOpen,
             evaluationStartDate: institution.evaluationStartDate,
-            evaluationEndDate: institution.evaluationEndDate
+            evaluationEndDate: institution.evaluationEndDate,
+            evaluationPeriodName: institution.evaluationPeriodName
         }); 
         addToast("Dados da instituição atualizados com sucesso!", 'success'); 
     } catch (e: any) { addToast("Erro ao atualizar: " + e.message, 'error'); }
@@ -634,14 +676,22 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const calculateClassification20 = (finalScore: number) => { if (finalScore > 20) return (finalScore / 175) * 20; return finalScore; };
   const getAppreciation = (classification20: number) => { if (classification20 >= 18) return 'Excelente'; if (classification20 >= 14) return 'Bom'; if (classification20 >= 10) return 'Suficiente'; return 'Insuficiente'; };
   const fullReportData = useMemo(() => {
+    const filteredScores = selectedSemester === 'all' 
+      ? allScores 
+      : allScores.filter(s => s.evaluationPeriodName === selectedSemester);
     return teachers.map(teacher => {
-        const score = allScores.find(s => s.teacherId === teacher.id);
+        const score = filteredScores.find(s => s.teacherId === teacher.id);
         const hasScore = !!score;
         const val20 = hasScore ? calculateClassification20(score.finalScore) : 0;
         const maxSelf = teacher.category === 'assistente_estagiario' ? 125 : 175;
         return { teacherId: teacher.id, teacherName: teacher.name, teacherEmail: teacher.email, teacherCategory: teacher.category || 'N/A', teacherJob: teacher.jobTitle || 'Docente', hasScore, selfEvalScore: score?.selfEvalScore || maxSelf, studentScore: score?.studentScore || 0, institutionalScore: score?.institutionalScore || 0, finalScore: score?.finalScore || 0, subjectDetails: score?.subjectDetails || [], val20, classification: hasScore ? getAppreciation(val20) : 'Pendente' };
     }).sort((a, b) => b.finalScore - a.finalScore);
-  }, [allScores, teachers]);
+  }, [allScores, teachers, selectedSemester]);
+
+  const semesters = useMemo(() => {
+    const s = new Set(allScores.map(s => s.evaluationPeriodName).filter(Boolean) as string[]);
+    return Array.from(s);
+  }, [allScores]);
 
   const handlePrintReport = (teacher: User) => {
       const score = allScores.find(s => s.teacherId === teacher.id); const selfEval = allSelfEvals[teacher.id];
@@ -889,17 +939,122 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
 
       {/* --- EDIT USER MODAL --- */}
       {editingUser && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in">
-            <Card className="w-full max-w-md shadow-2xl">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in overflow-y-auto">
+            <Card className="w-full max-w-2xl shadow-2xl my-auto">
                 <CardHeader>
-                    <CardTitle>Editar Usuário</CardTitle>
+                    <CardTitle>Editar {editingUser.role === UserRole.TEACHER ? 'Docente' : 'Usuário'}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <form onSubmit={handleSaveEditUser} className="space-y-4">
-                        <div className="space-y-2"><Label>Nome Completo</Label><Input value={editName} onChange={e => setEditName(e.target.value)} /></div>
-                        <div className="space-y-2"><Label>Email Institucional</Label><Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} /></div>
-                        <div className="space-y-2"><Label>Função/Cargo (Job Title)</Label><Input value={editJobTitle} onChange={e => setEditJobTitle(e.target.value)} placeholder="Ex: Diretor, Regente, Docente..." /></div>
-                        <div className="flex justify-end gap-2 pt-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2"><Label>Nome Completo</Label><Input value={editName} onChange={e => setEditName(e.target.value)} /></div>
+                            <div className="space-y-2"><Label>Email Institucional</Label><Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} /></div>
+                            <div className="space-y-2 md:col-span-2"><Label>Função/Cargo (Job Title)</Label><Input value={editJobTitle} onChange={e => setEditJobTitle(e.target.value)} placeholder="Ex: Diretor, Regente, Docente..." /></div>
+                        </div>
+                        
+                        {editingUser.role === UserRole.TEACHER && (
+                            <div className="bg-gray-50 p-4 rounded-md border mt-4">
+                                <h4 className="text-sm font-semibold mb-2">Disciplinas Atribuídas</h4>
+                                
+                                <div className="space-y-2 mb-4 max-h-40 overflow-y-auto">
+                                    {editTeacherSubjects.map((s) => (
+                                        <div key={s.id} className="flex flex-col sm:flex-row sm:justify-between text-xs bg-white p-2 border rounded shadow-sm">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold text-gray-800">{s.name}</span>
+                                                <span className="text-gray-500">• {s.course}</span>
+                                                <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100">Turma {s.classGroup}</span>
+                                                <span className="text-gray-400">({s.shift === 'Diurno' ? 'Laboral' : 'Pós-Laboral'})</span>
+                                            </div>
+                                            <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleUnassignSubjectFromEditTeacher(s.id)}>
+                                                <Trash2 className="h-3 w-3" />
+                                            </Button>
+                                        </div>
+                                    ))}
+                                    {editTeacherSubjects.length === 0 && <p className="text-xs text-gray-400 italic text-center py-2">Nenhuma disciplina atribuída.</p>}
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2">
+                                    <div className="md:col-span-2">
+                                        <Select 
+                                            value={tempSubject.courseId || ''} 
+                                            onChange={e => {
+                                                const c = courses.find(c => c.id === e.target.value);
+                                                setTempSubject({...tempSubject, courseId: c?.id || '', course: c?.name || '', name: '', id: undefined});
+                                            }}
+                                        >
+                                            <option value="">1. Selecione o Curso...</option>
+                                            {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        </Select>
+                                    </div>
+                                    <div className="md:col-span-1">
+                                        <Select 
+                                            value={tempSubject.classGroup} 
+                                            onChange={e => setTempSubject({...tempSubject, classGroup: e.target.value, name: '', id: undefined})}
+                                            disabled={!tempSubject.courseId}
+                                        >
+                                            <option value="">2. Turma...</option>
+                                            {courses.find(c => c.id === tempSubject.courseId)?.classGroups?.map(g => (
+                                                <option key={g} value={g}>Turma {g}</option>
+                                            ))}
+                                        </Select>
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        {availableSubjectsForTeacher.length > 0 && !tempSubject.name.startsWith('new_custom_') ? (
+                                            <div className="flex gap-1">
+                                                <Select 
+                                                    value={tempSubject.id || ''} 
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        if (val === 'new_custom') {
+                                                            setTempSubject({...tempSubject, id: undefined, name: 'new_custom_'});
+                                                            return;
+                                                        }
+                                                        const s = availableSubjectsForTeacher.find(sub => sub.id === val);
+                                                        if (s) {
+                                                            setTempSubject({...tempSubject, id: s.id, name: s.name, code: s.code || ''});
+                                                        }
+                                                    }}
+                                                    disabled={!tempSubject.classGroup}
+                                                >
+                                                    <option value="">3. Disciplina...</option>
+                                                    {availableSubjectsForTeacher.map(s => {
+                                                        const assignedTeacher = s.teacherId ? teachers.find(t => t.id === s.teacherId) : null;
+                                                        const isAssigned = !!assignedTeacher;
+                                                        return (
+                                                            <option key={s.id} value={s.id} className={isAssigned ? 'text-red-500' : ''}>
+                                                                {s.name} {isAssigned ? `(Atribuída a ${assignedTeacher?.name})` : ''}
+                                                            </option>
+                                                        );
+                                                    })}
+                                                    <option value="new_custom" className="font-bold text-blue-600">+ Nova Disciplina Manual</option>
+                                                </Select>
+                                            </div>
+                                        ) : (
+                                            <div className="flex gap-1">
+                                                <Input 
+                                                    placeholder="Nome da Disciplina" 
+                                                    value={tempSubject.name === 'new_custom_' ? '' : tempSubject.name} 
+                                                    onChange={e => setTempSubject({...tempSubject, name: e.target.value})}
+                                                    disabled={!tempSubject.classGroup}
+                                                />
+                                                {availableSubjectsForTeacher.length > 0 && (
+                                                    <Button type="button" variant="ghost" size="sm" onClick={() => setTempSubject({...tempSubject, name: '', id: undefined})}>
+                                                        <X className="h-4 w-4" />
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="md:col-span-5 flex justify-end">
+                                        <Button type="button" size="sm" onClick={handleAssignSubjectToEditTeacher} disabled={!tempSubject.name || !tempSubject.course}>
+                                            <Plus className="h-4 w-4 mr-1" /> Atribuir
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex justify-end gap-2 pt-4 border-t">
                             <Button type="button" variant="ghost" onClick={() => setEditingUser(null)}>Cancelar</Button>
                             <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">Salvar Alterações</Button>
                         </div>
@@ -1575,6 +1730,10 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                         <p className="text-sm text-gray-500">Consulte a pauta, exporte para Excel ou imprima relatórios oficiais.</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                        <Select value={selectedSemester} onChange={(e) => setSelectedSemester(e.target.value)} className="w-48">
+                            <option value="all">Todos os Semestres</option>
+                            {semesters.map(s => <option key={s} value={s}>{s}</option>)}
+                        </Select>
                         <Button variant="outline" onClick={handleExportCSV} className="text-green-700 hover:text-green-800 hover:bg-green-50 border-green-200"><FileSpreadsheet className="h-4 w-4 mr-2" /> <span className="hidden sm:inline">Exportar Excel</span></Button>
                         <Button onClick={handleDownloadDetailedPDF} className="bg-red-600 hover:bg-red-700 text-white"><FileText className="h-4 w-4 mr-2" /> <span className="hidden sm:inline">Baixar PDF</span></Button>
                         <Button variant="ghost" onClick={handlePrintStats} className="text-gray-600"><Printer className="h-4 w-4" /></Button>
@@ -2328,6 +2487,18 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                         onChange={(e) => institution && setInstitution({...institution, evaluationEndDate: e.target.value})}
                                     />
                                 </div>
+                            </div>
+                            <div className="space-y-2 mt-4">
+                                <Label>Nome do Período de Avaliação (ex: 2024 - 1º Semestre)</Label>
+                                <Input
+                                    type="text"
+                                    placeholder="Deixe em branco para 'Atual'"
+                                    value={institution?.evaluationPeriodName || ''}
+                                    onChange={(e) => institution && setInstitution({...institution, evaluationPeriodName: e.target.value})}
+                                />
+                                <p className="text-xs text-gray-500">
+                                    Alterar este nome permite que os alunos avaliem as mesmas disciplinas novamente no novo semestre.
+                                </p>
                             </div>
                         </div>
 

@@ -29,18 +29,20 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
   useEffect(() => {
     const loadData = () => {
         if (user.institutionId) {
-            BackendService.getInstitution(user.institutionId).then(inst => setInstitution(inst || null));
-            BackendService.getAvailableSurveys(user.institutionId).then(d => {
-                setData(d);
-                if(d) {
-                    BackendService.getStudentProgress(user.id).then(p => {
-                        setProgress({ 
-                            completed: p.completed, 
-                            pending: 0, 
-                            evaluatedSubjectIds: p.evaluatedSubjectIds 
+            BackendService.getInstitution(user.institutionId).then(inst => {
+                setInstitution(inst || null);
+                BackendService.getAvailableSurveys(user.institutionId!).then(d => {
+                    setData(d);
+                    if(d) {
+                        BackendService.getStudentProgress(user.id, inst?.evaluationPeriodName || 'default').then(p => {
+                            setProgress({ 
+                                completed: p.completed, 
+                                pending: 0, 
+                                evaluatedSubjectIds: p.evaluatedSubjectIds 
+                            });
                         });
-                    });
-                }
+                    }
+                });
             });
         }
     };
@@ -110,6 +112,7 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
             questionnaireId: data.questionnaire.id,
             subjectId: currentSubject.id,
             teacherId: currentSubject.teacherId,
+            evaluationPeriodName: institution?.evaluationPeriodName || 'default',
             answers: Object.entries(answers).map(([k, v]) => ({ questionId: k, value: v }))
         });
         setSuccess(true);

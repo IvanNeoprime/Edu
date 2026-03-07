@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS public.responses (
     "questionnaireId" text,
     "teacherId" text,
     "subjectId" text,
+    "evaluationPeriodName" text DEFAULT 'default',
     answers jsonb NOT NULL,
     timestamp timestamp with time zone DEFAULT now()
 );
@@ -143,8 +144,9 @@ CREATE TABLE IF NOT EXISTS public.votes_tracker (
     "userId" text NOT NULL,
     "subjectId" text NOT NULL,
     "institutionId" text,
+    "evaluationPeriodName" text DEFAULT 'default',
     "createdAt" timestamp with time zone DEFAULT now(),
-    UNIQUE("userId", "subjectId")
+    UNIQUE("userId", "subjectId", "evaluationPeriodName")
 );
 
 -- 11. Tabela de Logs de Auditoria
