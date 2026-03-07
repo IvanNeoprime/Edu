@@ -110,32 +110,9 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
   
   // CÁLCULO DINÂMICO DA PONTUAÇÃO
   const calculateLiveScore = () => {
-    let score = 0;
-    
-    selfEvalTemplate.groups.forEach(group => {
-        // Check group exclusion based on template settings
-        if (group.exclusiveTo && group.exclusiveTo.length > 0 && !group.exclusiveTo.includes(header.category)) return;
-
-        let groupScore = 0;
-        group.items.forEach(item => {
-            // Check item exclusion
-            if (item.exclusiveTo && item.exclusiveTo.length > 0 && !item.exclusiveTo.includes(header.category)) return;
-
-            const val = answers[item.key] || 0;
-            const points = val * (item.scoreValue || 0);
-            groupScore += points;
-        });
-        
-        // Cap group score if maxPoints is defined
-        if (group.maxPoints > 0) {
-            groupScore = Math.min(groupScore, group.maxPoints);
-        }
-        
-        score += groupScore;
-    });
-
+    // POLÍTICA FULL MARK: Retorna sempre a pontuação máxima
     const maxScore = header.category === 'assistente_estagiario' ? 125 : 175;
-    return Math.min(score, maxScore);
+    return maxScore;
   };
 
   const handleSaveSelfEval = async (e: React.FormEvent) => {
@@ -203,7 +180,7 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
               {expandedGroups.includes(id) ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
               {title}
           </div>
-          <span className="text-xs font-medium bg-white px-2 py-1 rounded border text-gray-500">Máx: {max} pts</span>
+          {/* HIDDEN MAX POINTS: <span className="text-xs font-medium bg-white px-2 py-1 rounded border text-gray-500">Máx: {max} pts</span> */}
       </div>
   );
 
@@ -316,10 +293,13 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
               <div className="lg:col-span-4 order-1 lg:order-2 space-y-6 lg:sticky lg:top-24">
                   <Card className="border-0 shadow-xl ring-1 ring-black/5 overflow-hidden">
                       <div className="bg-slate-900 p-6 text-white text-center">
-                          <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-1">Pontuação Provisória</p>
+                          <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-1">Pontuação Atribuída</p>
                           <div className="flex items-center justify-center gap-1">
-                              <span className="text-5xl font-black tracking-tighter">{calculateLiveScore().toFixed(1)}</span>
+                              <span className="text-5xl font-black tracking-tighter text-emerald-400">{calculateLiveScore().toFixed(1)}</span>
                               <span className="text-xl font-normal text-slate-500 mt-3">/ {header.category === 'assistente_estagiario' ? 125 : 175}</span>
+                          </div>
+                          <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-full text-xs font-medium border border-emerald-500/30">
+                              <CheckCircle2 size={12} /> Full Mark Automático
                           </div>
                       </div>
                       <div className="p-4 bg-gray-50 border-t flex flex-col gap-3">
@@ -359,9 +339,7 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                                                   <div key={item.key}>
                                                       <Label className="flex justify-between">
                                                           <span>{item.label}</span>
-                                                          <span className="text-xs text-gray-400 font-normal bg-gray-50 px-1 rounded border">
-                                                              x{item.scoreValue} pts
-                                                          </span>
+                                                          {/* HIDDEN POINTS: <span className="text-xs text-gray-400 font-normal bg-gray-50 px-1 rounded border">x{item.scoreValue} pts</span> */}
                                                       </Label>
                                                       <Input 
                                                           type="number" 
