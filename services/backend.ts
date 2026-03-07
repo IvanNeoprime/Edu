@@ -910,6 +910,7 @@ const SupabaseBackend = {
         let subjects: Subject[] = [];
         let allResponses: any[] = [];
         let teachers: User[] = [];
+        let questionnaire: Questionnaire | null = null;
         
         if (!supabase) {
              subjects = getTable<Subject>(DB_KEYS.SUBJECTS);
@@ -918,12 +919,18 @@ const SupabaseBackend = {
              teachers = teacherId 
                 ? [users.find(u => u.id === teacherId)!].filter(Boolean)
                 : users.filter(u => u.institutionId === institutionId && u.role === UserRole.TEACHER);
+             
+             // Load questionnaire locally
+             const quests = getTable<Questionnaire>(DB_KEYS.QUESTIONNAIRES);
+             questionnaire = quests.find(q => q.institutionId === institutionId && q.active) || null;
+
         } else {
              const { data: s } = await supabase.from('subjects').select('*').eq('institutionId', institutionId);
              subjects = s || [];
              
              let rQuery = supabase.from('responses').select('*').eq('institutionId', institutionId);
-             if (teacherId) rQuery = rQuery.eq('teacherId', teacherId);
+             // REMOVED teacherId filter here to allow fallback logic to work for all responses
+             // if (teacherId) rQuery = rQuery.eq('teacherId', teacherId); 
              const { data: r } = await rQuery;
              allResponses = r || [];
 
@@ -931,18 +938,19 @@ const SupabaseBackend = {
              if (teacherId) tQuery = tQuery.eq('id', teacherId);
              const { data: t } = await tQuery;
              teachers = (t || []) as User[];
+
+             // Load questionnaire from Supabase
+             const { data: q } = await supabase.from('questionnaires').select('*').eq('institutionId', institutionId).eq('active', true).maybeSingle();
+             questionnaire = q;
         }
+
+        // Use standard questions if no custom questionnaire found
+        const questionsToUse = questionnaire?.questions || PDF_STANDARD_QUESTIONS;
+        const questionMap = new Map(questionsToUse.map(q => [q.id, q]));
 
         // --- LÓGICA DE MÉDIA PONDERADA (WEIGHTED AVERAGE) ---
         const calculateWeightedAverage = (resps: any[]) => {
             if (resps.length === 0) return 0;
-            
-            // Mapa de pesos das perguntas padrão
-            const questionWeights = new Map(PDF_STANDARD_QUESTIONS.map(q => [q.id, q.weight || 1]));
-            
-            // Soma total dos pesos possíveis (para normalização)
-            // Ex: 4+3+2+6 + 1+1+1 + 5+3+4 = 30 pontos possíveis
-            const maxPossibleWeight = PDF_STANDARD_QUESTIONS.reduce((acc, q) => acc + (q.weight || 1), 0);
             
             let totalNormalizedScore = 0;
 
@@ -952,21 +960,25 @@ const SupabaseBackend = {
 
                 const answers = resp.answers || [];
                 answers.forEach((a: any) => {
-                    const weight = questionWeights.get(a.questionId) || 1; // Default peso 1 se não encontrado
-                    const val = Number(a.value) || 0; 
+                    const q = questionMap.get(a.questionId);
+                    const weight = q?.weight || 1; 
+                    let val = Number(a.value) || 0; 
                     
-                    // Se a pergunta for binária (0 ou 1), o valor é direto.
-                    // Se for escala (ex: estrelas 1-5), precisaríamos normalizar o valor para 0-1 antes de multiplicar pelo peso?
-                    // Assumindo que o frontend envia 1 para Sim (100%) e 0 para Não (0%).
-                    // Se for estrelas (1-5), o valor deve ser normalizado (val/5).
-                    // Para simplificar e manter compatibilidade com o sistema atual que usa binário majoritariamente:
+                    // Normalização baseada no tipo de pergunta
+                    if (q?.type === 'stars') {
+                        // Estrelas 1-5 -> Normaliza para 0-1 (20% cada estrela)
+                        val = val / 5;
+                    } else if (q?.type === 'scale_10') {
+                        // Escala 0-10 -> Normaliza para 0-1
+                        val = val / 10;
+                    }
+                    // Binary já é 0 ou 1
                     
                     currentScore += val * weight;
                     currentMaxWeight += weight;
                 });
                 
                 // Normaliza a resposta deste aluno para a escala de 0 a 20 valores
-                // Ex: Obteve 15 pontos de 30 possíveis -> (15/30) * 20 = 10 valores.
                 if (currentMaxWeight > 0) {
                      totalNormalizedScore += (currentScore / currentMaxWeight) * 20;
                 }
@@ -998,7 +1010,15 @@ const SupabaseBackend = {
             // Pontuação Institucional (0 a 10)
             const instScoreRaw = qualEval ? ((qualEval.deadlineCompliance || 0) + (qualEval.workQuality || 0)) / 2 : 0;
 
-            const teacherResponses = allResponses.filter(r => r.teacherId === t.id);
+            // Filter responses for this teacher, with fallback for missing teacherId using subjectId
+            const teacherResponses = allResponses.filter(r => {
+                if (r.teacherId === t.id) return true;
+                if (!r.teacherId && r.subjectId) {
+                    const sub = subjects.find(s => s.id === r.subjectId);
+                    return sub?.teacherId === t.id;
+                }
+                return false;
+            });
             
             const subjectGroups: Record<string, any[]> = {};
             teacherResponses.forEach(r => {
