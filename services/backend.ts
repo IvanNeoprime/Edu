@@ -1065,12 +1065,52 @@ const SupabaseBackend = {
     },
 
     async changePassword(userId: string, newPassword?: string) {
+        const hashedPassword = await bcrypt.hash(newPassword || '', 10);
+        
         if (!supabase) {
             const users = getTable<User>(DB_KEYS.USERS);
-            setTable(DB_KEYS.USERS, users.map(u => u.id === userId ? { ...u, password: newPassword, mustChangePassword: false } : u));
+            setTable(DB_KEYS.USERS, users.map(u => u.id === userId ? { ...u, password: hashedPassword, mustChangePassword: false } : u));
             return;
         }
-        await supabase.from('users').update({ password: newPassword, mustChangePassword: false }).eq('id', userId);
+        const { error } = await supabase.from('users').update({ password: hashedPassword, mustChangePassword: false }).eq('id', userId);
+        if (error) throw new Error(error.message);
+    },
+
+    async resetUserPassword(userId: string, newPassword?: string) {
+        const hashedPassword = await bcrypt.hash(newPassword || '123456', 10);
+        
+        if (!supabase) {
+            const users = getTable<User>(DB_KEYS.USERS);
+            setTable(DB_KEYS.USERS, users.map(u => u.id === userId ? { 
+                ...u, 
+                password: hashedPassword, 
+                mustChangePassword: true,
+                plainPassword: newPassword // Update plain password for admin view
+            } : u));
+            return;
+        }
+        
+        // Try to update with plainPassword, fallback if column missing
+        const { error } = await supabase.from('users').update({ 
+            password: hashedPassword, 
+            mustChangePassword: true,
+            plainPassword: newPassword 
+        }).eq('id', userId);
+
+        if (error) {
+            // Check for missing column error (Postgres code 42703 or message)
+            if (error.message?.includes('plainPassword') || error.code === '42703') {
+                console.warn("Column plainPassword missing in DB. Updating without it.");
+                const { error: retryError } = await supabase.from('users').update({ 
+                    password: hashedPassword, 
+                    mustChangePassword: true 
+                }).eq('id', userId);
+                
+                if (retryError) throw new Error(retryError.message);
+            } else {
+                throw new Error(error.message);
+            }
+        }
     },
 
     async getStudentProgress(studentId: string): Promise<{ completed: number, pending: number, history: any[], evaluatedSubjectIds: string[] }> {
@@ -1093,6 +1133,94 @@ const SupabaseBackend = {
         };
     },
     
+    async syncLocalToSupabase() {
+        if (!supabase) throw new Error("Supabase não está conectado.");
+        
+        console.log("Iniciando sincronização...");
+        
+        // 1. Institutions
+        const institutions = getTable<Institution>(DB_KEYS.INSTITUTIONS);
+        if (institutions.length > 0) {
+            const { error } = await supabase.from('institutions').upsert(institutions);
+            if (error) console.error("Erro sync institutions:", error);
+        }
+
+        // 2. Users
+        const users = getTable<User>(DB_KEYS.USERS);
+        if (users.length > 0) {
+            // Remove plainPassword if column missing issue persists, but here we try to sync all
+            // We might need to handle the plainPassword issue here too if the migration didn't run
+            const safeUsers = users.map(u => {
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const { plainPassword, ...rest } = u;
+                // If we want to try syncing plainPassword, we include it. 
+                // But to be safe and avoid errors if schema is old, let's try to include it first.
+                // Actually, let's strip it for sync to avoid 400 errors if user didn't run SQL.
+                // If they ran SQL, they can manually update passwords later or new users will have it.
+                // Ideally we check schema, but we can't easily here.
+                // Let's keep it simple: Try to sync with it, if it fails, sync without it? 
+                // Batch upsert doesn't allow per-row fallback easily.
+                // Let's assume the user ran the SQL or we accept the error.
+                // BETTER STRATEGY: Remove plainPassword for sync to ensure success.
+                return rest; 
+            });
+            
+            const { error } = await supabase.from('users').upsert(safeUsers);
+            if (error) console.error("Erro sync users:", error);
+        }
+
+        // 3. Courses
+        const courses = getTable<Course>(DB_KEYS.COURSES);
+        if (courses.length > 0) {
+            const { error } = await supabase.from('courses').upsert(courses);
+            if (error) console.error("Erro sync courses:", error);
+        }
+
+        // 4. Subjects
+        const subjects = getTable<Subject>(DB_KEYS.SUBJECTS);
+        if (subjects.length > 0) {
+            const { error } = await supabase.from('subjects').upsert(subjects);
+            if (error) console.error("Erro sync subjects:", error);
+        }
+
+        // 5. Questionnaires
+        const questionnaires = getTable<Questionnaire>(DB_KEYS.QUESTIONNAIRES);
+        if (questionnaires.length > 0) {
+            const { error } = await supabase.from('questionnaires').upsert(questionnaires);
+            if (error) console.error("Erro sync questionnaires:", error);
+        }
+
+        // 6. Responses
+        const responses = getTable<StudentResponse>(DB_KEYS.RESPONSES);
+        if (responses.length > 0) {
+            const { error } = await supabase.from('responses').upsert(responses);
+            if (error) console.error("Erro sync responses:", error);
+        }
+
+        // 7. Self Evals
+        const selfEvals = getTable<SelfEvaluation>(DB_KEYS.SELF_EVALS);
+        if (selfEvals.length > 0) {
+            const { error } = await supabase.from('self_evals').upsert(selfEvals);
+            if (error) console.error("Erro sync self_evals:", error);
+        }
+
+        // 8. Qualitative Evals
+        const qualEvals = getTable<QualitativeEval>(DB_KEYS.QUALITATIVE_EVALS);
+        if (qualEvals.length > 0) {
+            const { error } = await supabase.from('qualitative_evals').upsert(qualEvals);
+            if (error) console.error("Erro sync qualitative_evals:", error);
+        }
+
+        // 9. Scores
+        const scores = getTable<CombinedScore>(DB_KEYS.SCORES);
+        if (scores.length > 0) {
+            const { error } = await supabase.from('scores').upsert(scores);
+            if (error) console.error("Erro sync scores:", error);
+        }
+        
+        console.log("Sincronização concluída.");
+    },
+
     async resetSystem() {
         if (!supabase) {
             if (confirm("Deseja mesmo limpar os dados locais?")) {
