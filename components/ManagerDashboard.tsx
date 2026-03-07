@@ -4,7 +4,7 @@ import { BackendService, PDF_STANDARD_QUESTIONS, DEFAULT_SELF_EVAL_TEMPLATE, Gro
 import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution, SelfEvaluation, Course, SelfEvalTemplate } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, cn } from './ui';
 import { useToast } from './ToastContext';
-import { Users, BookOpen, Calculator, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, Star, BarChartHorizontal, GraduationCap, Download, Printer, Image as ImageIcon, RefreshCw, Settings, Save, X, Edit, Scale, Award, FileSpreadsheet, ListChecks, FileText, Layers, AlertTriangle, Menu, Eye, MessageSquare, RotateCcw, LayoutList } from 'lucide-react';
+import { Users, BookOpen, Calculator, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, Star, BarChartHorizontal, GraduationCap, Download, Printer, Image as ImageIcon, RefreshCw, Settings, Save, X, Edit, Scale, Award, FileSpreadsheet, ListChecks, FileText, Layers, AlertTriangle, Menu, Eye, MessageSquare, RotateCcw, LayoutList, Quote } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -88,6 +88,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   const [selfEvalTemplate, setSelfEvalTemplate] = useState<SelfEvalTemplate>(DEFAULT_SELF_EVAL_TEMPLATE);
   const [evalTabMode, setEvalTabMode] = useState<'student' | 'teacher'>('student');
   const [previewMode, setPreviewMode] = useState<'none' | 'student' | 'teacher'>('none');
+  const [previewingReportFor, setPreviewingReportFor] = useState<User | null>(null);
   const [previewCategory, setPreviewCategory] = useState<TeacherCategory>('assistente');
 
   // Form Builder State
@@ -474,10 +475,30 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     setQualEvals(prev => ({ ...prev, [teacherId]: { ...prev[teacherId], [field]: finalValue as any } }));
   };
 
-  const handleEvalSubmit = async (teacherId: string) => {
+  const handleSaveQualitative = async (teacherId: string) => {
     const evalData = qualEvals[teacherId];
-    await BackendService.saveQualitativeEval({ teacherId, institutionId, deadlineCompliance: evalData.deadlines, workQuality: evalData.quality, comments: evalData.comments, evaluatedAt: new Date().toISOString() });
-    setExpandedTeacher(null); addToast("Avaliação qualitativa salva com sucesso.", 'success');
+    if (!evalData) return;
+    
+    try {
+        await BackendService.saveQualitativeEval({ 
+            teacherId, 
+            institutionId, 
+            deadlineCompliance: evalData.deadlines, 
+            workQuality: evalData.quality, 
+            comments: evalData.comments, 
+            evaluatedAt: new Date().toISOString() 
+        });
+        
+        // Recalcular scores para este docente para refletir a nova avaliação institucional
+        await BackendService.calculateScores(institutionId, teacherId);
+        const updatedScores = await BackendService.getAllScores(institutionId);
+        setAllScores(updatedScores);
+        
+        setExpandedTeacher(null); 
+        addToast("Avaliação qualitativa salva e score atualizado com sucesso.", 'success');
+    } catch (error: any) {
+        addToast("Erro ao salvar avaliação: " + error.message, 'error');
+    }
   };
 
   const handleAddQuestion = async () => {
@@ -579,7 +600,8 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         const score = allScores.find(s => s.teacherId === teacher.id);
         const hasScore = !!score;
         const val20 = hasScore ? calculateClassification20(score.finalScore) : 0;
-        return { teacherId: teacher.id, teacherName: teacher.name, teacherEmail: teacher.email, teacherCategory: teacher.category || 'N/A', teacherJob: teacher.jobTitle || 'Docente', hasScore, selfEvalScore: score?.selfEvalScore || 0, studentScore: score?.studentScore || 0, institutionalScore: score?.institutionalScore || 0, finalScore: score?.finalScore || 0, subjectDetails: score?.subjectDetails || [], val20, classification: hasScore ? getAppreciation(val20) : 'Pendente' };
+        const maxSelf = teacher.category === 'assistente_estagiario' ? 125 : 175;
+        return { teacherId: teacher.id, teacherName: teacher.name, teacherEmail: teacher.email, teacherCategory: teacher.category || 'N/A', teacherJob: teacher.jobTitle || 'Docente', hasScore, selfEvalScore: score?.selfEvalScore || maxSelf, studentScore: score?.studentScore || 0, institutionalScore: score?.institutionalScore || 0, finalScore: score?.finalScore || 0, subjectDetails: score?.subjectDetails || [], val20, classification: hasScore ? getAppreciation(val20) : 'Pendente' };
     }).sort((a, b) => b.finalScore - a.finalScore);
   }, [allScores, teachers]);
 
@@ -849,90 +871,324 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
         </div>
       )}
       
-      {/* --- PRINT LAYOUT --- */}
-      <div className="hidden print:block font-serif">
-        {printingTeacher && printingScore ? (
-            <div className="p-4 text-sm break-after-page">
-                <main>
-                    <header className="flex justify-between items-start mb-6">
-                        <div className="text-center">
-                            {institution?.logo && <img src={institution.logo} className="h-20 w-20 object-contain mx-auto" alt="Logo"/>}
-                            <h1 className="font-bold">{institution?.name}</h1>
-                            <p>Auditoria de Moçambique</p>
-                        </div>
-                        <div className="border-2 border-black p-2 w-64 text-center h-24">
-                            <p className="font-bold">Despacho de homologação</p>
-                            <p className="mt-4">O Director Geral</p>
-                            <p className="mt-8">Data: ___/___/_____</p>
-                        </div>
-                    </header>
-                    <div className="text-center font-bold my-6">
-                        <p>Divisão Pedagógica</p>
-                        <h2 className="text-base">FOLHA DE CLASSIFICAÇÃO ANUAL DE DOCENTES</h2>
+      {/* --- REPORT PREVIEW MODAL --- */}
+      {previewingReportFor && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-in fade-in duration-300">
+            <Card className="w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+                <CardHeader className="bg-slate-900 text-white flex flex-row items-center justify-between border-b-0">
+                    <div>
+                        <CardTitle className="text-xl">Relatório de Desempenho Docente</CardTitle>
+                        <p className="text-xs text-slate-400">Visualização prévia do documento final</p>
                     </div>
-                    <div className="space-y-1 mb-6">
-                        <p><strong>Nome:</strong> {printingTeacher.name}</p>
-                        <p><strong>Categoria:</strong> {printingTeacher.category}</p>
-                        <p><strong>Função:</strong> {printingSelfEval?.header.function || printingTeacher.jobTitle || 'Docente'}</p>
-                    </div>
-                    <div className="mb-6">
-                        <table className="w-full border-collapse border-2 border-black mb-6">
-                            <thead>
-                                <tr className="font-bold bg-gray-100">
-                                    <td className="border border-black p-1">Componente de Avaliação</td>
-                                    <td className="border border-black p-1 text-center">Pontos Obtidos</td>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td className="border border-black p-1">Auto-avaliação (Peso 80%)</td>
-                                    <td className="border border-black p-1 text-center">{printingScore.selfEvalScore.toFixed(1)}</td>
-                                </tr>
-                                 <tr>
-                                    <td className="border border-black p-1">Avaliação pelo Estudante (Peso 12%)</td>
-                                    <td className="border border-black p-1 text-center">{printingScore.studentScore.toFixed(1)}</td>
-                                </tr>
-                                 <tr>
-                                    <td className="border border-black p-1">Avaliação Institucional (Peso 8%)</td>
-                                    <td className="border border-black p-1 text-center">{printingScore.institutionalScore.toFixed(1)}</td>
-                                </tr>
-                                <tr className="font-bold bg-gray-50">
-                                    <td className="border border-black p-1">Classificação Final</td>
-                                    <td className="border border-black p-1 text-center">{printingScore.finalScore.toFixed(1)}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        {printingScore.subjectDetails && printingScore.subjectDetails.length > 0 && (
-                            <div className="mt-8">
-                                <h3 className="font-bold text-sm mb-2 uppercase border-b border-black pb-1">Detalhamento Pedagógico por Turma</h3>
-                                <table className="w-full border-collapse border border-black text-xs">
-                                    <thead>
-                                        <tr className="bg-gray-100">
-                                            <th className="border border-black p-1 text-left">Disciplina</th>
-                                            <th className="border border-black p-1 text-left">Curso</th>
-                                            <th className="border border-black p-1 text-center">Turma</th>
-                                            <th className="border border-black p-1 text-center">Turno</th>
-                                            <th className="border border-black p-1 text-center">Nº Avaliações</th>
-                                            <th className="border border-black p-1 text-center">Média (0-20)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {printingScore.subjectDetails.map((det, idx) => (
-                                            <tr key={idx}>
-                                                <td className="border border-black p-1">{det.subjectName}</td>
-                                                <td className="border border-black p-1">{det.course}</td>
-                                                <td className="border border-black p-1 text-center">{det.classGroup}</td>
-                                                <td className="border border-black p-1 text-center">{det.shift === 'Diurno' ? 'Laboral' : 'Pós-Laboral'}</td>
-                                                <td className="border border-black p-1 text-center">{det.responseCount}</td>
-                                                <td className="border border-black p-1 text-center font-bold">{det.score.toFixed(1)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                    <Button variant="ghost" size="sm" onClick={() => setPreviewingReportFor(null)} className="text-white hover:bg-white/10">
+                        <X size={20} />
+                    </Button>
+                </CardHeader>
+                <CardContent className="p-0 overflow-y-auto bg-gray-100">
+                    <div className="p-8 md:p-12 max-w-[210mm] mx-auto bg-white shadow-lg my-8 min-h-[297mm] font-serif text-slate-900 border border-gray-200 relative">
+                        {/* Marca d'água de Pré-visualização */}
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] rotate-[-45deg] select-none">
+                            <span className="text-9xl font-black uppercase">Rascunho</span>
+                        </div>
+
+                        {/* Header do Relatório */}
+                        <div className="flex justify-between items-start mb-10 relative z-10">
+                            <div className="text-center flex-1 pr-8">
+                                {institution?.logo && <img src={institution.logo} className="h-24 w-24 object-contain mx-auto mb-3" alt="Logo"/>}
+                                <h1 className="font-bold text-xl uppercase tracking-widest leading-tight">{institution?.name}</h1>
+                                <div className="h-1 w-20 bg-slate-900 mx-auto my-2"></div>
+                                <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">Direção Geral • Divisão Pedagógica</p>
                             </div>
-                        )}
+                            <div className="border-2 border-slate-900 p-4 w-72 text-center bg-slate-50">
+                                <p className="font-bold text-[11px] uppercase mb-6 border-b border-slate-900 pb-1">Despacho de Homologação</p>
+                                <div className="h-12 border-b border-dashed border-slate-400 mb-2"></div>
+                                <p className="text-[10px] font-bold">O Director Geral</p>
+                                <div className="mt-6 text-left">
+                                    <p className="text-[10px]">Data: ____ / ____ / {new Date().getFullYear()}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="text-center mb-12 relative z-10">
+                            <h2 className="text-2xl font-black border-y-2 border-slate-900 py-3 uppercase tracking-[0.2em] bg-slate-50">Folha de Classificação Anual</h2>
+                            <p className="text-sm font-bold mt-3 text-slate-600">Exercício Académico: {new Date().getFullYear()}</p>
+                        </div>
+
+                        {/* Dados do Docente */}
+                        <div className="grid grid-cols-2 gap-8 mb-10 text-sm relative z-10 bg-slate-50 p-6 rounded-lg border border-slate-200">
+                            <div className="space-y-3">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] uppercase font-bold text-slate-400">Nome Completo</span>
+                                    <span className="font-bold text-base">{previewingReportFor.name}</span>
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] uppercase font-bold text-slate-400">Categoria Académica</span>
+                                    <span className="font-medium">{previewingReportFor.category === 'assistente' ? 'Assistente' : 'Assistente Estagiário'}</span>
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] uppercase font-bold text-slate-400">Função / Cargo</span>
+                                    <span className="font-medium">{previewingReportFor.jobTitle || 'Docente'}</span>
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] uppercase font-bold text-slate-400">Contacto Institucional</span>
+                                    <span className="font-medium">{previewingReportFor.email}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Tabela de Pontuação */}
+                        <div className="mb-12 relative z-10">
+                            <h3 className="text-xs font-black uppercase mb-3 flex items-center gap-2">
+                                <div className="w-1.5 h-4 bg-slate-900"></div>
+                                Discriminação da Pontuação Ponderada
+                            </h3>
+                            <table className="w-full border-collapse border-2 border-slate-900 shadow-sm">
+                                <thead>
+                                    <tr className="bg-slate-900 text-white font-bold text-[11px] uppercase tracking-wider">
+                                        <th className="border border-slate-700 p-4 text-left">Componente de Avaliação</th>
+                                        <th className="border border-slate-700 p-4 text-center w-28">Peso</th>
+                                        <th className="border border-slate-700 p-4 text-center w-32">Pontos Brutos</th>
+                                        <th className="border border-slate-700 p-4 text-center w-32">Pontuação Final</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="text-sm">
+                                    {(() => {
+                                        const score = allScores.find(s => s.teacherId === previewingReportFor.id);
+                                        const qual = qualEvals[previewingReportFor.id] || { deadlines: 0, quality: 0 };
+                                        const instScore = (qual.deadlines + qual.quality) / 2;
+                                        
+                                        const maxSelf = previewingReportFor.category === 'assistente_estagiario' ? 125 : 175;
+                                        const displaySelf = score?.selfEvalScore || maxSelf;
+                                        const displayStudent = score?.studentScore || 0;
+                                        const displayInst = instScore || 0;
+                                        
+                                        const selfPoints = (displaySelf / maxSelf) * 80;
+                                        const studentPoints = (displayStudent / 20) * 12;
+                                        const instPoints = (displayInst / 10) * 8;
+                                        const final = selfPoints + studentPoints + instPoints;
+
+                                        return (
+                                            <>
+                                                <tr className="hover:bg-slate-50">
+                                                    <td className="border border-slate-900 p-4 font-medium">Auto-avaliação Docente</td>
+                                                    <td className="border border-slate-900 p-4 text-center font-bold">80%</td>
+                                                    <td className="border border-slate-900 p-4 text-center text-slate-500">{displaySelf.toFixed(1)} / {maxSelf}</td>
+                                                    <td className="border border-slate-900 p-4 text-center font-black text-slate-900">{selfPoints.toFixed(1)}</td>
+                                                </tr>
+                                                <tr className="hover:bg-slate-50">
+                                                    <td className="border border-slate-900 p-4 font-medium">Avaliação pelo Corpo Discente</td>
+                                                    <td className="border border-slate-900 p-4 text-center font-bold">12%</td>
+                                                    <td className="border border-slate-900 p-4 text-center text-slate-500">{displayStudent.toFixed(1)} / 20</td>
+                                                    <td className="border border-slate-900 p-4 text-center font-black text-slate-900">{studentPoints.toFixed(1)}</td>
+                                                </tr>
+                                                <tr className="hover:bg-slate-50">
+                                                    <td className="border border-slate-900 p-4 font-medium">Avaliação Institucional (Gestão)</td>
+                                                    <td className="border border-slate-900 p-4 text-center font-bold">8%</td>
+                                                    <td className="border border-slate-900 p-4 text-center text-slate-500">{displayInst.toFixed(1)} / 10</td>
+                                                    <td className="border border-slate-900 p-4 text-center font-black text-slate-900">{instPoints.toFixed(1)}</td>
+                                                </tr>
+                                                <tr className="bg-slate-900 text-white font-black text-xl">
+                                                    <td className="border border-slate-900 p-5 uppercase tracking-widest" colSpan={3}>Classificação Final (0-100)</td>
+                                                    <td className="border border-slate-900 p-5 text-center bg-blue-600">{final.toFixed(1)}</td>
+                                                </tr>
+                                            </>
+                                        );
+                                    })()}
+                                </tbody>
+                            </table>
+                            <div className="mt-4 flex justify-between items-center px-2">
+                                <div className="flex gap-4">
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-3 h-3 rounded-full bg-blue-600"></div>
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase">Excelente (≥90)</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-3 h-3 rounded-full bg-green-600"></div>
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase">Bom (70-89)</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-3 h-3 rounded-full bg-amber-600"></div>
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase">Suficiente (50-69)</span>
+                                    </div>
+                                </div>
+                                <p className="text-[10px] italic text-slate-400">* Cálculo baseado no Regulamento de Avaliação de Desempenho.</p>
+                            </div>
+                        </div>
+
+                        {/* Observações */}
+                        <div className="mb-12 relative z-10">
+                            <h3 className="text-xs font-black uppercase mb-3 flex items-center gap-2">
+                                <div className="w-1.5 h-4 bg-slate-900"></div>
+                                Parecer Qualitativo da Direção
+                            </h3>
+                            <div className="min-h-[180px] p-6 border-2 border-slate-200 rounded-lg italic text-sm text-slate-700 leading-relaxed bg-slate-50 relative">
+                                <Quote className="absolute top-4 left-4 text-slate-200" size={40} />
+                                <div className="relative z-10 pl-8">
+                                    {qualEvals[previewingReportFor.id]?.comments || "Nenhuma observação ou feedback qualitativo foi registrado para este docente até o momento."}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Assinaturas */}
+                        <div className="mt-24 grid grid-cols-2 gap-24 text-center text-[11px] font-bold uppercase relative z-10">
+                            <div className="space-y-1">
+                                <div className="border-t-2 border-slate-900 pt-3">
+                                    <p>O Docente Avaliado</p>
+                                </div>
+                                <p className="font-normal italic text-[10px] text-slate-500 lowercase">Assinatura e Data</p>
+                            </div>
+                            <div className="space-y-1">
+                                <div className="border-t-2 border-slate-900 pt-3">
+                                    <p>O Chefe de Departamento / Direção</p>
+                                </div>
+                                <p className="font-normal italic text-[10px] text-slate-500 lowercase">Carimbo e Assinatura</p>
+                            </div>
+                        </div>
+                        
+                        <div className="mt-20 text-center text-[9px] text-slate-400 border-t border-slate-100 pt-4">
+                            Documento gerado eletronicamente pelo Sistema de Gestão de Avaliação Docente • {institution?.name} • {new Date().toLocaleDateString()}
+                        </div>
                     </div>
-                </main>
+                </CardContent>
+                <CardHeader className="bg-white border-t flex flex-row items-center justify-end gap-3 p-6">
+                    <Button variant="ghost" onClick={() => setPreviewingReportFor(null)} className="text-slate-500">Cancelar</Button>
+                    <Button className="bg-slate-900 hover:bg-slate-800 text-white gap-2 px-8 shadow-lg" onClick={() => handlePrintReport(previewingReportFor)}>
+                        <Printer size={18} /> Gerar PDF / Imprimir
+                    </Button>
+                </CardHeader>
+            </Card>
+        </div>
+      )}
+      <div className="hidden print:block font-serif text-slate-900 bg-white">
+        {printingTeacher && printingScore ? (
+            <div className="p-12 min-h-screen flex flex-col">
+                <header className="flex justify-between items-start mb-12">
+                    <div className="text-center flex-1 pr-8">
+                        {institution?.logo && <img src={institution.logo} className="h-24 w-24 object-contain mx-auto mb-3" alt="Logo"/>}
+                        <h1 className="font-bold text-xl uppercase tracking-widest leading-tight">{institution?.name}</h1>
+                        <div className="h-1 w-20 bg-slate-900 mx-auto my-2"></div>
+                        <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Direção Geral • Divisão Pedagógica</p>
+                    </div>
+                    <div className="border-2 border-slate-900 p-4 w-72 text-center bg-slate-50">
+                        <p className="font-bold text-[11px] uppercase mb-6 border-b border-slate-900 pb-1">Despacho de Homologação</p>
+                        <div className="h-12 border-b border-dashed border-slate-400 mb-2"></div>
+                        <p className="text-[10px] font-bold">O Director Geral</p>
+                        <div className="mt-6 text-left">
+                            <p className="text-[10px]">Data: ____ / ____ / {new Date().getFullYear()}</p>
+                        </div>
+                    </div>
+                </header>
+
+                <div className="text-center mb-12">
+                    <h2 className="text-2xl font-black border-y-2 border-slate-900 py-3 uppercase tracking-[0.2em] bg-slate-50">Folha de Classificação Anual</h2>
+                    <p className="text-sm font-bold mt-3 text-slate-600">Exercício Académico: {new Date().getFullYear()}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-8 mb-10 text-sm bg-slate-50 p-6 rounded-lg border border-slate-200">
+                    <div className="space-y-3">
+                        <div className="flex flex-col">
+                            <span className="text-[10px] uppercase font-bold text-slate-400">Nome Completo</span>
+                            <span className="font-bold text-base">{printingTeacher.name}</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-[10px] uppercase font-bold text-slate-400">Categoria Académica</span>
+                            <span className="font-medium">{printingTeacher.category === 'assistente' ? 'Assistente' : 'Assistente Estagiário'}</span>
+                        </div>
+                    </div>
+                    <div className="space-y-3">
+                        <div className="flex flex-col">
+                            <span className="text-[10px] uppercase font-bold text-slate-400">Função / Cargo</span>
+                            <span className="font-medium">{printingTeacher.jobTitle || 'Docente'}</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-[10px] uppercase font-bold text-slate-400">Contacto Institucional</span>
+                            <span className="font-medium">{printingTeacher.email}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="mb-12">
+                    <h3 className="text-xs font-black uppercase mb-3 flex items-center gap-2">
+                        <div className="w-1.5 h-4 bg-slate-900"></div>
+                        Discriminação da Pontuação Ponderada
+                    </h3>
+                    <table className="w-full border-collapse border-2 border-slate-900">
+                        <thead>
+                            <tr className="bg-slate-900 text-white font-bold text-[11px] uppercase tracking-wider">
+                                <th className="border border-slate-700 p-4 text-left">Componente de Avaliação</th>
+                                <th className="border border-slate-700 p-4 text-center w-28">Peso</th>
+                                <th className="border border-slate-700 p-4 text-center w-32">Pontos Brutos</th>
+                                <th className="border border-slate-700 p-4 text-center w-32">Pontuação Final</th>
+                            </tr>
+                        </thead>
+                        <tbody className="text-sm">
+                            {(() => {
+                                const maxSelf = printingTeacher.category === 'assistente_estagiario' ? 125 : 175;
+                                const selfPoints = ((printingScore.selfEvalScore || maxSelf) / maxSelf) * 80;
+                                const studentPoints = (printingScore.studentScore / 20) * 12;
+                                const instPoints = (printingScore.institutionalScore / 10) * 8;
+
+                                return (
+                                    <>
+                                        <tr>
+                                            <td className="border border-slate-900 p-4 font-medium">Auto-avaliação Docente</td>
+                                            <td className="border border-slate-900 p-4 text-center font-bold">80%</td>
+                                            <td className="border border-slate-900 p-4 text-center text-slate-500">{(printingScore.selfEvalScore || maxSelf).toFixed(1)} / {maxSelf}</td>
+                                            <td className="border border-slate-900 p-4 text-center font-black">{selfPoints.toFixed(1)}</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="border border-slate-900 p-4 font-medium">Avaliação pelo Corpo Discente</td>
+                                            <td className="border border-slate-900 p-4 text-center font-bold">12%</td>
+                                            <td className="border border-slate-900 p-4 text-center text-slate-500">{printingScore.studentScore.toFixed(1)} / 20</td>
+                                            <td className="border border-slate-900 p-4 text-center font-black">{studentPoints.toFixed(1)}</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="border border-slate-900 p-4 font-medium">Avaliação Institucional (Gestão)</td>
+                                            <td className="border border-slate-900 p-4 text-center font-bold">8%</td>
+                                            <td className="border border-slate-900 p-4 text-center text-slate-500">{printingScore.institutionalScore.toFixed(1)} / 10</td>
+                                            <td className="border border-slate-900 p-4 text-center font-black">{instPoints.toFixed(1)}</td>
+                                        </tr>
+                                        <tr className="bg-slate-900 text-white font-black text-xl">
+                                            <td className="border border-slate-900 p-5 uppercase tracking-widest" colSpan={3}>Classificação Final (0-100)</td>
+                                            <td className="border border-slate-900 p-5 text-center">{printingScore.finalScore.toFixed(1)}</td>
+                                        </tr>
+                                    </>
+                                );
+                            })()}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="mb-12">
+                    <h3 className="text-xs font-black uppercase mb-3 flex items-center gap-2">
+                        <div className="w-1.5 h-4 bg-slate-900"></div>
+                        Parecer Qualitativo da Direção
+                    </h3>
+                    <div className="min-h-[180px] p-6 border-2 border-slate-200 rounded-lg italic text-sm text-slate-700 leading-relaxed bg-slate-50">
+                        {qualEvals[printingTeacher.id]?.comments || "Nenhuma observação ou feedback qualitativo foi registrado para este docente até o momento."}
+                    </div>
+                </div>
+
+                <div className="mt-auto grid grid-cols-2 gap-24 text-center text-[11px] font-bold uppercase">
+                    <div className="space-y-1">
+                        <div className="border-t-2 border-slate-900 pt-3">
+                            <p>O Docente Avaliado</p>
+                        </div>
+                        <p className="font-normal italic text-[10px] text-slate-500 lowercase">Assinatura e Data</p>
+                    </div>
+                    <div className="space-y-1">
+                        <div className="border-t-2 border-slate-900 pt-3">
+                            <p>O Chefe de Departamento / Direção</p>
+                        </div>
+                        <p className="font-normal italic text-[10px] text-slate-500 lowercase">Carimbo e Assinatura</p>
+                    </div>
+                </div>
+                
+                <div className="mt-12 text-center text-[9px] text-slate-400 border-t border-slate-100 pt-4">
+                    Documento gerado eletronicamente pelo Sistema de Gestão de Avaliação Docente • {institution?.name} • {new Date().toLocaleDateString()}
+                </div>
             </div>
         ) : null}
       </div>
@@ -952,6 +1208,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                     <Button variant="outline" size="sm" onClick={() => setActiveTab('settings')} className="gap-2"><Settings size={16}/> Configurações</Button>
                     <div className="flex bg-gray-100 p-1 rounded-lg">
                         <Button variant={activeTab === 'overview' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('overview')} className="gap-2"><BarChartHorizontal size={16} /> Visão Geral</Button>
+                        <Button variant={activeTab === 'qualitative' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('qualitative')} className="gap-2"><Award size={16} /> Avaliação Qualitativa</Button>
                         <Button variant={activeTab === 'stats' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('stats')} className="gap-2"><ListChecks size={16} /> Relatórios</Button>
                         <Button variant={activeTab === 'courses' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('courses')} className="gap-2"><BookOpen size={16} /> Cursos</Button>
                         <Button variant={activeTab === 'teachers' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('teachers')} className="gap-2"><Users size={16} /> Docentes</Button>
@@ -968,6 +1225,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                 <div className="md:hidden absolute top-full left-0 w-full bg-white shadow-xl border-b z-50 rounded-b-xl animate-in slide-in-from-top-2 p-2">
                     <div className="grid gap-1">
                         <button onClick={() => {setActiveTab('overview'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'overview' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}><BarChartHorizontal size={18} /> Visão Geral</button>
+                        <button onClick={() => {setActiveTab('qualitative'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'qualitative' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}><Award size={18} /> Avaliação Qualitativa</button>
                         <button onClick={() => {setActiveTab('stats'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'stats' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}><ListChecks size={18} /> Relatórios</button>
                         <button onClick={() => {setActiveTab('courses'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'courses' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}><BookOpen size={18} /> Cursos</button>
                         <button onClick={() => {setActiveTab('teachers'); setIsMobileMenuOpen(false)}} className={`text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === 'teachers' ? 'bg-slate-900 text-white' : 'hover:bg-gray-100 text-gray-700'}`}><Users size={18} /> Docentes</button>
@@ -979,7 +1237,144 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
             )}
         </div>
 
-        {/* ... (Overview, Stats, Evaluations content unchanged) ... */}
+        {activeTab === 'qualitative' && (
+            <div className="space-y-6">
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Award className="text-blue-600" />
+                            Avaliação Qualitativa dos Docentes
+                        </CardTitle>
+                        <p className="text-sm text-gray-500">Atribua notas de desempenho institucional e comentários para cada docente.</p>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-4">
+                            {teachers.map(t => {
+                                const evalData = qualEvals[t.id] || { deadlines: 0, quality: 0, comments: '' };
+                                const isExpanded = expandedTeacher === t.id;
+                                const hasEvaluation = evalData.deadlines > 0 || evalData.quality > 0 || evalData.comments.length > 0;
+
+                                return (
+                                    <div key={t.id} className="border rounded-xl overflow-hidden bg-white shadow-sm transition-all hover:shadow-md">
+                                        <div 
+                                            className={cn(
+                                                "p-4 flex items-center justify-between cursor-pointer select-none",
+                                                isExpanded ? "bg-slate-50 border-b" : "hover:bg-gray-50"
+                                            )}
+                                            onClick={() => setExpandedTeacher(isExpanded ? null : t.id)}
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <div className="h-12 w-12 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600 border-2 border-white shadow-sm">
+                                                    {t.name.charAt(0)}
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-bold text-slate-800">{t.name}</h4>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs text-slate-500">{t.jobTitle || 'Docente'}</span>
+                                                        <span className={cn(
+                                                            "text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider",
+                                                            hasEvaluation ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                                                        )}>
+                                                            {hasEvaluation ? 'Avaliado' : 'Pendente'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                {hasEvaluation && (
+                                                    <div className="hidden sm:flex flex-col items-end mr-4">
+                                                        <span className="text-[10px] text-slate-400 uppercase font-bold">Média Inst.</span>
+                                                        <span className="text-lg font-black text-blue-600 leading-none">
+                                                            {((evalData.deadlines + evalData.quality) / 2).toFixed(1)}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                {isExpanded ? <ChevronUp size={20} className="text-slate-400" /> : <ChevronDown size={20} className="text-slate-400" />}
+                                            </div>
+                                        </div>
+
+                                        {isExpanded && (
+                                            <div className="p-6 bg-white space-y-6 animate-in slide-in-from-top-2 duration-300">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                                    <div className="space-y-4">
+                                                        <div className="flex justify-between items-end">
+                                                            <Label className="text-slate-700 font-bold flex items-center gap-2">
+                                                                <RotateCcw size={14} className="text-blue-500" />
+                                                                Cumprimento de Prazos (0-10)
+                                                            </Label>
+                                                            <span className="text-2xl font-black text-blue-600">{evalData.deadlines}</span>
+                                                        </div>
+                                                        <input 
+                                                            type="range" min="0" max="10" step="1"
+                                                            value={evalData.deadlines}
+                                                            onChange={e => setQualEvals({...qualEvals, [t.id]: {...evalData, deadlines: parseInt(e.target.value)}})}
+                                                            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                                        />
+                                                        <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase">
+                                                            <span>Insuficiente</span>
+                                                            <span>Excelente</span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="space-y-4">
+                                                        <div className="flex justify-between items-end">
+                                                            <Label className="text-slate-700 font-bold flex items-center gap-2">
+                                                                <Award size={14} className="text-purple-500" />
+                                                                Qualidade Pedagógica (0-10)
+                                                            </Label>
+                                                            <span className="text-2xl font-black text-purple-600">{evalData.quality}</span>
+                                                        </div>
+                                                        <input 
+                                                            type="range" min="0" max="10" step="1"
+                                                            value={evalData.quality}
+                                                            onChange={e => setQualEvals({...qualEvals, [t.id]: {...evalData, quality: parseInt(e.target.value)}})}
+                                                            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                                                        />
+                                                        <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase">
+                                                            <span>Insuficiente</span>
+                                                            <span>Excelente</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <Label className="text-slate-700 font-bold flex items-center gap-2">
+                                                        <MessageSquare size={14} className="text-slate-500" />
+                                                        Observações e Feedback da Gestão
+                                                    </Label>
+                                                    <textarea 
+                                                        className="w-full min-h-[120px] p-4 border rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm leading-relaxed"
+                                                        placeholder="Descreva o desempenho do docente, pontos fortes e áreas de melhoria..."
+                                                        value={evalData.comments}
+                                                        onChange={e => setQualEvals({...qualEvals, [t.id]: {...evalData, comments: e.target.value}})}
+                                                    />
+                                                </div>
+
+                                                <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
+                                                    <Button 
+                                                        variant="outline" 
+                                                        className="gap-2"
+                                                        onClick={() => setPreviewingReportFor(t)}
+                                                    >
+                                                        <Eye size={16} /> Pré-visualizar Relatório
+                                                    </Button>
+                                                    <Button 
+                                                        className="bg-blue-600 hover:bg-blue-700 text-white gap-2 shadow-md"
+                                                        onClick={() => handleSaveQualitative(t.id)}
+                                                    >
+                                                        <Save size={16} /> Salvar Avaliação
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        )}
         {activeTab === 'overview' && (
              <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
                  <Card className="shadow-sm">
@@ -1091,7 +1486,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                                     placeholder="Feedback para o docente..."
                                                 />
                                             </div>
-                                            <Button size="sm" onClick={() => handleEvalSubmit(t.id)} className="w-full">
+                                            <Button size="sm" onClick={() => handleSaveQualitative(t.id)} className="w-full">
                                                 <Save className="h-4 w-4 mr-2" /> Salvar Avaliação
                                             </Button>
                                         </div>

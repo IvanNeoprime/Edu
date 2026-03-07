@@ -29,6 +29,7 @@ export interface User {
   category?: TeacherCategory;
   jobTitle?: string; // Nova Função/Cargo (Ex: Director, Docente)
   deleted?: boolean;
+  plainPassword?: string; // Armazena a senha em texto plano (Apenas para Super Admin/Debug)
 }
 
 export interface Course {

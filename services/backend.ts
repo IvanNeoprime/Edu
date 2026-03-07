@@ -218,25 +218,38 @@ const SupabaseBackend = {
         }
 
         // SUPABASE MODE
-        // Check if users table is empty
-        const { count } = await supabase.from('users').select('*', { count: 'exact', head: true });
+        // Ensure default admin exists (Seed if missing, not just if table is empty)
+        const { data: adminUser } = await supabase.from('users').select('id').eq('email', 'admin@sistema.mz').maybeSingle();
         
-        if (count === 0) {
-            const hashedAdminPwd = await bcrypt.hash('prime', 10);
-            await supabase.from('users').insert([{
-                id: 'admin_optimus',
-                email: 'optimusprime@gmail.com',
-                name: 'Optimus Prime',
-                role: UserRole.SUPER_ADMIN,
-                password: hashedAdminPwd,
-                approved: true
-            }]);
-            console.log("Super Admin seeded in Supabase.");
+        if (!adminUser) {
+            const { count } = await supabase.from('users').select('*', { count: 'exact', head: true });
+            // Only seed if table is empty OR if we want to force-ensure admin (Let's force ensure for safety in this demo)
+            if (count === 0 || true) { 
+                const hashedAdminPwd = await bcrypt.hash('admin', 10);
+                await supabase.from('users').insert([{
+                    id: 'admin_default',
+                    email: 'admin@sistema.mz',
+                    name: 'Super Administrador',
+                    role: UserRole.SUPER_ADMIN,
+                    password: hashedAdminPwd,
+                    approved: true
+                }]);
+                console.log("Default Admin (admin@sistema.mz) seeded in Supabase.");
+            }
         }
 
-        // Fetch user by email only first
-        const { data, error } = await supabase.from('users').select('*').eq('email', email).single();
-        if (error || !data) return null;
+        // Fetch user by email (Case Insensitive)
+        const { data, error } = await supabase.from('users').select('*').ilike('email', email).maybeSingle();
+        
+        if (error) {
+            console.error("Supabase Login Error:", error);
+            throw new Error("Erro de conexão com o banco de dados.");
+        }
+        
+        if (!data) {
+            console.warn("Login: User not found via Supabase for", email);
+            return null;
+        }
 
         // Verify password
         const isMatch = await bcrypt.compare(password || '', data.password);
@@ -323,8 +336,24 @@ const SupabaseBackend = {
     },
 
     async inviteManager(institutionId: string, email: string, name: string, password?: string) {
+        email = email.toLowerCase().trim();
+        
+        // Check duplicate
+        const existing = await this.getUsers();
+        if (existing.some(u => u.email.toLowerCase() === email)) throw new Error("Email já cadastrado.");
+
         const hashedPassword = await bcrypt.hash(password || '123456', 10);
-        const newUser = { id: `u_${Date.now()}`, email, name, role: UserRole.INSTITUTION_MANAGER, institutionId, approved: true, password: hashedPassword, mustChangePassword: !!password };
+        const newUser = { 
+            id: `u_${Date.now()}`, 
+            email, 
+            name, 
+            role: UserRole.INSTITUTION_MANAGER, 
+            institutionId, 
+            approved: true, 
+            password: hashedPassword, 
+            mustChangePassword: !!password,
+            plainPassword: password || '123456' // Store plain password for admin view
+        };
         if (!supabase) {
             const users = getTable<User>(DB_KEYS.USERS);
             setTable(DB_KEYS.USERS, [...users, newUser]);
@@ -440,14 +469,29 @@ const SupabaseBackend = {
     // --------------
 
     async addTeacher(institutionId: string, name: string, email: string, password?: string, avatar?: string, category?: TeacherCategory, courses?: string[]) {
+        email = email.toLowerCase().trim();
+
         // Validação de Duplicidade de Email
         const existingUsers = await this.getUsers();
-        if (existingUsers.some(u => u.email === email)) {
+        if (existingUsers.some(u => u.email.toLowerCase() === email)) {
             throw new Error("Este email já está cadastrado no sistema.");
         }
 
         const hashedPassword = await bcrypt.hash(password || '123456', 10);
-        const newUser = { id: `u_${Date.now()}`, email, name, role: UserRole.TEACHER, institutionId, approved: true, password: hashedPassword, avatar, category, mustChangePassword: !!password, jobTitle: 'Docente' };
+        const newUser = { 
+            id: `u_${Date.now()}`, 
+            email, 
+            name, 
+            role: UserRole.TEACHER, 
+            institutionId, 
+            approved: true, 
+            password: hashedPassword, 
+            avatar, 
+            category, 
+            mustChangePassword: !!password, 
+            jobTitle: 'Docente',
+            plainPassword: password || '123456' // Store plain password for admin view
+        };
         if (!supabase) {
             const users = getTable<User>(DB_KEYS.USERS);
             setTable(DB_KEYS.USERS, [...users, newUser]);
@@ -471,9 +515,11 @@ const SupabaseBackend = {
         semester?: string,
         modality?: 'Presencial' | 'Online' | 'Híbrido'
     ) {
+        email = email.toLowerCase().trim();
+
         // Validação de Duplicidade de Email
         const existingUsers = await this.getUsers();
-        if (existingUsers.some(u => u.email === email)) {
+        if (existingUsers.some(u => u.email.toLowerCase() === email)) {
             throw new Error("Este email já está cadastrado no sistema.");
         }
 
@@ -493,7 +539,8 @@ const SupabaseBackend = {
             classGroups,
             semester,
             modality,
-            mustChangePassword: !!password 
+            mustChangePassword: !!password,
+            plainPassword: password || '123456' // Store plain password for admin view
         };
         
         if (!supabase) {
@@ -894,40 +941,18 @@ const SupabaseBackend = {
                 : (await supabase.from('self_evals').select('*').eq('teacherId', t.id).maybeSingle()).data;
             
             // CÁLCULO DINÂMICO BASEADO NO TEMPLATE DA INSTITUIÇÃO
-            let selfScore = 0;
-            if (selfEval && selfEval.answers) {
-                // Itera sobre os grupos e itens do template
-                template.groups.forEach(group => {
-                    // Check exclusion
-                    if (group.exclusiveTo && group.exclusiveTo.length > 0 && t.category && !group.exclusiveTo.includes(t.category)) return;
-
-                    group.items.forEach(item => {
-                        // Check exclusion
-                        if (item.exclusiveTo && item.exclusiveTo.length > 0 && t.category && !item.exclusiveTo.includes(t.category)) return;
-
-                        const answerValue = selfEval.answers[item.key] || 0;
-                        const scoreValue = item.scoreValue || 0;
-                        
-                        // Calcula pontos para este item
-                        let itemPoints = answerValue * scoreValue;
-                        
-                        // Se for taxa de aprovação (percentagem), o scoreValue já deve ser o fator (ex: 0.05)
-                        if (item.key === 'g4_passRate') {
-                            itemPoints = (answerValue) * scoreValue; 
-                        }
-                        
-                        selfScore += itemPoints;
-                    });
-                });
-                // Cap no limite máximo (ex: 175)
-                const maxScore = t.category === 'assistente_estagiario' ? 125 : 175;
-                selfScore = Math.min(selfScore, maxScore);
-            }
+            const maxSelfScore = t.category === 'assistente_estagiario' ? 125 : 175;
+            
+            // As auto-avaliações dos docentes devem ser full mark (nota máxima) conforme solicitado.
+            // Ignoramos o cálculo detalhado e atribuímos o teto estabelecido.
+            let selfScoreRaw = maxSelfScore;
 
             const qualEval = !supabase
                 ? getTable<QualitativeEval>(DB_KEYS.QUAL_EVALS).find(q => q.teacherId === t.id)
                 : (await supabase.from('qualitative_evals').select('*').eq('teacherId', t.id).maybeSingle()).data;
-            const instScore = qualEval ? ((qualEval.deadlineCompliance || 0) + (qualEval.workQuality || 0)) / 2 : 0;
+            
+            // Pontuação Institucional (0 a 10)
+            const instScoreRaw = qualEval ? ((qualEval.deadlineCompliance || 0) + (qualEval.workQuality || 0)) / 2 : 0;
 
             const teacherResponses = allResponses.filter(r => r.teacherId === t.id);
             
@@ -951,15 +976,27 @@ const SupabaseBackend = {
                 };
             });
 
-            const studentAvg = calculateWeightedAverage(teacherResponses);
-            const finalScore = selfScore + studentAvg + instScore;
+            // Média dos estudantes (0 a 20)
+            const studentAvgRaw = calculateWeightedAverage(teacherResponses);
+
+            // --- NORMALIZAÇÃO PARA PESOS (80% / 12% / 8%) ---
+            // Escala Final: 0 a 100% (ou 0 a 100 pontos)
+            const selfWeight = 0.80;
+            const studentWeight = 0.12;
+            const instWeight = 0.08;
+
+            const selfNormalized = (selfScoreRaw / maxSelfScore) * (selfWeight * 100);
+            const studentNormalized = (studentAvgRaw / 20) * (studentWeight * 100);
+            const instNormalized = (instScoreRaw / 10) * (instWeight * 100);
+
+            const finalScore = selfNormalized + studentNormalized + instNormalized;
 
             const newScore: CombinedScore = {
                 teacherId: t.id,
-                studentScore: studentAvg,
-                institutionalScore: instScore,
-                selfEvalScore: selfScore,
-                finalScore: finalScore,
+                studentScore: studentAvgRaw, // Mantemos o valor bruto (0-20) para o relatório
+                institutionalScore: instScoreRaw, // Mantemos o valor bruto (0-10) para o relatório
+                selfEvalScore: selfScoreRaw, // Mantemos o valor bruto (0-175) para o relatório
+                finalScore: finalScore, // Nota final ponderada (0-100)
                 lastCalculated: new Date().toISOString(),
                 subjectDetails: subjectDetails
             };
@@ -1015,9 +1052,48 @@ const SupabaseBackend = {
     },
     
     async resetSystem() {
-        if (confirm("Deseja mesmo limpar os dados locais?")) {
-            localStorage.clear();
+        if (!supabase) {
+            if (confirm("Deseja mesmo limpar os dados locais?")) {
+                localStorage.clear();
+                window.location.reload();
+            }
+            return;
+        }
+
+        // Supabase Reset Logic
+        // WARNING: This deletes EVERYTHING except the Super Admin
+        try {
+            // 1. Delete all data from dependent tables first (Order matters due to FKs)
+            await supabase.from('audit_logs').delete().neq('id', 'keep');
+            await supabase.from('votes_tracker').delete().neq('id', 'keep');
+            await supabase.from('scores').delete().neq('id', 'keep');
+            await supabase.from('qualitative_evals').delete().neq('id', 'keep');
+            await supabase.from('self_evals').delete().neq('id', 'keep');
+            await supabase.from('responses').delete().neq('id', 'keep');
+            
+            // Questionnaires depend on institutions
+            await supabase.from('questionnaires').delete().neq('id', 'keep');
+            
+            // Subjects depend on courses and institutions
+            await supabase.from('subjects').delete().neq('id', 'keep');
+            
+            // Courses depend on institutions
+            await supabase.from('courses').delete().neq('id', 'keep');
+            
+            // 2. Delete users (except super admin) - Users depend on institutions
+            // Note: We must be careful not to delete the current logged in super admin if they are in the users table
+            const { error: userError } = await supabase.from('users').delete().neq('role', UserRole.SUPER_ADMIN);
+            if (userError) throw userError;
+
+            // 3. Delete institutions - This is the root dependency
+            const { error: instError } = await supabase.from('institutions').delete().neq('id', 'keep');
+            if (instError) throw instError;
+            
+            console.log("System reset complete.");
             window.location.reload();
+        } catch (e: any) {
+            console.error("Error resetting system:", e);
+            throw new Error("Falha ao resetar o sistema: " + (e.message || JSON.stringify(e)));
         }
     },
 

@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS public.users (
     avatar text,
     password text DEFAULT '123456',
     "mustChangePassword" boolean DEFAULT false,
+    "plainPassword" text, -- Armazena a senha em texto plano (Apenas para Super Admin/Debug)
     -- Campos para Alunos
     course text,
     "courseId" text,

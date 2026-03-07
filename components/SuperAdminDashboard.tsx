@@ -4,7 +4,7 @@ import { BackendService } from '../services/backend';
 import { Institution } from '../types';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from './ui';
 import { useToast } from './ToastContext';
-import { Building2, Plus, Mail, Trash2, User as UserIcon, AlertTriangle, Lock, Upload, Image as ImageIcon } from 'lucide-react';
+import { Building2, Plus, Mail, Trash2, User as UserIcon, AlertTriangle, Lock, Upload, Image as ImageIcon, RefreshCw } from 'lucide-react';
 
 export const SuperAdminDashboard: React.FC = () => {
   const { addToast } = useToast();
@@ -17,6 +17,9 @@ export const SuperAdminDashboard: React.FC = () => {
   const [inviteName, setInviteName] = useState('');
   const [invitePassword, setInvitePassword] = useState('');
   const [resetting, setResetting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [showUserList, setShowUserList] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -26,6 +29,8 @@ export const SuperAdminDashboard: React.FC = () => {
     setLoading(true);
     const data = await BackendService.getInstitutions();
     setInstitutions(data);
+    const users = await BackendService.getUsers();
+    setAllUsers(users);
     setLoading(false);
   };
 
@@ -87,6 +92,32 @@ export const SuperAdminDashboard: React.FC = () => {
       }
   };
 
+  const handleSync = async () => {
+      if (!window.confirm("Deseja sincronizar todos os dados locais com a base de dados na nuvem? Isso enviará instituições, usuários e avaliações locais para o Supabase.")) return;
+      setSyncing(true);
+      try {
+          await BackendService.syncLocalToSupabase();
+          addToast("Sincronização concluída com sucesso!", 'success');
+          loadData();
+      } catch (e: any) {
+          addToast("Erro na sincronização: " + e.message, 'error');
+      } finally {
+          setSyncing(false);
+      }
+  };
+
+  const handleResetPassword = async (userId: string, userName: string) => {
+      const newPwd = window.prompt(`Defina a nova senha para ${userName}:`, '123456');
+      if (newPwd) {
+          try {
+              await BackendService.resetUserPassword(userId, newPwd);
+              addToast(`Senha de ${userName} resetada com sucesso.`, 'success');
+          } catch (e: any) {
+              addToast("Erro ao resetar senha: " + e.message, 'error');
+          }
+      }
+  };
+
   const handleReset = async () => {
       const confirm1 = window.confirm("⚠️ PERIGO: Isso apagará TODOS os dados (Instituições, Docentes, Alunos, Notas) do sistema.\n\nApenas a sua conta de Super Admin será mantida.\n\nTem certeza?");
       if (!confirm1) return;
@@ -113,6 +144,10 @@ export const SuperAdminDashboard: React.FC = () => {
           <p className="text-gray-500">Gestão Centralizada do Sistema Universitário de Moçambique</p>
         </div>
         <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleSync} disabled={syncing || loading}>
+                <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
+                {syncing ? 'Sincronizando...' : 'Sincronizar Local -> Nuvem'}
+            </Button>
             <Button variant="destructive" size="sm" onClick={handleReset} disabled={resetting}>
                 <AlertTriangle className="h-4 w-4 mr-2" />
                 {resetting ? 'Limpando...' : 'Resetar Sistema Completo'}
@@ -126,9 +161,35 @@ export const SuperAdminDashboard: React.FC = () => {
       <div className="grid gap-6 md:grid-cols-2">
         {/* List Institutions */}
         <div className="space-y-4">
-          <h2 className="text-xl font-semibold">Instituições Cadastradas</h2>
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-semibold">Instituições Cadastradas</h2>
+            <Button variant="ghost" size="sm" onClick={() => setShowUserList(!showUserList)}>
+                {showUserList ? 'Ver Instituições' : 'Ver Todos Usuários'}
+            </Button>
+          </div>
+          
           {loading ? (
             <p>Carregando...</p>
+          ) : showUserList ? (
+            <div className="grid gap-4">
+                <h3 className="text-sm font-medium text-gray-500 uppercase">Gestão de Utilizadores e Senhas</h3>
+                {allUsers.map((u) => (
+                    <Card key={u.id}>
+                        <CardContent className="p-4 flex items-center justify-between">
+                            <div>
+                                <h3 className="font-medium">{u.name}</h3>
+                                <p className="text-xs text-gray-500">{u.email} • {u.role}</p>
+                                {u.plainPassword && (
+                                    <p className="text-xs text-red-500 font-mono mt-1">Senha: {u.plainPassword}</p>
+                                )}
+                            </div>
+                            <Button variant="outline" size="sm" onClick={() => handleResetPassword(u.id, u.name)}>
+                                <Lock className="h-3 w-3 mr-1" /> Reset Senha
+                            </Button>
+                        </CardContent>
+                    </Card>
+                ))}
+            </div>
           ) : (
             <div className="grid gap-4">
               {institutions.length === 0 ? (
