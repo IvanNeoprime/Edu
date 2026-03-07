@@ -359,9 +359,28 @@ const SupabaseBackend = {
             setTable(DB_KEYS.USERS, [...users, newUser]);
             return newUser;
         }
-        const { data, error } = await supabase.from('users').insert([newUser]).select().single();
-        if (error) throw new Error(error.message);
-        return data as User;
+        
+        // Remove plainPassword before sending to Supabase if column doesn't exist yet
+        // Or better, just don't send it if we can't guarantee the schema update ran.
+        // However, the user requested to see passwords. 
+        // The error "Could not find the 'plainPassword' column" means the migration didn't run on the remote DB.
+        // We will try to insert it, but if it fails, we fallback to inserting without it.
+        
+        try {
+             const { data, error } = await supabase.from('users').insert([newUser]).select().single();
+             if (error) throw error;
+             return data as User;
+        } catch (e: any) {
+            // If error is about missing column, try again without it
+            if (e.message?.includes('plainPassword') || e.code === '42703') {
+                console.warn("Column plainPassword missing in DB. Inserting without it.");
+                const { plainPassword, ...userWithoutPlain } = newUser;
+                const { data, error } = await supabase.from('users').insert([userWithoutPlain]).select().single();
+                if (error) throw new Error(error.message);
+                return data as User;
+            }
+            throw new Error(e.message);
+        }
     },
 
     // --- CURSOS ---
@@ -497,9 +516,20 @@ const SupabaseBackend = {
             setTable(DB_KEYS.USERS, [...users, newUser]);
             return newUser;
         }
-        const { data, error } = await supabase.from('users').insert([newUser]).select().single();
-        if (error) throw new Error(error.message);
-        return data as User;
+        try {
+            const { data, error } = await supabase.from('users').insert([newUser]).select().single();
+            if (error) throw error;
+            return data as User;
+        } catch (e: any) {
+            if (e.message?.includes('plainPassword') || e.code === '42703') {
+                console.warn("Column plainPassword missing in DB. Inserting without it.");
+                const { plainPassword, ...userWithoutPlain } = newUser;
+                const { data, error } = await supabase.from('users').insert([userWithoutPlain]).select().single();
+                if (error) throw new Error(error.message);
+                return data as User;
+            }
+            throw new Error(e.message);
+        }
     },
 
     async addStudent(
@@ -548,12 +578,24 @@ const SupabaseBackend = {
             setTable(DB_KEYS.USERS, [...users, newUser]);
             return newUser;
         }
-        const { data, error } = await supabase.from('users').insert([newUser]).select().single();
-        if (error) {
-            console.error("Supabase Error adding student:", error);
-            throw new Error(error.message);
+        try {
+            const { data, error } = await supabase.from('users').insert([newUser]).select().single();
+            if (error) throw error;
+            return data as User;
+        } catch (e: any) {
+             if (e.message?.includes('plainPassword') || e.code === '42703') {
+                console.warn("Column plainPassword missing in DB. Inserting without it.");
+                const { plainPassword, ...userWithoutPlain } = newUser;
+                const { data, error } = await supabase.from('users').insert([userWithoutPlain]).select().single();
+                if (error) {
+                    console.error("Supabase Error adding student (fallback):", error);
+                    throw new Error(error.message);
+                }
+                return data as User;
+            }
+            console.error("Supabase Error adding student:", e);
+            throw new Error(e.message);
         }
-        return data as User;
     },
 
     async deleteUser(id: string) {
