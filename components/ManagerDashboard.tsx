@@ -133,11 +133,40 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
     loadData();
     loadQuestionnaire();
     loadSelfEvalTemplate();
+
+    const subUsers = BackendService.subscribeToChanges('users', (payload) => {
+        if (payload.new && payload.new.institutionId === institutionId) {
+             loadData();
+        }
+    });
+
+    const subSubjects = BackendService.subscribeToChanges('subjects', (payload) => {
+        if (payload.new && payload.new.institutionId === institutionId) {
+             loadData();
+        }
+    });
+    
+    const subInst = BackendService.subscribeToChanges('institutions', (payload) => {
+         if (payload.new && payload.new.id === institutionId) {
+             setInstitution(payload.new);
+         }
+    });
+
+    return () => {
+        subUsers.unsubscribe();
+        subSubjects.unsubscribe();
+        subInst.unsubscribe();
+    };
   }, [institutionId]);
 
   useEffect(() => {
     if (activeTab === 'stats' || activeTab === 'overview') {
         BackendService.getAllScores(institutionId).then(setAllScores);
+        
+        const subScores = BackendService.subscribeToChanges('scores', () => {
+             BackendService.getAllScores(institutionId).then(setAllScores);
+        });
+        return () => subScores.unsubscribe();
     }
   }, [activeTab, institutionId]);
 

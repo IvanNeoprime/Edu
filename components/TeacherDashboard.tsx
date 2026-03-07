@@ -48,6 +48,8 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
   // Accordion state for groups
   const [expandedGroups, setExpandedGroups] = useState<string[]>(['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8']);
 
+  const [isSubmitted, setIsSubmitted] = useState(false);
+
   const toggleGroup = (group: string) => {
       setExpandedGroups(prev => prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]);
   };
@@ -55,7 +57,32 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
   useEffect(() => {
     loadData();
     loadSurveys();
-  }, [user.id]);
+
+    // Real-time subscriptions
+    const subScores = BackendService.subscribeToChanges('scores', (payload) => {
+        if (payload.new && payload.new.teacherId === user.id) {
+            setStats(payload.new);
+        }
+    });
+
+    const subQual = BackendService.subscribeToChanges('qualitative_evals', (payload) => {
+        if (payload.new && payload.new.teacherId === user.id) {
+            setQualEval(payload.new);
+        }
+    });
+    
+    const subInst = BackendService.subscribeToChanges('institutions', (payload) => {
+         if (payload.new && payload.new.id === user.institutionId) {
+             setInstitution(payload.new);
+         }
+    });
+
+    return () => {
+        subScores.unsubscribe();
+        subQual.unsubscribe();
+        subInst.unsubscribe();
+    };
+  }, [user.id, user.institutionId]);
 
   useEffect(() => {
       if (user.category) {
@@ -94,6 +121,12 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
         setAnswers(savedEval.answers || {});
         setSelfComments(savedEval.comments || '');
         setLastSaved(new Date()); 
+        
+        // Check if submitted for current year
+        const currentYear = new Date().getFullYear().toString();
+        if (savedEval.header.academicYear === currentYear) {
+             setIsSubmitted(true);
+        }
     }
   };
 
@@ -293,17 +326,27 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
               <div className="lg:col-span-4 order-1 lg:order-2 space-y-6 lg:sticky lg:top-24">
                   <Card className="border-0 shadow-xl ring-1 ring-black/5 overflow-hidden">
                       <div className="bg-slate-900 p-6 text-white text-center">
-                          <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-1">Pontuação Atribuída</p>
-                          <div className="flex items-center justify-center gap-1">
-                              <span className="text-5xl font-black tracking-tighter text-emerald-400">{calculateLiveScore().toFixed(1)}</span>
-                              <span className="text-xl font-normal text-slate-500 mt-3">/ {header.category === 'assistente_estagiario' ? 125 : 175}</span>
+                          <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-1">Status da Avaliação</p>
+                          <div className="flex items-center justify-center gap-1 py-4">
+                              <span className={`text-xl font-bold ${isSubmitted ? 'text-emerald-400' : 'text-slate-200'}`}>
+                                  {isSubmitted ? 'Submetida' : 'Em Preenchimento'}
+                              </span>
                           </div>
                           <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-full text-xs font-medium border border-emerald-500/30">
-                              <CheckCircle2 size={12} /> Full Mark Automático
+                              <CheckCircle2 size={12} /> Pontuação Automática
                           </div>
                       </div>
                       <div className="p-4 bg-gray-50 border-t flex flex-col gap-3">
-                          <Button onClick={handleSaveSelfEval} className="w-full bg-blue-600 hover:bg-blue-700" disabled={saving || !isEvaluationOpen}>{saving ? 'Salvando...' : 'Salvar Avaliação'}</Button>
+                          {isSubmitted ? (
+                              <div className="p-3 bg-blue-50 text-blue-700 text-sm rounded border border-blue-100 flex items-start gap-2">
+                                  <AlertCircle className="shrink-0 mt-0.5" size={16}/>
+                                  <p>Sua auto-avaliação para este ano já foi submetida. Aguarde o próximo período para realizar alterações.</p>
+                              </div>
+                          ) : (
+                              <Button onClick={handleSaveSelfEval} className="w-full bg-blue-600 hover:bg-blue-700" disabled={saving || !isEvaluationOpen}>
+                                  {saving ? 'Salvando...' : 'Submeter Avaliação'}
+                              </Button>
+                          )}
                           <Button variant="outline" onClick={handleDownloadPDF} className="w-full"><Printer className="mr-2 h-4 w-4"/> Imprimir Ficha</Button>
                           {lastSaved && <p className="text-xs text-center text-gray-500">Última alteração: {lastSaved.toLocaleString()}</p>}
                       </div>
@@ -312,8 +355,8 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                   <Card>
                       <CardHeader className="py-4"><CardTitle className="text-sm">Configuração de Perfil</CardTitle></CardHeader>
                       <CardContent className="space-y-3">
-                          <div className="space-y-1"><Label className="text-xs">Categoria Docente</Label><Select value={header.category} onChange={e => setHeader({...header, category: e.target.value as any})}><option value="assistente">Assistente</option><option value="assistente_estagiario">Assistente Estagiário</option></Select></div>
-                          <div className="space-y-1"><Label className="text-xs">Regime</Label><Select value={header.contractRegime} onChange={e => setHeader({...header, contractRegime: e.target.value})}><option value="Tempo Inteiro">Tempo Inteiro</option><option value="Tempo Parcial">Tempo Parcial</option></Select></div>
+                          <div className="space-y-1"><Label className="text-xs">Categoria Docente</Label><Select value={header.category} disabled={isSubmitted} onChange={e => setHeader({...header, category: e.target.value as any})}><option value="assistente">Assistente</option><option value="assistente_estagiario">Assistente Estagiário</option></Select></div>
+                          <div className="space-y-1"><Label className="text-xs">Regime</Label><Select value={header.contractRegime} disabled={isSubmitted} onChange={e => setHeader({...header, contractRegime: e.target.value})}><option value="Tempo Inteiro">Tempo Inteiro</option><option value="Tempo Parcial">Tempo Parcial</option></Select></div>
                       </CardContent>
                   </Card>
               </div>
@@ -344,6 +387,7 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                                                       <Input 
                                                           type="number" 
                                                           min="0" 
+                                                          disabled={isSubmitted}
                                                           value={answers[item.key] || ''} // Handle empty string for better UX
                                                           onChange={e => setAnswers({...answers, [item.key]: parseFloat(e.target.value) || 0})} 
                                                       />
@@ -364,6 +408,7 @@ export const TeacherDashboard: React.FC<Props> = ({ user }) => {
                           <textarea 
                               className="w-full p-3 border rounded-md" 
                               rows={4}
+                              disabled={isSubmitted}
                               placeholder="Descreva outras atividades relevantes não contempladas acima..."
                               value={selfComments}
                               onChange={e => setSelfComments(e.target.value)}

@@ -174,6 +174,21 @@ const calculateSelfEvalScoreInternal = (evalData: SelfEvaluation): number => {
  * 🟢 SUPABASE BACKEND
  */
 const SupabaseBackend = {
+    subscribeToChanges(table: string, callback: (payload: any) => void) {
+        if (!supabase) return { unsubscribe: () => {} };
+        
+        const channel = supabase
+            .channel(`public:${table}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: table }, callback)
+            .subscribe();
+
+        return {
+            unsubscribe: () => {
+                supabase?.removeChannel(channel);
+            }
+        };
+    },
+
     async checkHealth() {
         if (!supabase) return { ok: false, mode: 'local' };
         try {
@@ -787,10 +802,16 @@ const SupabaseBackend = {
              if (idx >= 0) evals[idx] = { ...evals[idx], ...data };
              else evals.push(data);
              setTable(DB_KEYS.QUAL_EVALS, evals);
+             // Trigger Recalculation
+             await this.calculateScores(data.institutionId || '', data.teacherId);
              return;
         }
         const cleanData = JSON.parse(JSON.stringify(data));
-        await supabase.from('qualitative_evals').upsert(cleanData);
+        await supabase.from('qualitative_evals').upsert(cleanData, { onConflict: 'teacherId' });
+        // Trigger Recalculation
+        if (data.institutionId) {
+            await this.calculateScores(data.institutionId, data.teacherId);
+        }
     },
 
     async getQualitativeEval(teacherId: string) {
@@ -807,10 +828,14 @@ const SupabaseBackend = {
             const evals = getTable<SelfEvaluation>(DB_KEYS.SELF_EVALS);
             const filtered = evals.filter(e => e.teacherId !== data.teacherId);
             setTable(DB_KEYS.SELF_EVALS, [...filtered, data]);
+            // Trigger Recalculation
+            await this.calculateScores(data.institutionId, data.teacherId);
             return;
         }
         const cleanData = JSON.parse(JSON.stringify(data));
-        await supabase.from('self_evals').upsert(cleanData);
+        await supabase.from('self_evals').upsert(cleanData, { onConflict: 'teacherId' });
+        // Trigger Recalculation
+        await this.calculateScores(data.institutionId, data.teacherId);
     },
 
     async getSelfEval(teacherId: string) {
@@ -833,17 +858,59 @@ const SupabaseBackend = {
             }
 
             // Em modo local, armazenamos o userId dentro da resposta para rastreamento (simulação)
-            setTable(DB_KEYS.RESPONSES, [...resps, { ...response, _local_userId: userId }]);
+            setTable(DB_KEYS.RESPONSES, [...resps, { 
+                ...response, 
+                id: crypto.randomUUID(),
+                timestamp: new Date().toISOString(),
+                _local_userId: userId 
+            }]);
+            
+            // Trigger Recalculation
+            if (response.institutionId) {
+                await this.calculateScores(response.institutionId, response.teacherId);
+            }
             return;
         }
         
         // Em Supabase, tentamos verificar duplicidade se possível
-        // Como a tabela responses é anônima, confiamos no client-side ou numa tabela auxiliar se existisse.
-        // Para reforçar, vamos inserir.
-        const cleanResponse = { ...response, answers: response.answers };
+        const { data: existingVote } = await supabase.from('votes_tracker')
+            .select('id')
+            .eq('userId', userId)
+            .eq('subjectId', response.subjectId)
+            .maybeSingle();
+            
+        if (existingVote) {
+            throw new Error("Você já avaliou esta disciplina.");
+        }
+
+        const cleanResponse = { 
+            ...response, 
+            id: crypto.randomUUID(),
+            timestamp: new Date().toISOString(),
+            answers: response.answers 
+        };
+        
+        // Remove undefined fields to prevent Supabase errors
+        if (cleanResponse.teacherId === undefined) delete cleanResponse.teacherId;
+        if (cleanResponse.subjectId === undefined) delete cleanResponse.subjectId;
+
         const { error } = await supabase.from('responses').insert([cleanResponse]);
         
         if (error) throw new Error(error.message);
+
+        // Insert into votes_tracker
+        const { error: voteError } = await supabase.from('votes_tracker').insert([{
+            userId,
+            subjectId: response.subjectId,
+            institutionId: response.institutionId
+        }]);
+
+        if (voteError) console.error("Erro ao registrar voto:", voteError);
+
+        // Trigger Recalculation
+        if (response.institutionId) {
+            await this.calculateScores(response.institutionId, response.teacherId);
+        }
     },
 
     async getAvailableSurveys(institutionId: string, userRole: UserRole = UserRole.STUDENT) {
@@ -883,7 +950,10 @@ const SupabaseBackend = {
             const sId = resp.subjectId || 'unknown';
             if (!subjectGroups[sId]) subjectGroups[sId] = [];
             
-            const answers = resp.answers || [];
+            let answers = resp.answers || [];
+            if (typeof answers === 'string') {
+                try { answers = JSON.parse(answers); } catch (e) { answers = []; }
+            }
             answers.forEach((ans: any) => {
                 if (typeof ans.value === 'string' && ans.value.length > 3 && isNaN(Number(ans.value))) {
                     subjectGroups[sId].push(ans.value);
@@ -911,6 +981,7 @@ const SupabaseBackend = {
         let allResponses: any[] = [];
         let teachers: User[] = [];
         let questionnaire: Questionnaire | null = null;
+        let hasResponsesError = false;
         
         if (!supabase) {
              subjects = getTable<Subject>(DB_KEYS.SUBJECTS);
@@ -931,7 +1002,11 @@ const SupabaseBackend = {
              let rQuery = supabase.from('responses').select('*').eq('institutionId', institutionId);
              // REMOVED teacherId filter here to allow fallback logic to work for all responses
              // if (teacherId) rQuery = rQuery.eq('teacherId', teacherId); 
-             const { data: r } = await rQuery;
+             const { data: r, error: rError } = await rQuery;
+             if (rError) {
+                 console.error("Erro ao buscar respostas (possível bloqueio de RLS):", rError);
+                 hasResponsesError = true;
+             }
              allResponses = r || [];
 
              let tQuery = supabase.from('users').select('*').eq('role', 'teacher').eq('institutionId', institutionId);
@@ -945,8 +1020,11 @@ const SupabaseBackend = {
         }
 
         // Use standard questions if no custom questionnaire found
-        const questionsToUse = questionnaire?.questions || PDF_STANDARD_QUESTIONS;
-        const questionMap = new Map(questionsToUse.map(q => [q.id, q]));
+        let questionsToUse = questionnaire?.questions || PDF_STANDARD_QUESTIONS;
+        if (typeof questionsToUse === 'string') {
+            try { questionsToUse = JSON.parse(questionsToUse); } catch (e) { questionsToUse = PDF_STANDARD_QUESTIONS; }
+        }
+        const questionMap = new Map(questionsToUse.map((q: any) => [q.id, q]));
 
         // --- LÓGICA DE MÉDIA PONDERADA (WEIGHTED AVERAGE) ---
         const calculateWeightedAverage = (resps: any[]) => {
@@ -958,7 +1036,11 @@ const SupabaseBackend = {
                 let currentScore = 0;
                 let currentMaxWeight = 0;
 
-                const answers = resp.answers || [];
+                let answers = resp.answers || [];
+                if (typeof answers === 'string') {
+                    try { answers = JSON.parse(answers); } catch (e) { answers = []; }
+                }
+                
                 answers.forEach((a: any) => {
                     const q = questionMap.get(a.questionId);
                     const weight = q?.weight || 1; 
@@ -1041,7 +1123,17 @@ const SupabaseBackend = {
             });
 
             // Média dos estudantes (0 a 20)
-            const studentAvgRaw = calculateWeightedAverage(teacherResponses);
+            let studentAvgRaw = calculateWeightedAverage(teacherResponses);
+            let finalSubjectDetails = subjectDetails;
+
+            // Se houve erro de RLS ao buscar respostas, preservamos a nota de estudante anterior
+            if (hasResponsesError && supabase) {
+                const { data: existingScore } = await supabase.from('scores').select('studentScore, subjectDetails').eq('teacherId', t.id).maybeSingle();
+                if (existingScore) {
+                    studentAvgRaw = existingScore.studentScore || 0;
+                    finalSubjectDetails = existingScore.subjectDetails || [];
+                }
+            }
 
             // --- NORMALIZAÇÃO PARA PESOS (80% / 12% / 8%) ---
             // Escala Final: 0 a 100% (ou 0 a 100 pontos)
@@ -1062,7 +1154,7 @@ const SupabaseBackend = {
                 selfEvalScore: selfScoreRaw, // Mantemos o valor bruto (0-175) para o relatório
                 finalScore: finalScore, // Nota final ponderada (0-100)
                 lastCalculated: new Date().toISOString(),
-                subjectDetails: subjectDetails
+                subjectDetails: finalSubjectDetails
             };
 
             if (!supabase) {
@@ -1142,9 +1234,18 @@ const SupabaseBackend = {
              const resps = getTable<any>(DB_KEYS.RESPONSES);
              evaluatedSubjectIds = resps.filter(r => r._local_userId === studentId).map(r => r.subjectId);
         } else {
-            // Persistência local para o aluno, já que o backend é anônimo
-            const localVotes = localStorage.getItem('my_votes_' + studentId);
-            evaluatedSubjectIds = localVotes ? JSON.parse(localVotes) : [];
+            // Fetch from votes_tracker table
+            const { data } = await supabase.from('votes_tracker')
+                .select('subjectId')
+                .eq('userId', studentId);
+            
+            evaluatedSubjectIds = (data || []).map(d => d.subjectId);
+            
+            // Fallback to localStorage if votes_tracker is empty (for backward compatibility)
+            if (evaluatedSubjectIds.length === 0) {
+                const localVotes = localStorage.getItem('my_votes_' + studentId);
+                evaluatedSubjectIds = localVotes ? JSON.parse(localVotes) : [];
+            }
         }
         
         return { 
@@ -1215,28 +1316,35 @@ const SupabaseBackend = {
         // 6. Responses
         const responses = getTable<StudentResponse>(DB_KEYS.RESPONSES);
         if (responses.length > 0) {
-            const { error } = await supabase.from('responses').upsert(responses);
+            const safeResponses = responses.map(r => {
+                // If id is not a valid UUID (e.g. starts with resp_), generate a new one
+                if (r.id && r.id.startsWith('resp_')) {
+                    return { ...r, id: crypto.randomUUID() };
+                }
+                return r;
+            });
+            const { error } = await supabase.from('responses').upsert(safeResponses);
             if (error) console.error("Erro sync responses:", error);
         }
 
         // 7. Self Evals
         const selfEvals = getTable<SelfEvaluation>(DB_KEYS.SELF_EVALS);
         if (selfEvals.length > 0) {
-            const { error } = await supabase.from('self_evals').upsert(selfEvals);
+            const { error } = await supabase.from('self_evals').upsert(selfEvals, { onConflict: 'teacherId' });
             if (error) console.error("Erro sync self_evals:", error);
         }
 
         // 8. Qualitative Evals
         const qualEvals = getTable<QualitativeEval>(DB_KEYS.QUAL_EVALS);
         if (qualEvals.length > 0) {
-            const { error } = await supabase.from('qualitative_evals').upsert(qualEvals);
+            const { error } = await supabase.from('qualitative_evals').upsert(qualEvals, { onConflict: 'teacherId' });
             if (error) console.error("Erro sync qualitative_evals:", error);
         }
 
         // 9. Scores
         const scores = getTable<CombinedScore>(DB_KEYS.SCORES);
         if (scores.length > 0) {
-            const { error } = await supabase.from('scores').upsert(scores);
+            const { error } = await supabase.from('scores').upsert(scores, { onConflict: 'teacherId' });
             if (error) console.error("Erro sync scores:", error);
         }
         

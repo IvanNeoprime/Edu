@@ -27,23 +27,43 @@ export const StudentDashboard: React.FC<Props> = ({ user }) => {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    if (user.institutionId) {
-        BackendService.getInstitution(user.institutionId).then(inst => setInstitution(inst || null));
-        BackendService.getAvailableSurveys(user.institutionId).then(d => {
-            setData(d);
-            if(d) {
-                BackendService.getStudentProgress(user.id).then(p => {
-                    const totalSubjects = d.subjects.length; // This is raw total, not filtered yet
-                    // No need to calculate global pending here, we do it in the view
-                    setProgress({ 
-                        completed: p.completed, 
-                        pending: 0, 
-                        evaluatedSubjectIds: p.evaluatedSubjectIds 
+    const loadData = () => {
+        if (user.institutionId) {
+            BackendService.getInstitution(user.institutionId).then(inst => setInstitution(inst || null));
+            BackendService.getAvailableSurveys(user.institutionId).then(d => {
+                setData(d);
+                if(d) {
+                    BackendService.getStudentProgress(user.id).then(p => {
+                        setProgress({ 
+                            completed: p.completed, 
+                            pending: 0, 
+                            evaluatedSubjectIds: p.evaluatedSubjectIds 
+                        });
                     });
-                });
-            }
-        });
-    }
+                }
+            });
+        }
+    };
+
+    loadData();
+
+    const subSubjects = BackendService.subscribeToChanges('subjects', () => loadData());
+    const subVotes = BackendService.subscribeToChanges('votes_tracker', (payload) => {
+         if (payload.new && payload.new.userId === user.id) {
+             loadData();
+         }
+    });
+    const subInst = BackendService.subscribeToChanges('institutions', (payload) => {
+         if (payload.new && payload.new.id === user.institutionId) {
+             setInstitution(payload.new);
+         }
+    });
+
+    return () => {
+        subSubjects.unsubscribe();
+        subVotes.unsubscribe();
+        subInst.unsubscribe();
+    };
   }, [user.institutionId, user.id]);
 
   // Filtrar disciplinas disponíveis para o aluno AUTOMATICAMENTE baseado no Curso

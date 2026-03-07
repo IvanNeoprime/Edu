@@ -23,6 +23,19 @@ export const SuperAdminDashboard: React.FC = () => {
 
   useEffect(() => {
     loadData();
+
+    const subInst = BackendService.subscribeToChanges('institutions', () => {
+         loadData();
+    });
+
+    const subUsers = BackendService.subscribeToChanges('users', () => {
+         loadData();
+    });
+
+    return () => {
+        subInst.unsubscribe();
+        subUsers.unsubscribe();
+    };
   }, []);
 
   const loadData = async () => {

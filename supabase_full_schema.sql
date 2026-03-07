@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS public.questionnaires (
 
 -- 6. Tabela de Respostas (Responses)
 CREATE TABLE IF NOT EXISTS public.responses (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    id text PRIMARY KEY,
     "institutionId" text NOT NULL,
     "questionnaireId" text,
     "teacherId" text,
