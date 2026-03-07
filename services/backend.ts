@@ -430,8 +430,9 @@ const SupabaseBackend = {
                 const groupsToCreate = (classGroups && classGroups.length > 0) ? classGroups : ['A'];
 
                 groupsToCreate.forEach(group => {
-                    subjects.forEach(s => {
+                    subjects.forEach((s, index) => {
                         subjectsToInsert.push({
+                            id: `s_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`, // Generate unique ID
                             name: s.name,
                             code: s.code || `${newCourse.code}-${s.level}-${s.semester}`,
                             teacherId: null,
@@ -440,6 +441,7 @@ const SupabaseBackend = {
                             level: s.level,
                             semester: s.semester,
                             course: newCourse.name,
+                            courseId: newCourse.id, // Link to the course ID
                             classGroup: group,
                             shift: 'Diurno', // Default, can be changed later
                             modality: newCourse.modality,

@@ -52,6 +52,15 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='plainPassword') THEN
         ALTER TABLE public.users ADD COLUMN "plainPassword" text;
     END IF;
+    
+    -- Garantir campos novos de Alunos/Docentes
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='courseId') THEN
+        ALTER TABLE public.users ADD COLUMN "courseId" text;
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='jobTitle') THEN
+        ALTER TABLE public.users ADD COLUMN "jobTitle" text;
+    END IF;
 END $$;
 
 -- 3. Tabela de Cursos
@@ -67,6 +76,14 @@ CREATE TABLE IF NOT EXISTS public.courses (
     deleted boolean DEFAULT false,
     "createdAt" timestamp with time zone DEFAULT now()
 );
+
+-- Garantir colunas em Cursos
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='courses' AND column_name='classGroups') THEN
+        ALTER TABLE public.courses ADD COLUMN "classGroups" text[];
+    END IF;
+END $$;
 
 -- 4. Tabela de Disciplinas (Subjects)
 CREATE TABLE IF NOT EXISTS public.subjects (
@@ -87,6 +104,22 @@ CREATE TABLE IF NOT EXISTS public.subjects (
     deleted boolean DEFAULT false,
     "createdAt" timestamp with time zone DEFAULT now()
 );
+
+-- Garantir colunas em Disciplinas
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subjects' AND column_name='courseId') THEN
+        ALTER TABLE public.subjects ADD COLUMN "courseId" text REFERENCES public.courses(id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subjects' AND column_name='classGroup') THEN
+        ALTER TABLE public.subjects ADD COLUMN "classGroup" text;
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subjects' AND column_name='modality') THEN
+        ALTER TABLE public.subjects ADD COLUMN "modality" text;
+    END IF;
+END $$;
 
 -- 5. Tabela de Questionários
 CREATE TABLE IF NOT EXISTS public.questionnaires (
