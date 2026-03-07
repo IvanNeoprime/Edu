@@ -2,9 +2,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BackendService, PDF_STANDARD_QUESTIONS, DEFAULT_SELF_EVAL_TEMPLATE, GroupedComments } from '../services/backend';
 import { User, UserRole, Subject, Questionnaire, QuestionType, TeacherCategory, CombinedScore, Question, Institution, SelfEvaluation, Course, SelfEvalTemplate } from '../types';
-import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, cn } from './ui';
+import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, Switch, cn } from './ui';
 import { useToast } from './ToastContext';
-import { Users, BookOpen, Calculator, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, Star, BarChartHorizontal, GraduationCap, Download, Printer, Image as ImageIcon, RefreshCw, Settings, Save, X, Edit, Scale, Award, FileSpreadsheet, ListChecks, FileText, Layers, AlertTriangle, Menu, Eye, MessageSquare, RotateCcw, LayoutList, Quote } from 'lucide-react';
+import { Users, BookOpen, Calculator, Plus, Trash2, FileQuestion, ChevronDown, ChevronUp, Star, BarChartHorizontal, GraduationCap, Download, Printer, Image as ImageIcon, RefreshCw, Settings, Save, X, Edit, Scale, Award, FileSpreadsheet, ListChecks, FileText, Layers, AlertTriangle, Menu, Eye, MessageSquare, RotateCcw, LayoutList, Quote, Lock, CheckCircle2 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -568,7 +568,16 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
   
   const handleUpdateInstitution = async (e: React.FormEvent) => {
     e.preventDefault(); if (!institution) return;
-    try { await BackendService.updateInstitution(institution.id, { name: institution.name, logo: institution.logo }); addToast("Dados da instituição atualizados com sucesso!", 'success'); } catch (e: any) { addToast("Erro ao atualizar: " + e.message, 'error'); }
+    try { 
+        await BackendService.updateInstitution(institution.id, { 
+            name: institution.name, 
+            logo: institution.logo,
+            isEvaluationOpen: institution.isEvaluationOpen,
+            evaluationStartDate: institution.evaluationStartDate,
+            evaluationEndDate: institution.evaluationEndDate
+        }); 
+        addToast("Dados da instituição atualizados com sucesso!", 'success'); 
+    } catch (e: any) { addToast("Erro ao atualizar: " + e.message, 'error'); }
   };
 
   const handleInstLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1389,6 +1398,34 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                         <div className="p-3 bg-emerald-100 rounded-full text-emerald-600 mb-3"><GraduationCap size={24} /></div>
                         <h3 className="text-2xl font-bold">{students.length}</h3>
                         <p className="text-sm text-gray-500">Estudantes Ativos</p>
+                    </CardContent>
+                </Card>
+                
+                <Card className="shadow-sm">
+                    <CardContent className="p-6 flex flex-col items-center text-center">
+                        <div className={`p-3 rounded-full mb-3 ${institution?.isEvaluationOpen ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                            {institution?.isEvaluationOpen ? <CheckCircle2 size={24} /> : <Lock size={24} />}
+                        </div>
+                        <h3 className="text-xl font-bold">{institution?.isEvaluationOpen ? 'Aberto' : 'Fechado'}</h3>
+                        <p className="text-sm text-gray-500 mb-2">Período de Avaliação</p>
+                        <div className="flex items-center gap-2 mt-2">
+                            <Switch 
+                                checked={institution?.isEvaluationOpen || false}
+                                onCheckedChange={async (checked) => {
+                                    if(!institution) return;
+                                    const updated = {...institution, isEvaluationOpen: checked};
+                                    setInstitution(updated);
+                                    try {
+                                        await BackendService.updateInstitution(institution.id, { isEvaluationOpen: checked });
+                                        addToast(checked ? "Período de avaliação aberto!" : "Período de avaliação fechado.", 'success');
+                                    } catch(e: any) {
+                                        addToast("Erro ao atualizar status: " + e.message, 'error');
+                                        setInstitution({...institution, isEvaluationOpen: !checked});
+                                    }
+                                }}
+                            />
+                            <span className="text-xs font-medium text-gray-600">{institution?.isEvaluationOpen ? 'Fechar' : 'Abrir'}</span>
+                        </div>
                     </CardContent>
                 </Card>
                 <Card className="shadow-sm">
@@ -2217,7 +2254,7 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                     <CardTitle>Configurações da Instituição</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <form onSubmit={handleUpdateInstitution} className="space-y-4 max-w-md">
+                    <form onSubmit={handleUpdateInstitution} className="space-y-6 max-w-md">
                         <div className="space-y-2">
                             <Label>Nome da Instituição</Label>
                             <Input 
@@ -2234,6 +2271,37 @@ export const ManagerDashboard: React.FC<Props> = ({ institutionId }) => {
                                 <Input type="file" accept="image/*" onChange={handleInstLogoUpload} />
                             </div>
                         </div>
+
+                        <div className="space-y-4 pt-4 border-t">
+                            <h3 className="text-lg font-semibold">Período de Avaliação</h3>
+                            <div className="flex items-center space-x-2">
+                                <Switch
+                                    id="evaluation-open"
+                                    checked={institution?.isEvaluationOpen || false}
+                                    onCheckedChange={(checked) => institution && setInstitution({...institution, isEvaluationOpen: checked})}
+                                />
+                                <Label htmlFor="evaluation-open">Período de Avaliação Aberto</Label>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Data de Início</Label>
+                                    <Input
+                                        type="date"
+                                        value={institution?.evaluationStartDate || ''}
+                                        onChange={(e) => institution && setInstitution({...institution, evaluationStartDate: e.target.value})}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Data de Fim</Label>
+                                    <Input
+                                        type="date"
+                                        value={institution?.evaluationEndDate || ''}
+                                        onChange={(e) => institution && setInstitution({...institution, evaluationEndDate: e.target.value})}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
                         <Button type="submit">Salvar Alterações</Button>
                     </form>
                 </CardContent>

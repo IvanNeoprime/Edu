@@ -1207,7 +1207,7 @@ const SupabaseBackend = {
         }
 
         // 8. Qualitative Evals
-        const qualEvals = getTable<QualitativeEval>(DB_KEYS.QUALITATIVE_EVALS);
+        const qualEvals = getTable<QualitativeEval>(DB_KEYS.QUAL_EVALS);
         if (qualEvals.length > 0) {
             const { error } = await supabase.from('qualitative_evals').upsert(qualEvals);
             if (error) console.error("Erro sync qualitative_evals:", error);
