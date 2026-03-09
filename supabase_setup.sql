@@ -97,5 +97,17 @@ CREATE POLICY "Permitir atualização de subjects" ON public.subjects FOR UPDATE
 DROP POLICY IF EXISTS "Permitir exclusão de subjects" ON public.subjects;
 CREATE POLICY "Permitir exclusão de subjects" ON public.subjects FOR DELETE USING (true);
 
--- 8. Importante: Força a atualização do cache do esquema da API
+-- 8. Garantir que a tabela 'responses' existe e tem a coluna evaluationPeriodName
+CREATE TABLE IF NOT EXISTS public.responses (
+    id text PRIMARY KEY,
+    "institutionId" text NOT NULL,
+    "questionnaireId" text,
+    "teacherId" text,
+    "evaluationPeriodName" text DEFAULT 'default',
+    answers jsonb NOT NULL,
+    timestamp timestamp with time zone DEFAULT now()
+);
+ALTER TABLE public.responses ADD COLUMN IF NOT EXISTS "evaluationPeriodName" text DEFAULT 'default';
+
+-- 9. Importante: Força a atualização do cache do esquema da API
 NOTIFY pgrst, 'reload schema';

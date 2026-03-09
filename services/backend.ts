@@ -908,7 +908,8 @@ const SupabaseBackend = {
             ...response, 
             id: crypto.randomUUID(),
             timestamp: new Date().toISOString(),
-            answers: response.answers 
+            answers: response.answers,
+            evaluationPeriodName: response.evaluationPeriodName || 'default'
         };
         
         // Remove undefined fields to prevent Supabase errors
@@ -919,6 +920,13 @@ const SupabaseBackend = {
         
         if (error) throw new Error(error.message);
 
+        // Recalcular scores após nova resposta
+        try {
+            await this.calculateScores(response.institutionId, response.teacherId);
+        } catch (e) {
+            console.error("Erro ao recalcular scores:", e);
+        }
+
         // Insert into votes_tracker
         const { error: voteError } = await supabase.from('votes_tracker').insert([{
             userId,
@@ -927,7 +935,10 @@ const SupabaseBackend = {
             evaluationPeriodName: response.evaluationPeriodName || 'default'
         }]);
 
-        if (voteError) console.error("Erro ao registrar voto:", voteError);
+        if (voteError) {
+            console.error("Erro ao registrar voto:", voteError);
+            throw new Error("Erro ao registrar voto: " + voteError.message);
+        }
 
         // Trigger Recalculation
         if (response.institutionId) {
@@ -1086,13 +1097,15 @@ const SupabaseBackend = {
                     
                     // Normalização baseada no tipo de pergunta
                     if (q?.type === 'stars') {
-                        // Estrelas 1-5 -> Normaliza para 0-1 (20% cada estrela)
+                        // Estrelas 1-5 -> Normaliza para 0-1
                         val = val / 5;
                     } else if (q?.type === 'scale_10') {
                         // Escala 0-10 -> Normaliza para 0-1
                         val = val / 10;
+                    } else if (q?.type === 'binary') {
+                        // Binary já é 0 ou 1, não precisa normalizar, mas garante que é número
+                        val = val ? 1 : 0;
                     }
-                    // Binary já é 0 ou 1
                     
                     currentScore += val * weight;
                     currentMaxWeight += weight;
