@@ -1229,7 +1229,10 @@ const SupabaseBackend = {
                 else scores.push(newScore);
                 setTable(DB_KEYS.SCORES, scores);
             } else {
-                await supabase.from('scores').upsert(newScore, { onConflict: 'teacherId' });
+                const { error } = await supabase.from('scores').upsert(newScore, { onConflict: 'teacherId' });
+                if (error) {
+                    console.error("Erro ao salvar pontuações no Supabase:", error);
+                }
             }
         }
     },
