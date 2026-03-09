@@ -1048,7 +1048,7 @@ const SupabaseBackend = {
              const { data: s } = await supabase.from('subjects').select('*').eq('institutionId', institutionId);
              subjects = s || [];
              
-             let rQuery = supabase.from('responses').select('*').eq('institutionId', institutionId).eq('evaluationPeriodName', currentPeriod);
+             let rQuery = supabase.from('responses').select('*').eq('institutionId', institutionId);
              // REMOVED teacherId filter here to allow fallback logic to work for all responses
              // if (teacherId) rQuery = rQuery.eq('teacherId', teacherId); 
              const { data: r, error: rError } = await rQuery;
@@ -1058,6 +1058,15 @@ const SupabaseBackend = {
              }
              allResponses = r || [];
              console.log("Total de respostas encontradas:", allResponses.length);
+             if (allResponses.length > 0) {
+                 console.log("Exemplo de resposta:", JSON.stringify(allResponses[0]));
+                 console.log("Campos da primeira resposta:", Object.keys(allResponses[0]));
+                 console.log("institutionId da primeira resposta:", allResponses[0].institutionId);
+                 console.log("evaluationPeriodName da primeira resposta:", allResponses[0].evaluationPeriodName);
+                 console.log("teacherId da primeira resposta:", allResponses[0].teacherId);
+             }
+             console.log("InstitutionId buscado:", institutionId);
+             console.log("Periodo buscado:", currentPeriod);
 
              let tQuery = supabase.from('users').select('*').eq('role', 'teacher').eq('institutionId', institutionId);
              if (teacherId) tQuery = tQuery.eq('id', teacherId);
