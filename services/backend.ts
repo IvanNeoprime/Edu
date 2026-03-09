@@ -1077,11 +1077,12 @@ const SupabaseBackend = {
 
         // --- LÓGICA DE MÉDIA PONDERADA (WEIGHTED AVERAGE) ---
         const calculateWeightedAverage = (resps: any[]) => {
+            console.log("Calculando média para", resps.length, "respostas");
             if (resps.length === 0) return 0;
             
             let totalNormalizedScore = 0;
 
-            resps.forEach(resp => {
+            resps.forEach((resp, index) => {
                 let currentScore = 0;
                 let currentMaxWeight = 0;
 
@@ -1089,6 +1090,8 @@ const SupabaseBackend = {
                 if (typeof answers === 'string') {
                     try { answers = JSON.parse(answers); } catch (e) { answers = []; }
                 }
+                
+                console.log(`Resposta ${index} tem ${answers.length} respostas`);
                 
                 answers.forEach((a: any) => {
                     const q = questionMap.get(a.questionId);
@@ -1113,12 +1116,16 @@ const SupabaseBackend = {
                 
                 // Normaliza a resposta deste aluno para a escala de 0 a 20 valores
                 if (currentMaxWeight > 0) {
-                     totalNormalizedScore += (currentScore / currentMaxWeight) * 20;
+                     const studentScore = (currentScore / currentMaxWeight) * 20;
+                     console.log(`Resposta ${index} score: ${studentScore}`);
+                     totalNormalizedScore += studentScore;
                 }
             });
 
             // Retorna a média das notas normalizadas (0-20) de todos os alunos
-            return totalNormalizedScore / resps.length;
+            const finalAvg = totalNormalizedScore / resps.length;
+            console.log("Média final calculada:", finalAvg);
+            return finalAvg;
         };
 
         for (const t of teachers) {
