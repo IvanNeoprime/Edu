@@ -1057,6 +1057,7 @@ const SupabaseBackend = {
                  hasResponsesError = true;
              }
              allResponses = r || [];
+             console.log("Total de respostas encontradas:", allResponses.length);
 
              let tQuery = supabase.from('users').select('*').eq('role', 'teacher').eq('institutionId', institutionId);
              if (teacherId) tQuery = tQuery.eq('id', teacherId);
@@ -1147,6 +1148,8 @@ const SupabaseBackend = {
                 ? getTable<QualitativeEval>(DB_KEYS.QUAL_EVALS).find(q => q.teacherId === t.id)
                 : (await supabase.from('qualitative_evals').select('*').eq('teacherId', t.id).maybeSingle()).data;
             
+            console.log(`QualEval para professor ${t.id}:`, qualEval);
+            
             // Pontuação Institucional (0 a 10)
             const instScoreRaw = qualEval ? ((qualEval.deadlineCompliance || 0) + (qualEval.workQuality || 0)) / 2 : 0;
 
@@ -1160,12 +1163,16 @@ const SupabaseBackend = {
                 return false;
             });
             
+            console.log(`Professor ${t.id} (${t.name}) tem ${teacherResponses.length} respostas filtradas.`);
+            
             const subjectGroups: Record<string, any[]> = {};
             teacherResponses.forEach(r => {
                 const sId = r.subjectId || 'unknown';
                 if (!subjectGroups[sId]) subjectGroups[sId] = [];
                 subjectGroups[sId].push(r);
             });
+            
+            console.log(`Professor ${t.id} tem ${Object.keys(subjectGroups).length} grupos de disciplinas.`);
 
             const subjectDetails: SubjectScoreDetail[] = Object.keys(subjectGroups).map(sId => {
                 const subResps = subjectGroups[sId];
