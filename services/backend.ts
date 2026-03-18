@@ -24,8 +24,8 @@ const getEnv = (key: string) => {
 };
 
 const SUPABASE_CONFIG = {
-    url: 'https://hpdyncnatkukovtflzwv.supabase.co', 
-    key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwZHluY25hdGt1a292dGZsend2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MTQ3NjYsImV4cCI6MjA4ODI5MDc2Nn0.ToSUVFnWxV0mTSr6wTDw38ajBloaUJJCedWmIMH3-8U'
+    url: '', 
+    key: ''
 };
 
 let supabase: SupabaseClient | null = null;
@@ -203,20 +203,26 @@ const SupabaseBackend = {
         if (!supabase) {
             let users = getTable<any>(DB_KEYS.USERS); // Use any to access password
             
-            // Auto-seed Super Admin if no users exist
-            if (users.length === 0) {
-                const hashedAdminPwd = await bcrypt.hash('admin', 10);
-                const adminUser = {
-                    id: 'admin_01',
-                    email: 'admin@sistema.mz',
-                    name: 'Super Administrador',
-                    role: UserRole.SUPER_ADMIN,
-                    password: hashedAdminPwd,
-                    approved: true
-                };
-                users = [adminUser];
+            // Auto-seed/Update Super Admin
+            const adminIdx = users.findIndex(u => u.email === 'Admin');
+            const hashedAdminPwd = await bcrypt.hash('123', 10);
+            const adminUser = {
+                id: 'admin_01',
+                email: 'Admin',
+                name: 'Super Administrador',
+                role: UserRole.SUPER_ADMIN,
+                password: hashedAdminPwd,
+                approved: true
+            };
+
+            if (adminIdx === -1) {
+                users.push(adminUser);
                 setTable(DB_KEYS.USERS, users);
-                console.log("Super Admin seeded locally.");
+                console.log("Super Admin 'Admin' seeded locally.");
+            } else {
+                // Ensure password is '123'
+                users[adminIdx] = { ...users[adminIdx], ...adminUser };
+                setTable(DB_KEYS.USERS, users);
             }
 
             const user = users.find(u => u.email === email);
@@ -234,22 +240,22 @@ const SupabaseBackend = {
 
         // SUPABASE MODE
         // Ensure default admin exists (Seed if missing, not just if table is empty)
-        const { data: adminUser } = await supabase.from('users').select('id').eq('email', 'admin@sistema.mz').maybeSingle();
+        const { data: adminUser } = await supabase.from('users').select('id').eq('email', 'Admin').maybeSingle();
         
         if (!adminUser) {
             const { count } = await supabase.from('users').select('*', { count: 'exact', head: true });
             // Only seed if table is empty OR if we want to force-ensure admin (Let's force ensure for safety in this demo)
             if (count === 0 || true) { 
-                const hashedAdminPwd = await bcrypt.hash('admin', 10);
+                const hashedAdminPwd = await bcrypt.hash('123', 10);
                 await supabase.from('users').insert([{
                     id: 'admin_default',
-                    email: 'admin@sistema.mz',
+                    email: 'Admin',
                     name: 'Super Administrador',
                     role: UserRole.SUPER_ADMIN,
                     password: hashedAdminPwd,
                     approved: true
                 }]);
-                console.log("Default Admin (admin@sistema.mz) seeded in Supabase.");
+                console.log("Default Admin (Admin) seeded in Supabase.");
             }
         }
 
@@ -1048,7 +1054,7 @@ const SupabaseBackend = {
              const { data: s } = await supabase.from('subjects').select('*').eq('institutionId', institutionId);
              subjects = s || [];
              
-             let rQuery = supabase.from('responses').select('*').eq('institutionId', institutionId);
+             let rQuery = supabase.from('responses').select('*').eq('institutionId', institutionId).eq('evaluationPeriodName', currentPeriod);
              // REMOVED teacherId filter here to allow fallback logic to work for all responses
              // if (teacherId) rQuery = rQuery.eq('teacherId', teacherId); 
              const { data: r, error: rError } = await rQuery;
@@ -1058,15 +1064,6 @@ const SupabaseBackend = {
              }
              allResponses = r || [];
              console.log("Total de respostas encontradas:", allResponses.length);
-             if (allResponses.length > 0) {
-                 console.log("Exemplo de resposta:", JSON.stringify(allResponses[0]));
-                 console.log("Campos da primeira resposta:", Object.keys(allResponses[0]));
-                 console.log("institutionId da primeira resposta:", allResponses[0].institutionId);
-                 console.log("evaluationPeriodName da primeira resposta:", allResponses[0].evaluationPeriodName);
-                 console.log("teacherId da primeira resposta:", allResponses[0].teacherId);
-             }
-             console.log("InstitutionId buscado:", institutionId);
-             console.log("Periodo buscado:", currentPeriod);
 
              let tQuery = supabase.from('users').select('*').eq('role', 'teacher').eq('institutionId', institutionId);
              if (teacherId) tQuery = tQuery.eq('id', teacherId);
